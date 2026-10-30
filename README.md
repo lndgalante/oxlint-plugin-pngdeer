@@ -1,6 +1,10 @@
-# oxlint-plugin-pngdeer
+<p align="center">
+  <img src="https://raw.githubusercontent.com/lndgalante/oxlint-plugin-pngdeer/main/.github/logo.svg" alt="" width="128" height="128">
+</p>
 
-**Catch heavy PNGs and JPEGs on the line of code that uses them.**
+<h1 align="center">oxlint-plugin-pngdeer</h1>
+
+<p align="center"><strong>Catch heavy PNGs and JPEGs on the line of code that uses them.</strong></p>
 
 A lint rule for [oxlint](https://oxc.rs/docs/guide/usage/linter) and ESLint. It runs [pngdeer](https://github.com/heydeer/pngdeer), a lossy PNG and JPEG compressor in the spirit of TinyPNG, locally on the images your code imports or points to. When an image could be much smaller at about the same visual quality, the rule warns on that line, with the saving and the command that shrinks the file.
 
