@@ -1,0 +1,21 @@
+{
+  "name": "oxlint-plugin-pngdeer",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Prototype: an oxlint plugin that says how much smaller your PNGs and JPEGs could be, at the same visual quality",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "files": [
+    "src",
+    "engine"
+  ],
+  "engines": {
+    "node": ">=20.19"
+  },
+  "devDependencies": {
+    "oxlint": "^1.90.0"
+  }
+}
