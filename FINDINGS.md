@@ -49,7 +49,8 @@ src/scan.js         lists the project's images, to measure them all on the first
 src/images.js       PNG/JPEG headers: kind, dimensions, frames, size limits
 src/marker.js       marks pngdeer's output, so it's never measured again
 src/text.js         sizes and shell arguments, for messages
-bin/pngdeer.js      npx oxlint-plugin-pngdeer IMAGE... [-o OUT] [--target T], with the same engine
+src/summary.js      the table at the end of a run, and the list --flagged shrinks
+bin/pngdeer.js      npx oxlint-plugin-pngdeer IMAGE... | --flagged [-o OUT] [--target T], same engine
 engine/             pngdeer's wasm and its wasm-bindgen glue, as served by heydeer.ai
 docs/rules/         the rule's reference page (meta.docs.url)
 example/            a small app to lint
@@ -63,6 +64,7 @@ test/               node --test: the marker and the scan, and the rule (under ox
 - **Outside editors** (the `oxlint` and `eslint` commands, and tools that call ESLint's Node API), the first file that names an unmeasured image triggers one batch: that file's images plus every image in the project, in a worker pool. The lint thread blocks with `Atomics.wait` meanwhile (the synckit pattern; no child process, so oxlint's large address space is never forked), and the files linted after it find their images cached. Measuring file by file instead made a cold run of 8 one-image files take the sum of their times rather than the slowest one's. The cost is that a cold `lint-staged` run over one file also waits for the rest of the project, once. The scan skips images smaller than `minSavedBytes` (they can't save that much), test output by folder name, and nested packages, which have their own cache. On stderr, the run says how many images it's measuring, how long that took, and at exit what the warnings add up to. A failed batch is reported once, and the rest of the run doesn't try again. So is each image pngdeer fails on or can't take.
 - **In editors** the rule only reads the cache. An editor is `oxlint --lsp`, ESLint's language server (VS Code's, which Zed and Neovim use too: its script is `eslintServer.js`), or any process VS Code runs as Node (`ELECTRON_RUN_AS_NODE`). Neither linter has an API for this. Misses join a single background queue: one batch at a time per process, and the first one takes every image in the project. The warnings appear on the next lint. A failed batch isn't retried for 5 minutes. Through ESLint's Node API under the server's script name, a cold lint of the example returns in 41 ms with no warnings, and 8 s later with all 5. Under any other name it waits and reports all 5. An earlier version did it the other way round and waited only under the `oxlint` and `eslint` bins. Then a one-off run through ESLint's Node API (Nx, xo, a script) counted as an editor, exited before its background batch finished, and never reported anything.
 - **ESLint 9 and 10** run the rule unchanged: it uses ESLint's `create` API, and reads its defaults in code, since ESLint before 9.15 ignores `meta.defaultOptions`. oxlint and ESLint share the cache. Both are optional peer dependencies.
+- **The output** has one warning per image per file, underlining just that image's path (a `srcSet` names several). oxlint's JS plugins can't attach a help line to a warning, so the command sits at the end of the message. A run outside an editor ends with a table on stderr: what the warnings add up to, each image counted once, biggest saving first. It also leaves the list in `node_modules/.cache/pngdeer/flagged.json`, in the folder the lint ran from. `npx oxlint-plugin-pngdeer --flagged` shrinks that list, each image at the target it was measured at, so neither a person nor an agent has to copy paths out of warnings.
 - **Memory** is budgeted, not just threads. Each image is charged its expected peak (125 bytes a pixel below 8 MP, 85 above, plus 50 MB). The pool runs within a quarter of the machine's memory, or of a container's limit, between 1 and 4 GB. An engine that measured a big image is replaced, because wasm memory never shrinks.
 - **Options:** `minSavedBytes` (default 4096, Lighthouse's threshold), `minSavedPercent` (10), `target` (`"auto"` or a SSIMULACRA2 score, which the suggested command repeats as `--target`), `measure` (`"auto"`, `"always"`, `"never"`). [docs/rules/compressible-image.md](docs/rules/compressible-image.md) is the reference.
 
@@ -76,7 +78,7 @@ test/               node --test: the marker and the scan, and the rule (under ox
 Output (`--format unix`):
 
 ```
-src/App.jsx:10:16: warning pngdeer(compressible-image): hero.png could be 70% smaller (509 kB → 151 kB) at about the same visual quality. Run: npx oxlint-plugin-pngdeer public/hero.png
+src/App.jsx:10:16: warning pngdeer(compressible-image): hero.png could be 70% smaller (509 kB → 151 kB) and look about the same. Run: npx oxlint-plugin-pngdeer public/hero.png
 ```
 
 ## What a lint rule can't do

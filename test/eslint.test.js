@@ -11,7 +11,7 @@ import { eslint, names, oxlint, plugin, project } from "./helpers.js";
 test("ESLint gives the same warnings as oxlint, and waits for a cold cache the same way", () => {
   const dir = project();
   const first = eslint(dir, "src");
-  assert.deepEqual(names(first), ["crystal-ball.png", "diagram.png", "diagram.png", "hero.png", "photo.jpg"]);
+  assert.deepEqual(names(first), ["crystal-ball.png", "diagram.png", "hero.png", "photo.jpg"]);
   assert.match(first.stderr, /^pngdeer: measured 5 images in /m);
   assert.match(first.stderr, /^pngdeer: 4 images could be \d+ kB smaller in all/m);
   assert.deepEqual(names(oxlint(dir)), names(first));
@@ -37,5 +37,5 @@ console.log(results.flatMap((r) => r.messages).filter((m) => m.ruleId === "pngde
     return Number(result.stdout.trim());
   };
   assert.equal(run("eslintServer.mjs"), 0, "the editor's first lint doesn't wait");
-  assert.equal(run("lint.mjs"), 5, "a one-off run waits for the measuring");
+  assert.equal(run("lint.mjs"), 4, "a one-off run waits for the measuring");
 });

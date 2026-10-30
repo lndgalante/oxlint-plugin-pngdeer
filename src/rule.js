@@ -2,12 +2,13 @@
 // require, new URL, JSX src and srcSet, plain strings), says how much smaller pngdeer would make it.
 // oxlint never lints image files themselves, so the reference is where the warning goes.
 import { readFileSync, statSync } from "node:fs";
-import { basename, dirname, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { cacheDir, key, read } from "./cache.js";
 import { marked } from "./marker.js";
 import { projectImages } from "./scan.js";
+import { flag, summarize } from "./summary.js";
 import { fillInBackground, fillSync } from "./sync.js";
-import { count, quote, size } from "./text.js";
+import { count, pathFrom, quote, size, smaller } from "./text.js";
 
 const IMAGE = /\.(png|apng|jpe?g)$/i;
 const REMOTE = /^[a-z][a-z0-9+.-]*:|^\/\//i;
@@ -29,7 +30,6 @@ const roots = new Map(); // directory -> its project root
 const scanned = new Set(); // `${root}\0${target}` whose images were all measured, or queued, once
 const failed = new Set(); // outside editors: roots whose batch failed, not tried again this run
 const told = new Set(); // outside editors: images already named on stderr
-const savings = new Map(); // outside editors: image path -> { original, saved }, for the total at exit
 
 export default {
   meta: {
@@ -40,8 +40,8 @@ export default {
       url: "https://github.com/lndgalante/oxlint-plugin-pngdeer/blob/main/docs/rules/compressible-image.md",
     },
     messages: {
-      compressible: "{{name}} could be {{percent}}% smaller ({{before}} → {{after}}) at {{quality}}. Run: {{command}}",
-      lossless: "{{name}} could be {{percent}}% smaller ({{before}} → {{after}}) losslessly. Run: {{command}}",
+      compressible: "{{name}} could be {{percent}}% smaller ({{before}} → {{after}}) {{quality}}. Run: {{command}}",
+      lossless: "{{name}} could be {{percent}}% smaller ({{before}} → {{after}}), losslessly. Run: {{command}}",
     },
     schema: [
       {
@@ -70,36 +70,50 @@ export default {
     const dir = cacheDir(root);
     const find = (path) => locate(path, from, root, publicDirs, aliases);
     // a path as the person running the linter would type it
-    const shown = (file) => relative(context.cwd, file).split(sep).join("/");
+    const shown = (file) => pathFrom(context.cwd, file);
     const wait = measure === "always" || (measure === "auto" && !EDITOR);
     const found = [];
 
+    const reported = new Set(); // images warned about in this file: once each, at their first mention
+
     function check(node, text) {
-      for (const file of imagesIn(text, find)) {
+      for (const { file, part } of imagesIn(text, find)) {
         const image = fileKey(file, target);
         // a file smaller than minSavedBytes can't save that much: not worth measuring
-        if (image && image.size >= minSavedBytes) found.push({ node, file, k: image.key });
+        if (image && image.size >= minSavedBytes) found.push({ node, file, k: image.key, loc: part && within(node, part) });
       }
     }
 
-    function report({ node, file }, result) {
+    // Where `part` sits in a string's source, so a warning for one image of a srcSet underlines that
+    // image alone; null if the source spells it differently (escapes), and the whole string is used.
+    function within(node, part) {
+      const source = context.sourceCode;
+      const at = source.getText(node).indexOf(part);
+      if (at < 0) return null;
+      const start = node.range[0] + at;
+      return { start: source.getLocFromIndex(start), end: source.getLocFromIndex(start + part.length) };
+    }
+
+    function report({ node, file, loc }, result) {
       if (!result || result.skipped || !["hit", "exact", "lossless"].includes(result.outcome)) return;
       const saved = result.original - result.compressed;
-      const percent = Math.round((100 * saved) / result.original);
-      if (saved < minSavedBytes || percent < minSavedPercent) return;
-      if (!EDITOR) savings.set(file, { original: result.original, saved });
+      const percent = smaller(result.original, result.compressed);
+      if (saved < minSavedBytes || percent < minSavedPercent || reported.has(file)) return;
+      reported.add(file);
+      if (!EDITOR) flag(file, { original: result.original, compressed: result.compressed, target });
       // this package's own command (bin/pngdeer.js), at the target measured, so it writes exactly the
       // file this promises; named by the package, so npx can't fetch someone else's
       const command = `npx oxlint-plugin-pngdeer ${quote(shown(file))}${target === undefined ? "" : ` --target ${target}`}`;
       context.report({
         node,
+        loc: loc ?? undefined,
         messageId: result.outcome === "hit" ? "compressible" : "lossless",
         data: {
           name: basename(file),
           percent,
           before: size(result.original),
           after: size(result.compressed),
-          quality: target === undefined ? "about the same visual quality" : `SSIMULACRA2 ${target}`,
+          quality: target === undefined ? "and look about the same" : `at SSIMULACRA2 ${target}`,
           command,
         },
       });
@@ -159,21 +173,13 @@ export default {
   },
 };
 
-// A run's last word, outside editors: what all the warnings add up to, each image counted once.
-if (!EDITOR) {
-  process.once("exit", () => {
-    if (savings.size === 0) return;
-    let original = 0;
-    let saved = 0;
-    for (const image of savings.values()) {
-      original += image.original;
-      saved += image.saved;
-    }
-    process.stderr.write(`pngdeer: ${count(savings.size, "image")} could be ${size(saved)} smaller in all (${Math.round((100 * saved) / original)}%)\n`);
-  });
-}
+// A run's last word, outside editors: what all the warnings add up to (summary.js).
+if (!EDITOR) process.once("exit", () => summarize());
 
-/** The image files a string in the code names: itself, or else a srcSet's candidates. */
+/**
+ * The image files a string in the code names, as [{ file, part }]: the string itself (part null), or
+ * else a srcSet's candidates, each with the text that names it.
+ */
 function imagesIn(text, find) {
   // a query or hash ends a path, but a leading # is a subpath import ("#assets/x.png")
   const strip = (path) => path.replace(/(?!^)[?#].*$/, "");
@@ -181,9 +187,12 @@ function imagesIn(text, find) {
   // a whole path first, as file names can hold spaces and commas ("Screenshot … at 10.12.33.png")
   const whole = strip(text.trim());
   const single = usable(whole) && find(whole);
-  if (single) return [single];
-  const candidates = text.split(",").map((part) => strip(part.trim().split(/\s+/)[0]));
-  return candidates.filter(usable).map(find).filter(Boolean);
+  if (single) return [{ file: single, part: null }];
+  const parts = text.split(",").map((part) => part.trim().split(/\s+/)[0]);
+  return parts
+    .filter((part) => usable(strip(part)))
+    .map((part) => ({ file: find(strip(part)), part }))
+    .filter(({ file }) => file);
 }
 
 /** The file a path in `from` names, or null: relative to the file, or "/x" in a public dir or the root. */

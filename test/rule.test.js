@@ -8,10 +8,11 @@ import { fade, names, oxlint, pngdeer, project } from "./helpers.js";
 test("warns on each reference to a compressible image, with the command that fixes it", () => {
   const dir = project();
   const first = oxlint(dir);
-  // heart.png saves too little, missing.png doesn't exist, unused-fire.png isn't referenced
-  assert.deepEqual(names(first), ["crystal-ball.png", "diagram.png", "diagram.png", "hero.png", "photo.jpg"]);
+  // once per image per file (diagram.png is named twice), and not for heart.png (saves too little),
+  // missing.png (doesn't exist) or unused-fire.png (named nowhere)
+  assert.deepEqual(names(first), ["crystal-ball.png", "diagram.png", "hero.png", "photo.jpg"]);
   const hero = first.found.find((d) => d.message.startsWith("hero.png"));
-  assert.match(hero.message, /^hero\.png could be \d+% smaller \(509 kB → \d+ kB\) at about the same visual quality\. Run: npx oxlint-plugin-pngdeer public\/hero\.png$/);
+  assert.match(hero.message, /^hero\.png could be \d+% smaller \(509 kB → \d+ kB\) and look about the same\. Run: npx oxlint-plugin-pngdeer public\/hero\.png$/);
   // a second run reads the cache
   assert.deepEqual(names(oxlint(dir)), names(first));
 });
@@ -21,10 +22,26 @@ test("says what the first run is doing, and what the warnings add up to", () => 
   const { stderr } = oxlint(dir);
   assert.match(stderr, /^pngdeer: measuring 5 images not in the cache yet\.\.\.$/m);
   assert.match(stderr, /^pngdeer: measured 5 images in \d+\.\d s; later runs read the cache$/m);
-  assert.match(stderr, /^pngdeer: 4 images could be \d+ kB smaller in all \(\d+%\)$/m);
+  assert.match(stderr, /^pngdeer: 4 images could be 718 kB smaller in all \(1\.0 MB → 310 kB, 70%\)$/m);
+  // a table, the biggest saving first, then the one command for all of them
+  const rows = stderr.split("\n").filter((line) => line.startsWith("  ")).map((line) => line.trim().split(/\s+/)[0]);
+  assert.deepEqual(rows, ["public/hero.png", "src/assets/diagram.png", "public/photo.jpg", "src/assets/crystal-ball.png"]);
+  assert.match(stderr, /^pngdeer: to shrink them all, run: npx oxlint-plugin-pngdeer --flagged$/m);
   const again = oxlint(dir).stderr;
   assert.doesNotMatch(again, /measur/);
   assert.match(again, /4 images could be/);
+});
+
+test("--flagged shrinks what the last lint flagged, at the target it measured", () => {
+  const dir = project({ options: { target: 70 } });
+  assert.match(pngdeer(dir, "--flagged").stderr, /no lint has run in this folder yet/);
+  oxlint(dir);
+  const run = pngdeer(dir, "--flagged");
+  assert.equal(run.status, 0, run.stderr);
+  const shrunk = run.stdout.trim().split("\n").map((line) => line.split(":")[0]);
+  assert.deepEqual(shrunk.sort(), ["public/hero.png", "public/photo.jpg", "src/assets/crystal-ball.png", "src/assets/diagram.png"]);
+  assert.deepEqual(oxlint(dir).found, []);
+  assert.equal(pngdeer(dir, "--flagged").stdout.trim(), "the last lint here flagged nothing");
 });
 
 test("files fixed with the command aren't flagged again, even on a fresh clone", () => {
@@ -56,12 +73,16 @@ test("paths with spaces are found and quoted for the platform's shell", () => {
   assert.ok(found.message.endsWith(`Run: npx oxlint-plugin-pngdeer ${quoted}`), found.message);
 });
 
-test("srcSet lists, public and static paths resolve", () => {
+test("srcSet lists, public and static paths resolve, each image underlined on its own", () => {
   const files = { "src/App.jsx": 'export const a = <img srcSet="./assets/crystal-ball.png 1x, /photo.jpg 2x" />;\nexport const b = "/hero.png";\n' };
   const dir = project({ files, images: ["src/assets/crystal-ball.png", "public/photo.jpg"] });
   mkdirSync(join(dir, "static"));
   cpSync(join(dir, "src/assets/crystal-ball.png"), join(dir, "static/hero.png"));
-  assert.deepEqual(names(oxlint(dir)), ["crystal-ball.png", "hero.png", "photo.jpg"]);
+  const result = oxlint(dir);
+  assert.deepEqual(names(result), ["crystal-ball.png", "hero.png", "photo.jpg"]);
+  const span = (name) => result.found.find((d) => d.message.startsWith(name)).labels[0].span;
+  assert.deepEqual([span("crystal-ball.png").column, span("crystal-ball.png").length], [31, 25]);
+  assert.deepEqual([span("photo.jpg").column, span("photo.jpg").length], [61, 10]);
 });
 
 test("runs from a parent directory find the same images", () => {

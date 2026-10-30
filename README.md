@@ -9,7 +9,7 @@
 A lint rule for [oxlint](https://oxc.rs/docs/guide/usage/linter) and ESLint. It runs [pngdeer](https://github.com/heydeer/pngdeer), a lossy PNG and JPEG compressor in the spirit of TinyPNG, locally on the images your code imports or points to. When an image could be much smaller at about the same visual quality, the rule warns on that line, with the saving and the command that shrinks the file.
 
 ```
-  ⚠ pngdeer(compressible-image): hero.png could be 70% smaller (509 kB → 151 kB) at about the same visual quality. Run: npx oxlint-plugin-pngdeer public/hero.png
+  ⚠ pngdeer(compressible-image): hero.png could be 70% smaller (509 kB → 151 kB) and look about the same. Run: npx oxlint-plugin-pngdeer public/hero.png
     ╭─[src/App.jsx:10:16]
   9 │     <main>
  10 │       <img src="/hero.png" alt="An arcade stick" />
@@ -53,23 +53,34 @@ Run oxlint:
 ```console
 $ npx oxlint
 pngdeer: measuring 5 images not in the cache yet...
-pngdeer: measured 5 images in 4.5 s; later runs read the cache
-  ⚠ pngdeer(compressible-image): hero.png could be 70% smaller (509 kB → 151 kB) at about the same visual quality. Run: npx oxlint-plugin-pngdeer public/hero.png
+pngdeer: measured 5 images in 4.6 s; later runs read the cache
+
+  ⚠ pngdeer(compressible-image): hero.png could be 70% smaller (509 kB → 151 kB) and look about the same. Run: npx oxlint-plugin-pngdeer public/hero.png
   …
-pngdeer: 4 images could be 718 kB smaller in all (70%)
+
+pngdeer: 4 images could be 718 kB smaller in all (1.0 MB → 310 kB, 70%)
+  public/hero.png              509 kB → 151 kB  70%
+  src/assets/diagram.png       248 kB →  63 kB  75%
+  public/photo.jpg             235 kB →  85 kB  64%
+  src/assets/crystal-ball.png   35 kB →  11 kB  69%
+pngdeer: to shrink them all, run: npx oxlint-plugin-pngdeer --flagged
 ```
 
-Then shrink what it found. There's no autofix (lint fixes can only edit code), so pass the flagged images to the command, one or several:
+Each image warns once per file, on the line that names it. The table at the end counts each image once, biggest saving first.
+
+Then shrink what it found. There's no autofix (lint fixes can only edit code), so run the command: `--flagged` takes every image the last lint in that folder warned about, or name images yourself.
 
 ```console
-$ npx oxlint-plugin-pngdeer public/hero.png public/photo.jpg
+$ npx oxlint-plugin-pngdeer --flagged
 public/hero.png: 509 kB → 151 kB (70% smaller, SSIMULACRA2 87.3)
+src/assets/diagram.png: 248 kB → 63 kB (75% smaller, SSIMULACRA2 89.5)
 public/photo.jpg: 235 kB → 85 kB (64% smaller, SSIMULACRA2 75.5)
+src/assets/crystal-ball.png: 35 kB → 11 kB (68% smaller, SSIMULACRA2 86.9)
 ```
 
 - **It's lossy, and it writes over the file.** Commit first so git is your undo, or write a copy to compare with `-o hero.smaller.png`.
 - **It takes a few seconds per image,** one at a time.
-- **It doesn't read your lint config.** If you set a `target`, pass it too (`--target 90`); the command in each warning already does. `--help` lists the options.
+- **`--flagged` uses the `target` each image was measured at.** For images you name, pass it yourself (`--target 90`), as the command in each warning does. `--help` lists the options.
 - **JPEGs keep their orientation and color profile;** other camera metadata (EXIF, GPS) is dropped.
 - **It marks each file it writes** with a short text tag (`pngdeer <size>`, in a PNG `tEXt` chunk or a JPEG comment), so the rule doesn't flag it again, on any machine.
 

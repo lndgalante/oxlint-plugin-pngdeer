@@ -23,7 +23,7 @@ const missing = "/no-such-file.png"; // names no file
 const bare = "assets/logo.png"; // no ./, ../, / or alias prefix: not looked up
 ```
 
-Each string that names an image gets its own warning, so an image used in two places warns twice.
+Each image warns once per file, at its first mention, and only its own path is underlined, even inside a `srcSet`. On the command line, the run ends with a table of everything it flagged, each image counted once, biggest saving first.
 
 ## How to fix it
 
@@ -33,7 +33,15 @@ Run the command from the warning:
 npx oxlint-plugin-pngdeer public/hero.png
 ```
 
-It writes pngdeer's smaller file over the image (`-o` writes elsewhere), and marks it so this rule doesn't flag it again. pngdeer is lossy, so commit first. `--help` lists the rest.
+It writes pngdeer's smaller file over the image (`-o` writes elsewhere), and marks it so this rule doesn't flag it again. pngdeer is lossy, so commit first.
+
+To shrink everything the last lint flagged, at the target each image was measured at:
+
+```bash
+npx oxlint-plugin-pngdeer --flagged
+```
+
+A lint outside the editor leaves that list in `node_modules/.cache/pngdeer/flagged.json`, in the folder it ran from. `--help` lists the rest.
 
 ## Options
 
