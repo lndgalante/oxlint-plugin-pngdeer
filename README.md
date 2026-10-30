@@ -1,35 +1,77 @@
-# oxlint-plugin-pngdeer (prototype)
+# oxlint-plugin-pngdeer
 
-An oxlint rule that says, on the line of code that names an image, how much smaller pngdeer would make it at the same visual quality:
+**Smaller images, flagged where you use them.** An [oxlint](https://oxc.rs/docs/guide/usage/linter) rule that says, on the line of code that names a PNG or JPEG, how much smaller [pngdeer](https://github.com/heydeer/pngdeer) would make it at the same visual quality, and the command that does it.
 
 ```
-src/App.jsx:10:16: warning pngdeer(compressible-image): hero.png could be 359 kB smaller (70%: 509 kB → 151 kB) and still look right. Run: pngdeer public/hero.png -o public/hero.png
+src/App.jsx:10:16: warning pngdeer(compressible-image): hero.png could be 359 kB smaller (70%: 509 kB → 151 kB) and still look right. Run: npx pngdeer public/hero.png -o public/hero.png
 ```
 
-Whether this is a good idea, what it costs and what it can't do: [FINDINGS.md](FINDINGS.md).
-
-## Try it
+## Setup
 
 ```bash
-npm install
-cd example
-../node_modules/.bin/oxlint    # about 5 s the first time, 0.1 s after
+npm install --save-dev oxlint oxlint-plugin-pngdeer
 ```
 
-The engine in `engine/` is pngdeer's single-threaded WebAssembly build as served by heydeer.ai, not built from source here ([engine/README.md](engine/README.md) has its commit and hashes). The example's images come from pngdeer's `bench/images` ([example/SOURCES.md](example/SOURCES.md)).
-
-## Use it in a project
+In `.oxlintrc.json`:
 
 ```json
 {
   "jsPlugins": ["oxlint-plugin-pngdeer"],
-  "settings": { "pngdeer": { "publicDirs": ["public"] } },
-  "rules": { "pngdeer/compressible-image": ["warn", { "minBytes": 4096, "minPercent": 10 }] }
+  "rules": {
+    "pngdeer/compressible-image": "warn"
+  }
 }
 ```
 
-Results are cached in `node_modules/.cache/pngdeer`, one small JSON file per image content.
+Then run `npx oxlint`. The first run measures each image it meets (a few seconds each, in parallel); later runs read the results from a cache and take milliseconds.
+
+To make an image smaller, run the command in the warning. It uses the same engine as the rule, so it writes exactly the file the warning describes:
+
+```bash
+npx pngdeer public/hero.png -o public/hero.png
+```
+
+## What it checks
+
+Any string in JS or TS (and the script blocks of Vue, Svelte and Astro files) that names a local `.png`, `.apng`, `.jpg` or `.jpeg` file: imports, `require`, `new URL("./x.png", import.meta.url)`, JSX `src` and `srcSet`, and plain strings. Paths resolve:
+
+- `./` and `../` from the file.
+- `/x.png` from each public directory, then the project root (the nearest folder with a `package.json`).
+- `@/` and `~/` from `src/`.
+
+oxlint lints code, not images, so images used only from CSS, HTML or Markdown aren't seen.
+
+## Options
+
+```json
+"pngdeer/compressible-image": ["warn", { "minBytes": 4096, "minPercent": 10, "target": "auto", "compute": "auto" }]
+```
+
+| Option | Default | |
+|---|---|---|
+| `minBytes` | `4096` | Report only savings of at least this many bytes (Lighthouse's threshold) |
+| `minPercent` | `10` | …and at least this share of the file |
+| `target` | `"auto"` | The quality to keep: `"auto"` picks one per image, as pngdeer does; a number is a SSIMULACRA2 score (90 is indistinguishable at 1:1) |
+| `compute` | `"auto"` | `"always"` measures new images while linting; `"never"` only reports what's cached; `"auto"` measures on the command line and in the background in the editor |
+
+Settings, shared by every file:
+
+```json
+"settings": { "pngdeer": { "publicDirs": ["public"], "aliases": { "@/": "src/", "~/": "src/" } } }
+```
+
+## How it works
+
+- **pngdeer** searches palette sizes and dithering for each PNG, and JPEG qualities for each JPEG, scores each candidate with SSIMULACRA2, and keeps the smallest file that still looks right. The engine is pngdeer's WebAssembly build, so it runs wherever Node does, with nothing to compile or download at install.
+- **Cache:** results are kept per image content in `node_modules/.cache/pngdeer`, so an image is measured once until it changes. In CI, cache that folder (with `actions/cache`, keyed on your images) to skip measuring again.
+- **Speed:** a file's new images are measured together, one engine per core, within a quarter of the machine's memory. A median image takes about 3 seconds; a 12-megapixel photo about 30.
+- **Editor:** in oxlint's language server the rule only reads the cache, and measures new images in the background. Their warnings appear on your next edit.
+- **Fixed files stay fixed:** `npx pngdeer` marks what it writes (a JPEG comment or a PNG text chunk), so the rule never measures that file again, on any machine. Recompressing a JPEG would otherwise make it smaller, and worse, each time.
+
+## Status
+
+oxlint's JS plugins are alpha. This plugin is tested with oxlint 1.90 on Node 20, 22 and 24, and weekly against the newest oxlint. [FINDINGS.md](FINDINGS.md) has the research behind it, with measurements.
 
 ## License
 
-[MIT](LICENSE). The engine's dependencies keep their own licenses ([engine/THIRD_PARTY_LICENSES.txt](engine/THIRD_PARTY_LICENSES.txt)), as do the example images. JPEG output is encoded with mozjpeg: this software is based in part on the work of the Independent JPEG Group.
+[MIT](LICENSE). The engine's dependencies keep their own licenses ([engine/THIRD_PARTY_LICENSES.txt](engine/THIRD_PARTY_LICENSES.txt)); [engine/README.md](engine/README.md) says where the engine comes from. The example images keep theirs ([example/SOURCES.md](example/SOURCES.md)). JPEG output is encoded with mozjpeg: this software is based in part on the work of the Independent JPEG Group.

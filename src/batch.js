@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
 import { cacheDir, key, read, write } from "./cache.js";
 import { dimensions, kind, unsupported } from "./images.js";
+import { marked } from "./marker.js";
 
 const MAX_WORKERS = 8;
 // Wasm memory never shrinks, so a worker that measured an image expected to peak above this is
@@ -33,6 +34,11 @@ export async function fill({ cwd, target, files }) {
     const k = key(bytes, target);
     if (read(dir, k)) {
       counts.cached++;
+      continue;
+    }
+    if (marked(bytes)) {
+      write(dir, k, { original: bytes.length, outcome: "output" });
+      counts.skipped++;
       continue;
     }
     const why = unsupported(bytes);

@@ -1,21 +1,45 @@
 {
   "name": "oxlint-plugin-pngdeer",
-  "version": "0.0.0",
-  "private": true,
-  "description": "Prototype: an oxlint plugin that says how much smaller your PNGs and JPEGs could be, at the same visual quality",
+  "version": "0.1.0",
+  "description": "An oxlint rule that says how much smaller your PNGs and JPEGs could be at the same visual quality, on the line of code that uses them",
+  "keywords": [
+    "oxlint",
+    "oxlint-plugin",
+    "png",
+    "jpeg",
+    "image",
+    "compression",
+    "pngdeer"
+  ],
+  "homepage": "https://github.com/lndgalante/oxlint-plugin-pngdeer#readme",
+  "bugs": "https://github.com/lndgalante/oxlint-plugin-pngdeer/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lndgalante/oxlint-plugin-pngdeer.git"
+  },
   "license": "MIT",
   "type": "module",
   "exports": {
     ".": "./src/index.js"
   },
+  "bin": {
+    "pngdeer": "bin/pngdeer.js"
+  },
   "files": [
+    "bin",
     "src",
     "engine"
   ],
-  "engines": {
-    "node": ">=20.19"
+  "scripts": {
+    "test": "node --test"
+  },
+  "peerDependencies": {
+    "oxlint": ">=1.90.0"
   },
   "devDependencies": {
-    "oxlint": "^1.90.0"
+    "oxlint": "1.90.0"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
   }
 }

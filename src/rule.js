@@ -6,6 +6,7 @@ import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { cacheDir, key, read } from "./cache.js";
 import { projectImages } from "./scan.js";
 import { fillInBackground, fillSync } from "./sync.js";
+import { quote, size } from "./text.js";
 
 const IMAGE = /\.(png|apng|jpe?g)$/i;
 const REMOTE = /^[a-z][a-z0-9+.-]*:|^\/\//i;
@@ -69,8 +70,9 @@ export default {
       const percent = Math.round((100 * saved) / result.original);
       if (saved < minBytes || percent < minPercent) return;
       const path = quote(relative(context.cwd, file).split(sep).join("/"));
-      // the same target as measured, so the command writes exactly the file this promises
-      const command = `pngdeer ${path} -o ${path}${target === undefined ? "" : ` --target ${target}`}`;
+      // this package's own command (bin/pngdeer.js), at the target measured, so it writes exactly the
+      // file this promises
+      const command = `npx pngdeer ${path} -o ${path}${target === undefined ? "" : ` --target ${target}`}`;
       context.report({
         node,
         messageId: result.outcome === "hit" ? "compressible" : "lossless",
@@ -165,15 +167,4 @@ function isFile(path) {
   } catch {
     return false;
   }
-}
-
-function size(bytes) {
-  if (bytes < 1000) return `${bytes} B`;
-  if (bytes < 1e6) return `${(bytes / 1000).toFixed(bytes < 1e4 ? 1 : 0)} kB`;
-  return `${(bytes / 1e6).toFixed(1)} MB`;
-}
-
-/** A path as a shell argument. */
-function quote(arg) {
-  return /^[\w@%+=:,./-]+$/.test(arg) ? arg : `'${arg.replace(/'/g, `'\\''`)}'`;
 }

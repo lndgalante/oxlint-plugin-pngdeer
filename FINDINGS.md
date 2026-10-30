@@ -42,11 +42,16 @@ src/rule.js         pngdeer/compressible-image: finds image paths in strings, re
 src/cache.js        one JSON file per content hash in node_modules/.cache/pngdeer
 src/batch.js        measures uncached images on a pool of worker threads, biggest first
 src/worker.js       one wasm engine per worker thread
+src/engine.js       the wasm engine, started on first use: a PNG or JPEG in, pngdeer's file out
 src/sync.js         waits for a batch with Atomics.wait (CLI), or runs it in the background (editor)
 src/scan.js         lists the project's images, to measure them all on the first miss
 src/images.js       PNG/JPEG headers: kind, dimensions, frames, size limits
+src/marker.js       marks pngdeer's output, so it's never measured again
+src/text.js         sizes and shell arguments, for messages
+bin/pngdeer.js      npx pngdeer IN -o OUT [--target T], with the same engine
 engine/             pngdeer's wasm and its wasm-bindgen glue, as served by heydeer.ai
 example/            a small app to lint
+test/               node --test: the marker, and the rule and command end to end under oxlint
 ```
 
 - **One visitor for every kind of reference.** Every string literal (and template literal without expressions) is checked for local `.png`, `.apng`, `.jpg` and `.jpeg` paths. That catches imports, re-exports, `require`, `new URL`, JSX attributes and `srcSet` lists (split on commas) without a visitor for each. URLs with a scheme or starting with `//` are skipped. `?query` and `#hash` are stripped.
@@ -67,13 +72,13 @@ example/            a small app to lint
 Output:
 
 ```
-src/App.jsx:10:16: warning pngdeer(compressible-image): hero.png could be 359 kB smaller (70%: 509 kB → 151 kB) and still look right. Run: pngdeer public/hero.png -o public/hero.png
+src/App.jsx:10:16: warning pngdeer(compressible-image): hero.png could be 359 kB smaller (70%: 509 kB → 151 kB) and still look right. Run: npx pngdeer public/hero.png -o public/hero.png
 ```
 
 ## What a lint rule can't do
 
 - **Fix the image.** A lint fix edits source text, not binary files. The message carries the command instead.
-- **Know, on a fresh clone, that a JPEG is already pngdeer's output.** That is recorded only in the local cache, when the original is measured. CI, a teammate, or anyone who runs pngdeer before the plugin has seen the original measures the committed output from scratch, and gets told it could be 21% smaller again. The fix belongs in pngdeer (recommendation 4).
+- **Know, on a fresh clone, that a JPEG is already pngdeer's output, unless the plugin's own command wrote it.** The package ships `npx pngdeer` (bin/pngdeer.js, same engine), and it marks what it writes: a JPEG COM segment or a PNG `tEXt` entry reading `pngdeer <size>`. The rule never measures a marked file whose size still matches. A JPEG written by Homebrew's `pngdeer`, which doesn't mark its output, is only recognized on a machine whose cache measured the original. Anywhere else, the rule reports it as 21% smaller again. The full fix belongs in pngdeer (recommendation 4). Homebrew's pngdeer 0.2.1 also predates JPEG support.
 - **See images that code doesn't name.** That needs a whole-project command, such as a `pngdeer check` that walks the repo, prints the total, and shares this cache.
 - **Notice an image changed on disk in the editor.** The language server watches only config files, so the warning updates on the next edit of the file that references it.
 - **Carry many warnings to a PR.** `oxlint --format github` uses GitHub annotations, capped at 10 warnings per step and 50 per job, shared with every other warning.
@@ -102,7 +107,7 @@ The engine can shrink without changing its output:
 1. **Ship one package, `oxlint-plugin-pngdeer`, with the wasm engine inside.** At 2 MB, an optional peer dependency or a native build matrix would add more friction than it saves. Use the plain ESLint `create` API, as here, and the same package works in ESLint's flat config too. Pin a narrow oxlint range and test against each oxlint release, since the API is alpha.
 2. **Publish a lint build of the wasm:** no WebP, names stripped, wasm-opt, the nbits fix. Also add an `estimate` export that returns sizes and the output's hash without copying the output bytes across.
 3. **Pair the rule with `pngdeer check` / `pngdeer fix` on the command line,** sharing the cache. That covers what the rule can't see, prints the project's total, and gives the warning's "Run:" line something to point at for npm users (the CLI is only on Homebrew today).
-4. **Make pngdeer's JPEG path recognize its own output.** One option is to mark what it writes (a JPEG COM segment, a PNG `tEXt` entry). Another is to return the input unchanged when it already scores at or above the target at the quality pngdeer would choose. Until then, the plugin can only tell which files are pngdeer's output on a machine that measured the originals. It also protects anyone who runs pngdeer twice by hand.
+4. **Make pngdeer's JPEG path recognize its own output.** One option is to mark what it writes the way the plugin's command does (src/marker.js). Another is to return the input unchanged when it already scores at or above the target at the quality pngdeer would choose. Either way, it also protects anyone who runs pngdeer twice by hand.
 
 An independent review of the prototype raised 18 findings, and each was reproduced before being fixed. They came down to 11 problems, 10 of them fixed here: an unbounded number of background engines in the editor, a project root taken from oxlint's working directory, a command that ignored `target`, results cached under the wrong content when a file changed mid-batch, a pool sized by cores rather than memory, the whole repo measured on one file's miss, failed batches retried on every reference, unreadable images failing the file, a race on the output record, and paths with spaces. The eleventh, the output record being local, is the limitation above.
 

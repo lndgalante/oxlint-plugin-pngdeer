@@ -1,0 +1,27 @@
+name: Release
+
+# Publishes to npm when a v* tag is pushed, with provenance, through npm's trusted publishing (set
+# this repository and workflow as the package's trusted publisher on npmjs.com; no token needed).
+# The first version has to be published by hand, as a package must exist before it can have one.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - run: npm test
+      - name: Tag matches package.json
+        run: test "v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME"
+      - run: npm publish --provenance --access public
