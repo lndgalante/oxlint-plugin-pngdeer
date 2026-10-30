@@ -5,6 +5,8 @@ on:
     branches: [main]
   pull_request:
   # Weekly against the newest oxlint too: its JS plugin API is alpha and not covered by semver.
+  # GitHub pauses scheduled runs after 60 days without activity in the repository; turn it back on
+  # under Actions > CI.
   schedule:
     - cron: "0 6 * * 1"
   workflow_dispatch:

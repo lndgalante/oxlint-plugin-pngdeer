@@ -1,8 +1,10 @@
 name: Release
 
-# Publishes to npm when a v* tag is pushed, with provenance, through npm's trusted publishing (set
-# this repository and workflow as the package's trusted publisher on npmjs.com; no token needed).
-# The first version has to be published by hand, as a package must exist before it can have one.
+# Publishes to npm when a v* tag is pushed, with provenance, through npm's trusted publishing (no
+# token). npm can only trust a workflow for a package that exists, so the first version is published
+# by hand; pushing its tag afterwards is a no-op here. Add this repository and workflow as the
+# trusted publisher on npmjs.com just before pushing the next tag: a new trusted publisher that
+# hasn't published within 2 days expires, and has to be deleted and added again.
 on:
   push:
     tags: ["v*"]
@@ -24,4 +26,16 @@ jobs:
       - run: npm test
       - name: Tag matches package.json
         run: test "v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME"
-      - run: npm publish --provenance --access public
+      - name: Skip versions already on npm
+        id: published
+        run: |
+          if npm view "$(node -p 'const p = require("./package.json"); `${p.name}@${p.version}`')" version >/dev/null 2>&1; then
+            echo "already on npm"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+      # A prerelease (v1.2.3-rc.1) goes out as "next", so it isn't what `npm install` picks.
+      - if: steps.published.outputs.skip != 'true'
+        run: |
+          tag=latest
+          case "$GITHUB_REF_NAME" in *-*) tag=next ;; esac
+          npm publish --provenance --access public --tag "$tag"

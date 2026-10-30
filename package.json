@@ -23,7 +23,7 @@
     ".": "./src/index.js"
   },
   "bin": {
-    "pngdeer": "bin/pngdeer.js"
+    "oxlint-plugin-pngdeer": "bin/pngdeer.js"
   },
   "files": [
     "bin",

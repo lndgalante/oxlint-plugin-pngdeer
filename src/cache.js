@@ -21,7 +21,10 @@ export function key(bytes, target) {
   return createHash("sha256").update(bytes).update(`\0${ENGINE}\0${target ?? "auto"}`).digest("hex");
 }
 
-/** { original, compressed, outcome, ms }, { skipped }, or { outcome: "output" } for bytes pngdeer wrote; null if not cached yet. */
+/**
+ * { original, compressed, outcome, ms }; { skipped } (with failed: true if pngdeer itself failed);
+ * { outcome: "output" } for bytes pngdeer wrote; or null if not cached yet.
+ */
 export function read(dir, k) {
   try {
     return JSON.parse(readFileSync(join(dir, `${k}.json`), "utf8"));

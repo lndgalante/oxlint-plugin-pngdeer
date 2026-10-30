@@ -5,7 +5,9 @@ export function size(bytes) {
   return `${(bytes / 1e6).toFixed(1)} MB`;
 }
 
-/** A path as a shell argument. */
+/** A path as a shell argument, for the shell of the platform it's printed on. */
 export function quote(arg) {
-  return /^[\w@%+=:,./-]+$/.test(arg) ? arg : `'${arg.replace(/'/g, `'\\''`)}'`;
+  if (/^[\w@+=:,./-]+$/.test(arg)) return arg;
+  // cmd.exe and PowerShell take double quotes but not single ones, and Windows names can't hold "
+  return process.platform === "win32" ? `"${arg}"` : `'${arg.replace(/'/g, `'\\''`)}'`;
 }

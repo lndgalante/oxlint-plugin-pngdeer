@@ -60,7 +60,7 @@ export async function fill({ cwd, target, files }) {
       return;
     }
     if (result.error) {
-      write(dir, job.k, { skipped: `pngdeer failed: ${result.error}` });
+      write(dir, job.k, { skipped: result.error, failed: true });
       counts.failed++;
       return;
     }

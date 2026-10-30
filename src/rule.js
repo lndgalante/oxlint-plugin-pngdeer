@@ -18,8 +18,9 @@ const EDITOR = process.argv.includes("--lsp");
 // Per process (the language server's lasts the whole editor session):
 const keys = new Map(); // image path -> { size, mtimeMs, target, key }, so images aren't re-hashed on every keystroke
 const roots = new Map(); // directory -> its project root
-const scanned = new Set(); // editor: `${root}\0${target}` whose images were all queued once
+const scanned = new Set(); // `${root}\0${target}` whose images were all measured, or queued, once
 const failed = new Set(); // command line: roots whose batch failed, not tried again this run
+const told = new Set(); // command line: images pngdeer failed on, already said so
 
 export default {
   meta: {
@@ -54,6 +55,8 @@ export default {
     const root = projectRoot(dirname(from), context.cwd);
     const dir = cacheDir(root);
     const find = (path) => locate(path, from, root, publicDirs, aliases);
+    // a path as the person running oxlint would type it
+    const shown = (file) => relative(context.cwd, file).split(sep).join("/");
     const wait = compute === "always" || (compute === "auto" && !EDITOR);
     const found = [];
 
@@ -69,10 +72,10 @@ export default {
       const saved = result.original - result.compressed;
       const percent = Math.round((100 * saved) / result.original);
       if (saved < minBytes || percent < minPercent) return;
-      const path = quote(relative(context.cwd, file).split(sep).join("/"));
+      const path = quote(shown(file));
       // this package's own command (bin/pngdeer.js), at the target measured, so it writes exactly the
-      // file this promises
-      const command = `npx pngdeer ${path} -o ${path}${target === undefined ? "" : ` --target ${target}`}`;
+      // file this promises; named by the package, so npx can't fetch someone else's
+      const command = `npx oxlint-plugin-pngdeer ${path} -o ${path}${target === undefined ? "" : ` --target ${target}`}`;
       context.report({
         node,
         messageId: result.outcome === "hit" ? "compressible" : "lossless",
@@ -87,27 +90,37 @@ export default {
       TemplateLiteral(node) {
         if (node.expressions.length === 0) check(node, node.quasis[0].value.cooked ?? "");
       },
-      // Everything this file names is measured together, in parallel, then reported.
+      // What this file names is measured, then reported. The first time, every image in the
+      // project goes in the same parallel batch, so the files linted next find theirs cached.
       "Program:exit"() {
         if (found.length === 0) return;
         const missing = compute === "never" ? [] : [...new Set(found.filter(({ k }) => !read(dir, k)).map(({ file }) => file))];
-        if (missing.length && wait && !failed.has(root)) {
-          if (missing.length > 1 && process.stderr.isTTY) process.stderr.write(`pngdeer: measuring ${missing.length} images; they're cached after this\n`);
-          try {
-            fillSync({ cwd: root, target, files: missing });
-          } catch (error) {
-            // the images stay unmeasured (and unreported) rather than failing the lint, and the
-            // rest of this run doesn't try again
-            failed.add(root);
-            process.stderr.write(`${error.message}\n`);
-          }
-        } else if (missing.length && !wait) {
-          // in the editor, the first time, every image in the project, so files opened next are ready
+        if (missing.length) {
           const group = `${root}\0${target}`;
-          fillInBackground({ cwd: root, target, files: scanned.has(group) ? missing : [...missing, ...projectImages(root)] });
+          const files = scanned.has(group) ? missing : [...missing, ...projectImages(root)];
           scanned.add(group);
+          if (!wait) fillInBackground({ cwd: root, target, files });
+          else if (!failed.has(root)) {
+            if (process.stderr.isTTY) process.stderr.write("pngdeer: measuring images; they're cached after this\n");
+            try {
+              fillSync({ cwd: root, target, files });
+            } catch (error) {
+              // the images stay unmeasured (and unreported) rather than failing the lint, and the
+              // rest of this run doesn't try again
+              failed.add(root);
+              process.stderr.write(`${error.message}\n`);
+            }
+          }
         }
-        for (const ref of found) report(ref, read(dir, ref.k));
+        for (const ref of found) {
+          const result = read(dir, ref.k);
+          // an image pngdeer couldn't take would otherwise just never warn
+          if (wait && result?.failed && !told.has(ref.file)) {
+            told.add(ref.file);
+            process.stderr.write(`pngdeer: ${shown(ref.file)}: ${result.skipped}\n`);
+          }
+          report(ref, result);
+        }
       },
     };
   },
