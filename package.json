@@ -1,14 +1,22 @@
 {
   "name": "oxlint-plugin-pngdeer",
   "version": "0.1.0",
-  "description": "An oxlint rule that says how much smaller your PNGs and JPEGs could be at the same visual quality, on the line of code that uses them",
+  "description": "Lint rule for oxlint and ESLint: flags PNGs and JPEGs your code uses that could be much smaller at about the same visual quality, with the command that shrinks them. Local WebAssembly, no upload.",
   "keywords": [
     "oxlint",
     "oxlint-plugin",
+    "oxc",
+    "eslint",
+    "eslintplugin",
+    "eslint-plugin",
+    "lint",
+    "image-optimization",
+    "image-compression",
     "png",
     "jpeg",
-    "image",
-    "compression",
+    "web-performance",
+    "ssimulacra2",
+    "webassembly",
     "pngdeer"
   ],
   "homepage": "https://github.com/lndgalante/oxlint-plugin-pngdeer#readme",
@@ -17,10 +25,14 @@
     "type": "git",
     "url": "git+https://github.com/lndgalante/oxlint-plugin-pngdeer.git"
   },
+  "author": "Leonardo Galante",
   "license": "MIT",
   "type": "module",
   "exports": {
-    ".": "./src/index.js"
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    }
   },
   "bin": {
     "oxlint-plugin-pngdeer": "bin/pngdeer.js"
@@ -34,9 +46,19 @@
     "test": "node --test"
   },
   "peerDependencies": {
-    "oxlint": ">=1.90.0"
+    "eslint": ">=9.0.0",
+    "oxlint": ">=1.90.0 <2"
+  },
+  "peerDependenciesMeta": {
+    "eslint": {
+      "optional": true
+    },
+    "oxlint": {
+      "optional": true
+    }
   },
   "devDependencies": {
+    "eslint": "10.14.0",
     "oxlint": "1.90.0"
   },
   "engines": {

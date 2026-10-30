@@ -5,6 +5,11 @@ export function size(bytes) {
   return `${(bytes / 1e6).toFixed(1)} MB`;
 }
 
+/** "1 image", "5 images". */
+export function count(n, noun) {
+  return `${n} ${noun}${n === 1 ? "" : "s"}`;
+}
+
 /** A path as a shell argument, for the shell of the platform it's printed on. */
 export function quote(arg) {
   if (/^[\w@+=:,./-]+$/.test(arg)) return arg;

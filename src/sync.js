@@ -21,7 +21,8 @@ export function fillSync(request) {
   if (status === "timed-out" || !reply) {
     // its engines would go on computing next to whatever runs after
     worker.terminate();
-    throw new Error(`pngdeer: no answer from the batch (${status})`);
+    const why = status === "timed-out" ? `stopped measuring after ${TIMEOUT_MS / 60000} minutes` : "measuring stopped without an answer (out of memory?)";
+    throw new Error(`pngdeer: ${why}; what it measured is cached, and the next run carries on`);
   }
   worker.unref();
   if (reply.error) throw new Error(`pngdeer: ${reply.error}`);

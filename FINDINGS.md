@@ -1,10 +1,10 @@
-# pngdeer as an oxlint plugin
+# Design notes and measurements
 
-Can pngdeer warn, inside oxlint, how much smaller a project's PNGs and JPEGs could be? And would it be too heavy as an npm dependency? Researched on October 30, 2026, against oxlint 1.90.0 (released October 27) and the single-threaded wasm build of pngdeer 0.2.1 served by heydeer.ai. This folder holds a working prototype.
+The research behind oxlint-plugin-pngdeer, and how it works. Can pngdeer warn, inside oxlint, how much smaller a project's PNGs and JPEGs could be? And would it be too heavy as an npm dependency? Researched on October 30, 2026, against oxlint 1.90.0 (released October 27) and the single-threaded wasm build of pngdeer 0.2.1 served by heydeer.ai. [README.md](README.md) is the user's guide.
 
 ## The answer
 
-**Yes, and weight isn't the problem.** The plugin is 624 KB to download and 2.0 MB installed, about a seventh of oxlint itself (14.5 MB on macOS arm64, 17.7 MB on Linux x64). Nearly all of it is the wasm engine; the plugin's own code is 24 KB. Three other things shape the design:
+**Yes, and weight isn't the problem.** The plugin is 664 KB to download and 2.2 MB installed, about a seventh of oxlint itself (14.5 MB on macOS arm64, 17.7 MB on Linux x64). Nearly all of it is the wasm engine and its license notices; the plugin's own code is 39 KB. Three other things shape the design:
 
 1. **oxlint never looks at image files.** It lints JS and TS, and only the script blocks of Vue, Svelte and Astro files. It cannot be pointed at other extensions, and a rule can only report inside the file being linted. So the warning goes where code names an image (`import`, `require`, `new URL(…, import.meta.url)`, JSX `src`, plain strings). Images used only from CSS, HTML, Markdown, templates or CMS data are invisible. Across 6 public repos, 38% of images were named somewhere oxlint lints (854 images in total; the per-repo median was 14%).
 2. **pngdeer takes seconds per image, and oxlint runs every JS rule synchronously on one thread.** Results are cached by content hash, and any image not yet measured is measured once, in parallel worker threads.
@@ -35,10 +35,10 @@ On an M-series Mac with 16 cores and Node 26.12. "wasm" means one engine per thr
 | Second pass over pngdeer's own JPEG output | 21% smaller, then 12% more on a third pass |
 | 8 files each importing one illustration, cold cache | 9.3 s, about the slowest image (9.2 s); one at a time would take 43 s |
 
-## How the prototype works
+## How it works
 
 ```
-src/index.js        the plugin: { meta: { name: "pngdeer" }, rules }
+src/index.js        the plugin: { meta: { name: "pngdeer" }, rules } (src/index.d.ts: its types)
 src/rule.js         pngdeer/compressible-image: finds image paths in strings, resolves them, reports
 src/cache.js        one JSON file per content hash in node_modules/.cache/pngdeer
 src/batch.js        measures uncached images on a pool of worker threads, biggest first
@@ -49,31 +49,34 @@ src/scan.js         lists the project's images, to measure them all on the first
 src/images.js       PNG/JPEG headers: kind, dimensions, frames, size limits
 src/marker.js       marks pngdeer's output, so it's never measured again
 src/text.js         sizes and shell arguments, for messages
-bin/pngdeer.js      npx oxlint-plugin-pngdeer IN -o OUT [--target T], with the same engine
+bin/pngdeer.js      npx oxlint-plugin-pngdeer IMAGE... [-o OUT] [--target T], with the same engine
 engine/             pngdeer's wasm and its wasm-bindgen glue, as served by heydeer.ai
+docs/rules/         the rule's reference page (meta.docs.url)
 example/            a small app to lint
-test/               node --test: the marker, and the rule and command end to end under oxlint
+test/               node --test: the marker and the scan, and the rule (under oxlint and ESLint)
+                    and the command end to end
 ```
 
 - **One visitor for every kind of reference.** Every string literal (and template literal without expressions) is checked for local `.png`, `.apng`, `.jpg` and `.jpeg` paths. That catches imports, re-exports, `require`, `new URL`, JSX attributes and `srcSet` lists (split on commas) without a visitor for each. URLs with a scheme or starting with `//` are skipped. `?query` and `#hash` are stripped.
-- **Resolving paths.** A whole string is tried as one path first, since file names can hold spaces and commas. Only after that is it split as a `srcSet`. `./` and `../` resolve against the file. `/x.png` resolves against each of `settings.pngdeer.publicDirs` (default `["public"]`), then the project root. `@/` and `~/` map to `src/`, configurable through `settings.pngdeer.aliases`. The project root is the nearest directory with a `package.json`, so running oxlint from a parent folder finds the same files and the same cache.
+- **Resolving paths.** A whole string is tried as one path first, since file names can hold spaces and commas. Only after that is it split as a `srcSet`. `./` and `../` resolve against the file. `/x.png` resolves against each of `settings.pngdeer.publicDirs` (default `["public", "static"]`), then the project root. `@/` and `~/` map to `src/`, configurable through `settings.pngdeer.aliases`. The project root is the nearest directory with a `package.json`, so running oxlint from a parent folder finds the same files and the same cache.
 - **The cache key** is SHA-256 over the image bytes, the engine's own hash and the target. pngdeer writes the same bytes on every platform, so results are portable: a cache could be committed or shared with CI. A result is stored under the key of the bytes the engine actually read, so a file changed during a batch is measured again next time rather than cached under the wrong content.
-- **On the command line,** the first file that names an unmeasured image triggers one batch: that file's images plus every image in the project, in a worker pool. The lint thread blocks with `Atomics.wait` meanwhile (the synckit pattern; no child process, so oxlint's large address space is never forked), and the files linted after it find their images cached. Measuring file by file instead made a cold run of 8 one-image files take the sum of their times rather than the slowest one's. The cost is that a cold `lint-staged` run over one file also waits for the rest of the project, once. A failed batch is reported once, and the rest of the run doesn't try again. So is each image pngdeer itself fails on.
-- **In the editor** (`oxlint --lsp`, detected from `process.argv`, since there is no API for it), the rule only reads the cache. Misses join a single background queue: one batch at a time per process, and the first one takes every image in the project. The warnings appear on the next edit. A failed batch isn't retried for 5 minutes.
+- **Outside editors** (the `oxlint` and `eslint` commands, and tools that call ESLint's Node API), the first file that names an unmeasured image triggers one batch: that file's images plus every image in the project, in a worker pool. The lint thread blocks with `Atomics.wait` meanwhile (the synckit pattern; no child process, so oxlint's large address space is never forked), and the files linted after it find their images cached. Measuring file by file instead made a cold run of 8 one-image files take the sum of their times rather than the slowest one's. The cost is that a cold `lint-staged` run over one file also waits for the rest of the project, once. The scan skips images smaller than `minSavedBytes` (they can't save that much), test output by folder name, and nested packages, which have their own cache. On stderr, the run says how many images it's measuring, how long that took, and at exit what the warnings add up to. A failed batch is reported once, and the rest of the run doesn't try again. So is each image pngdeer fails on or can't take.
+- **In editors** the rule only reads the cache. An editor is `oxlint --lsp`, ESLint's language server (VS Code's, which Zed and Neovim use too: its script is `eslintServer.js`), or any process VS Code runs as Node (`ELECTRON_RUN_AS_NODE`). Neither linter has an API for this. Misses join a single background queue: one batch at a time per process, and the first one takes every image in the project. The warnings appear on the next lint. A failed batch isn't retried for 5 minutes. Through ESLint's Node API under the server's script name, a cold lint of the example returns in 41 ms with no warnings, and 8 s later with all 5. Under any other name it waits and reports all 5. An earlier version did it the other way round and waited only under the `oxlint` and `eslint` bins. Then a one-off run through ESLint's Node API (Nx, xo, a script) counted as an editor, exited before its background batch finished, and never reported anything.
+- **ESLint 9 and 10** run the rule unchanged: it uses ESLint's `create` API, and reads its defaults in code, since ESLint before 9.15 ignores `meta.defaultOptions`. oxlint and ESLint share the cache. Both are optional peer dependencies.
 - **Memory** is budgeted, not just threads. Each image is charged its expected peak (125 bytes a pixel below 8 MP, 85 above, plus 50 MB). The pool runs within a quarter of the machine's memory, or of a container's limit, between 1 and 4 GB. An engine that measured a big image is replaced, because wasm memory never shrinks.
-- **Options:** `minBytes` (default 4096, Lighthouse's threshold), `minPercent` (10), `target` (`"auto"` or a SSIMULACRA2 score, which the suggested command repeats as `--target`), `compute` (`"auto"`, `"always"`, `"never"`).
+- **Options:** `minSavedBytes` (default 4096, Lighthouse's threshold), `minSavedPercent` (10), `target` (`"auto"` or a SSIMULACRA2 score, which the suggested command repeats as `--target`), `measure` (`"auto"`, `"always"`, `"never"`). [docs/rules/compressible-image.md](docs/rules/compressible-image.md) is the reference.
 
 ```json
 {
   "jsPlugins": ["oxlint-plugin-pngdeer"],
-  "rules": { "pngdeer/compressible-image": ["warn", { "minBytes": 4096, "minPercent": 10 }] }
+  "rules": { "pngdeer/compressible-image": ["warn", { "minSavedBytes": 4096, "minSavedPercent": 10 }] }
 }
 ```
 
-Output:
+Output (`--format unix`):
 
 ```
-src/App.jsx:10:16: warning pngdeer(compressible-image): hero.png could be 359 kB smaller (70%: 509 kB → 151 kB) and still look right. Run: npx oxlint-plugin-pngdeer public/hero.png -o public/hero.png
+src/App.jsx:10:16: warning pngdeer(compressible-image): hero.png could be 70% smaller (509 kB → 151 kB) at about the same visual quality. Run: npx oxlint-plugin-pngdeer public/hero.png
 ```
 
 ## What a lint rule can't do
@@ -90,7 +93,7 @@ src/App.jsx:10:16: warning pngdeer(compressible-image): hero.png could be 359 kB
 
 | Option | Install (one platform) | Platforms | Speed | Maintainer cost |
 |---|---:|---|---|---|
-| **wasm inside the plugin (this prototype)** | 2.0 MB | every Node, including Windows and StackBlitz | single-threaded, parallel across images | one more `npm publish` from web/build.sh |
+| **wasm inside the plugin (what ships)** | 2.2 MB | every Node, including Windows and StackBlitz | single-threaded, parallel across images | one more `npm publish` from web/build.sh |
 | wasm built for lint: no WebP, names stripped, wasm-opt | ~1.2–1.5 MB (est.) | same | same | a build flag |
 | napi-rs native addon, per-platform packages | ~2–2.8 MB | 8+ packages, Windows needs C build work | 2.6–3.9× faster | 8–13 CI jobs |
 | Call an installed `pngdeer` binary | 0 MB | wherever brew installs it | native, all cores | none, but users install it separately |
@@ -107,13 +110,13 @@ The engine can shrink without changing its output:
 
 1. **Ship one package, `oxlint-plugin-pngdeer`, with the wasm engine inside.** At 2 MB, an optional peer dependency or a native build matrix would add more friction than it saves. Use the plain ESLint `create` API, as here, and the same package works in ESLint's flat config too. Pin a narrow oxlint range and test against each oxlint release, since the API is alpha.
 2. **Publish a lint build of the wasm:** no WebP, names stripped, wasm-opt, the nbits fix. Also add an `estimate` export that returns sizes and the output's hash without copying the output bytes across.
-3. **Pair the rule with a `check` command,** sharing the cache. It would cover what the rule can't see and print the project's total. The package already ships the fixing half, `npx oxlint-plugin-pngdeer IN -o OUT`, so the warning's "Run:" line works for npm users, whose only pngdeer command line until now was Homebrew's.
+3. **Pair the rule with a `check` command,** sharing the cache. It would cover the images no code names. The package already ships the fixing half, `npx oxlint-plugin-pngdeer IMAGE...`, so the warning's "Run:" line works for npm users, whose only pngdeer command line until now was Homebrew's. A command-line lint already prints the total of what it flagged.
 4. **Make pngdeer recognize its own output, PNG and JPEG.** One option is to mark what it writes the way the plugin's command does (src/marker.js). Another is to return the input unchanged when it already scores at or above the target at the quality pngdeer would choose. Either way, it also protects anyone who runs pngdeer twice by hand.
 5. **Fix two engine bugs the release review found.** Both ship in this engine:
-   - An RGBA image with a smooth fade to transparent panics at explicit targets of 70 and 90: an out-of-bounds index in `color::Nearest::find`, reached from `Search::candidate`. A test generates such an image (test/rule.test.js, `fade()`).
-   - Flat JPEGs (a solid banner, a 1×1) fail at the automatic target with "no such JPEG quality or table: Options { quality: 0, … }", because the quality search walks down to 0.
+   - An RGBA image with a smooth fade to transparent panics at every explicit target from 70 up (it works at auto): an out-of-bounds index in `color::Nearest::find`, reached from `Search::candidate`. A test generates such an image (`fade()` in test/helpers.js).
+   - Flat JPEGs (a solid banner) fail at the automatic target and at explicit targets up to about 85 with "no such JPEG quality or table: Options { quality: 0, … }", because the quality search walks down to 0. They work from about 88.
 
-An independent review of the prototype raised 18 findings, and each was reproduced before being fixed. They came down to 11 problems, 10 of them fixed here: an unbounded number of background engines in the editor, a project root taken from oxlint's working directory, a command that ignored `target`, results cached under the wrong content when a file changed mid-batch, a pool sized by cores rather than memory, the whole repo measured on one file's miss, failed batches retried on every reference, unreadable images failing the file, a race on the output record, and paths with spaces. The eleventh, the output record being local, is the limitation above.
+An independent review of the first prototype raised 18 findings, and each was reproduced before being fixed. They came down to 11 problems, 10 of them fixed here: an unbounded number of background engines in the editor, a project root taken from oxlint's working directory, a command that ignored `target`, results cached under the wrong content when a file changed mid-batch, a pool sized by cores rather than memory, the whole repo measured on one file's miss, failed batches retried on every reference, unreadable images failing the file, a race on the output record, and paths with spaces. The eleventh, the output record being local, is the limitation above.
 
 A second review, before 0.1.0, installed the packed tarball with npm, pnpm and Bun and followed the README. It raised 15 findings, each reproduced:
 - The warning's `npx pngdeer` named an npm package nobody owns. From a monorepo root, npx fetched whatever was published under that name, and in CI it would have run it.
@@ -128,5 +131,20 @@ A second review, before 0.1.0, installed the packed tarball with npm, pnpm and B
 - The release workflow had three problems: it would fail on the hand-published first version, npm's 2-day trusted-publisher expiry wasn't noted, and prerelease tags had no dist-tag.
 
 All are fixed, except the engine bugs, which belong upstream (recommendation 5).
+
+A third review looked at the developer experience. Six reviewers had separate lenses: a first read of the README, onboarding in a fresh Vite app, the printed words, positioning against other tools, a skeptical tech lead, and the npm and GitHub surface. A README draft was then tested on two first-time readers. Out of that came:
+- the README's order: what it is, the warning, why, quick start;
+- ESLint support (9.0 and 10, tested in CI), with oxlint and ESLint both optional peers;
+- no waiting outside a linter's command line;
+- shorter warnings and a command that defaults to in place;
+- progress and a total on stderr, and notes for images it skips;
+- clearer option names (`minSavedBytes`, `minSavedPercent`, `measure`) and `static/` as a public folder;
+- a rule page, types and an issue template.
+
+Left for later:
+- a committed cache for CI (`settings.pngdeer.cacheDir`);
+- aliases read from tsconfig `paths`;
+- a `check` command;
+- a before/after image in the README.
 
 Sources: the oxlint 1.90.0 npm package (`dist/lint.js`, `dist/index.d.ts`, `configuration_schema.json`), oxc's source at the `oxlint_v1.90.0` tag, [the JS plugins docs](https://oxc.rs/docs/guide/usage/linter/js-plugins), [the alpha announcement](https://oxc.rs/blog/2026-03-11-oxlint-js-plugins-alpha), and `npm view` for package sizes. The 6-repo image count used clones of excalidraw, docusaurus, taxonomy, svelte.dev, vuejs/docs and starlight.

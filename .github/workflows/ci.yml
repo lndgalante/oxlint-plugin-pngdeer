@@ -31,6 +31,20 @@ jobs:
       - run: npm ci
       - run: npm test
 
+  # The oldest ESLint the rule supports, which ignores meta.defaultOptions (the main jobs run ESLint 10).
+  eslint-9-0:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm install --no-save eslint@9.0.0
+      - run: npx eslint --version
+      - run: node --test test/eslint.test.js
+
   latest-oxlint:
     runs-on: ubuntu-latest
     steps:

@@ -1,0 +1,27 @@
+name: Bug report
+description: The rule or the command did something wrong
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+      description: Paste the warning or the stderr line (pngdeer prints its notes on stderr).
+    validations:
+      required: true
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions
+      description: The output of these commands, and your OS.
+      value: |
+        npx oxlint --version (or npx eslint --version):
+        npx oxlint-plugin-pngdeer --version:
+        node --version:
+        OS:
+    validations:
+      required: true
+  - type: textarea
+    id: image
+    attributes:
+      label: The image
+      description: If you can share it, attach the image involved. If pngdeer itself fails on it ("a bug in pngdeer"), report it at https://github.com/heydeer/pngdeer/issues as well.
