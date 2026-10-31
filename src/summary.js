@@ -20,13 +20,13 @@ const PAGES = [".css", ".scss", ".sass", ".less", ".styl", ".html", ".htm", ".vu
 const DOCS = [".md"];
 const PAGE_BYTES = 1e6; // bigger ones are build output or lockfiles, not where people name images
 
-const flagged = new Map(); // image path -> { original, compressed, score, target }
+const flagged = new Map(); // image path -> { original, compressed, score, target, warnings }
 const named = new Set(); // every image linted code names, flagged or not
 const roots = new Map(); // project root -> the rule's options there
 
-/** Notes an image a warning was reported for. */
+/** Notes an image a warning was reported for (once per warning). */
 export function flag(file, entry) {
-  flagged.set(file, entry);
+  flagged.set(file, { ...entry, warnings: (flagged.get(file)?.warnings ?? 0) + 1 });
 }
 
 /** Notes an image linted code names. */
@@ -91,7 +91,10 @@ export function summarize(cwd = process.cwd()) {
   const lines = [];
   if (images.length) {
     const { saved, detail } = total(images);
-    lines.push(`pngdeer: ${count(images.length, "flagged image")} could be ${saved} smaller in all (${detail}):`, line(header, " "));
+    // an image named in many files warns in each: say so, or the counts look wrong
+    const warnings = images.reduce((sum, [, image]) => sum + image.warnings, 0);
+    const often = warnings > images.length ? ` (${count(warnings, "warning")})` : "";
+    lines.push(`pngdeer: ${count(images.length, "flagged image")}${often} could be ${saved} smaller in all (${detail}):`, line(header, " "));
     lines.push(...rows.slice(1, 1 + Math.min(images.length, ROWS)).map((cells) => line(cells)));
     if (images.length > ROWS) lines.push(`  …and ${count(images.length - ROWS, "more image")}, ${total(images.slice(ROWS)).saved} in all`);
   }
@@ -129,7 +132,7 @@ function unnamedImages() {
     for (const file of projectImages(root, options.minSavedBytes)) {
       if (named.has(file) || flagged.has(file)) continue;
       const image = fileKey(file, options.target);
-      const entry = image && read(cacheDir(root), image.key);
+      const entry = image && read(options.dir, image.key);
       if (reportable(entry, options)) found.push([file, entry, root]);
     }
   }

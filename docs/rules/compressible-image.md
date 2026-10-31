@@ -23,7 +23,7 @@ const missing = "/no-such-file.png"; // names no file
 const bare = "assets/logo.png"; // no ./, ../, / or alias prefix: not looked up
 ```
 
-Each image warns once per file, at its first mention, and only its own path is underlined, even inside a `srcSet`. The warning says how close to the original the smaller file would look, from its SSIMULACRA2 score: "identical" from 90, "the same side by side" from 80, "close, with differences you might spot side by side" from 70.
+Each image warns once per file, at its first mention, and only its own path is underlined, even inside a `srcSet`. Outside an editor, an image named in several files gets the full warning once per run and a shorter one in the other files, and the summary counts the warnings. The warning says how close to the original the smaller file would look, from its SSIMULACRA2 score: "identical" from 90, "the same side by side" from 80, "close, with differences you might spot side by side" from 70.
 
 On the command line, the run ends with a table of everything it flagged, each image counted once, biggest saving first, with each one's quality. Below it are images the run measured that no linted JS or TS names, like a CSS background. No warning can point at them, so each row says where the image is used: in a stylesheet, HTML page, template, MDX or data file (`used in src/App.css`), only in Markdown (`mentioned in README.md`), or nowhere (`nothing names it`, maybe an unused image). `--flagged` leaves them alone; the list ends with the command that shrinks them.
 
@@ -64,14 +64,15 @@ Shared by every file. In `.oxlintrc.json`, `settings` sits next to `rules`; in E
 
 ```json
 "settings": {
-  "pngdeer": { "publicDirs": ["public", "static"], "aliases": { "@/": "src/", "~/": "src/" } }
+  "pngdeer": { "publicDirs": ["public", "static"], "aliases": { "@/": "src/" }, "cacheDir": ".pngdeer" }
 }
 ```
 
 | Setting | Default | |
 |---|---|---|
 | `publicDirs` | `["public", "static"]` | Folders where root paths like `/logo.png` are looked up, before the project root. |
-| `aliases` | `{ "@/": "src/", "~/": "src/" }` | Path prefixes and the folders they stand for, relative to the project root, like `"$lib/": "src/lib/"` or `"#assets/": "src/assets/"`. Setting it replaces both defaults: a Next.js app without `src/` wants `{ "@/": "./" }`. |
+| `aliases` | the project's tsconfig/jsconfig `paths`, else `{ "@/": "src/", "~/": "src/" }` | Path prefixes and the folders they stand for, relative to the project root, like `"$lib/": "src/lib/"` or `"#assets/": "src/assets/"`. Without this setting, the rule reads `compilerOptions.paths` from `tsconfig.json` or `jsconfig.json`, following `extends` and `references` (Vite keeps them in `tsconfig.app.json`). Setting it replaces those. |
+| `cacheDir` | `node_modules/.cache/pngdeer` | Where results are kept, relative to the project root. A folder you commit, like `.pngdeer`, keeps CI and fresh clones from measuring again. |
 
 Paths starting with `./` or `../` resolve from the file. A path with none of these prefixes (`assets/logo.png`) isn't looked up, unless you add an alias for it, like `{ "assets/": "src/assets/" }`. The project root is the nearest folder above the file with a `package.json`.
 

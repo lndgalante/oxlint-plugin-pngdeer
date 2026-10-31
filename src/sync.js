@@ -31,10 +31,10 @@ export function fillSync(request) {
 
 // The editor's background batches: one at a time per process, whatever arrives meanwhile goes in
 // the next one, so fill()'s pool and memory budget hold for the whole language server. Files are
-// keyed by project and target, as a batch has one of each.
-const queued = new Map(); // `${cwd}\0${target}` -> { cwd, target, files: Set }
-const pending = new Set(); // `${cwd}\0${target}\0${file}`, queued or being measured
-const failedAt = new Map(); // `${cwd}\0${target}` -> when its last batch failed
+// keyed by cache folder and target, as a batch has one of each.
+const queued = new Map(); // `${dir}\0${target}` -> { dir, target, files: Set }
+const pending = new Set(); // `${dir}\0${target}\0${file}`, queued or being measured
+const failedAt = new Map(); // `${dir}\0${target}` -> when its last batch failed
 const RETRY_MS = 5 * 60 * 1000;
 let running = false;
 
@@ -57,10 +57,10 @@ function drain() {
 }
 
 /** fill(request) in the background, for the editor: nothing waits, nothing is reported late. */
-export function fillInBackground({ cwd, target, files }) {
-  const group = `${cwd}\0${target}`;
+export function fillInBackground({ dir, target, files }) {
+  const group = `${dir}\0${target}`;
   if (Date.now() - (failedAt.get(group) ?? -Infinity) < RETRY_MS) return;
-  const batch = queued.get(group) ?? { cwd, target, files: new Set() };
+  const batch = queued.get(group) ?? { dir, target, files: new Set() };
   for (const file of files) {
     if (pending.has(`${group}\0${file}`)) continue;
     pending.add(`${group}\0${file}`);

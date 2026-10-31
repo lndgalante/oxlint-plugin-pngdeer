@@ -2,13 +2,11 @@
 // oxlint-plugin-pngdeer: makes the images the lint rule flags smaller, with the engine the rule
 // measures with, so each file it writes is the one the warning promised. Files it writes are marked
 // as pngdeer's (src/marker.js), so the rule never measures them again, on any machine.
-import { chmodSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
-import { compress } from "../src/engine.js";
-import { unsupported } from "../src/images.js";
-import { mark, marked } from "../src/marker.js";
+import { readFileSync } from "node:fs";
+import { peakOf, pool } from "../src/batch.js";
+import { plain, shrink } from "../src/shrink.js";
 import { readFlagged } from "../src/summary.js";
-import { count, looks, pathFrom, size, smaller } from "../src/text.js";
+import { count, pathFrom, size } from "../src/text.js";
 
 const HELP = `usage: oxlint-plugin-pngdeer IMAGE... [--target auto|T]
        oxlint-plugin-pngdeer --flagged [--target auto|T]
@@ -27,7 +25,7 @@ pngdeer is lossy: the picture looks the same, the bytes don't, so commit first.
 
 Files it writes are marked as pngdeer's, so the lint rule doesn't flag them again.`;
 
-function main(args) {
+async function main(args) {
   const inputs = [];
   let output;
   let target;
@@ -77,83 +75,58 @@ function main(args) {
       }))
     : inputs.map((input) => ({ input, target }));
 
-  // several images take a while, one after another: say what's coming, count, and add it all up
-  const many = jobs.length > 1;
-  if (many) console.error(`pngdeer: shrinking ${count(jobs.length, "image")} in place (lossy; commit first so you can undo)`);
+  // one image runs here; several run on a pool of engines, one per core, each line printed as it lands
+  if (jobs.length === 1) {
+    const [{ input, target }] = jobs;
+    try {
+      console.log(`${input}: ${shrink(input, output ?? input, target).text}`);
+      return 0;
+    } catch (error) {
+      console.error(`${input}: ${plain(error)}`);
+      return 1;
+    }
+  }
+  console.error(`pngdeer: shrinking ${count(jobs.length, "image")} in place (lossy; commit first so you can undo)`);
   let status = 0;
+  let finished = 0;
   let original = 0;
   let compressed = 0;
   let shrunk = 0;
-  for (const [i, { input, target }] of jobs.entries()) {
-    const step = many ? `[${i + 1}/${jobs.length}] ` : "";
-    try {
-      const result = shrink(input, output ?? input, target);
-      console.log(`${step}${input}: ${result.text}`);
-      if (result.written) {
-        shrunk++;
-        original += result.original;
-        compressed += result.written;
-      }
-    } catch (error) {
-      console.error(`${step}${input}: ${plain(error)}`);
+  const report = (input, result) => {
+    const step = `[${++finished}/${jobs.length}] ${input}`;
+    if (result.error) {
+      console.error(`${step}: ${result.error}`);
       status = 1;
+      return;
     }
+    console.log(`${step}: ${result.text}`);
+    if (result.written) {
+      shrunk++;
+      original += result.original;
+      compressed += result.written;
+    }
+  };
+  const work = [];
+  for (const { input, target } of jobs) {
+    let bytes;
+    try {
+      bytes = readFileSync(input);
+    } catch (error) {
+      report(input, { error: plain(error) });
+      continue;
+    }
+    work.push({ input, peak: peakOf(bytes), message: { file: input, target, out: input } });
   }
-  if (many && shrunk) {
+  try {
+    await pool(work, { done: (job, result) => report(job.input, result) });
+  } catch (error) {
+    console.error(`oxlint-plugin-pngdeer: ${plain(error)}`);
+    return 1;
+  }
+  if (shrunk) {
     console.error(`pngdeer: ${count(shrunk, "image")}, ${size(original)} → ${size(compressed)} (${size(original - compressed)} smaller). Lint again to check.`);
   }
   return status;
-}
-
-/** Writes `input` made smaller to `output`: { text } saying what happened, and the sizes if it wrote. */
-function shrink(input, output, target) {
-  const bytes = readFileSync(input);
-  const unchanged = (note) => {
-    if (output !== input) save(output, bytes);
-    return { text: `${note}; left as is` };
-  };
-  if (marked(bytes)) return unchanged("already pngdeer's");
-  const why = unsupported(bytes);
-  if (why) throw new Error(why);
-
-  const { output: compressed, outcome, score } = compress(bytes, target);
-  if (outcome === "miss") {
-    const wanted = target === undefined ? "the automatic quality" : `--target ${target}`;
-    return unchanged(`no smaller file reaches ${wanted} (the best reaches quality ${Math.round(score)}/100)`);
-  }
-  // the mark costs a few dozen bytes, more than pngdeer saves on some tiny files
-  const result = outcome === "original" ? null : mark(compressed);
-  if (!result || result.length >= bytes.length) return unchanged("pngdeer can't make it smaller");
-  save(output, result);
-  const quality = outcome === "hit" ? `quality ${Math.round(score)}/100: looks ${looks(score)}` : "lossless: looks identical";
-  const text = `${size(bytes.length)} → ${size(result.length)} (${smaller(bytes.length, result.length)}% smaller, ${quality})`;
-  return { text, original: bytes.length, written: result.length };
-}
-
-/** Writes a whole new file or nothing: the image is often written over itself. */
-function save(path, bytes) {
-  const tmp = join(dirname(path), `.${basename(path)}.${process.pid}.tmp`);
-  try {
-    writeFileSync(tmp, bytes);
-    try {
-      chmodSync(tmp, statSync(path).mode & 0o7777);
-    } catch {
-      // a new file keeps the default mode
-    }
-    renameSync(tmp, path);
-  } catch (error) {
-    rmSync(tmp, { force: true });
-    if (error.code === "ENOENT") throw new Error(`can't write ${path}: its folder doesn't exist`);
-    throw error;
-  }
-}
-
-/** An error as one line a person can act on. */
-function plain(error) {
-  if (error.code === "ENOENT") return "no such file";
-  if (error.code === "EACCES" || error.code === "EPERM") return "permission denied";
-  if (error.code === "EISDIR") return "a folder, not an image";
-  return error.message;
 }
 
 function fail(message) {
@@ -161,4 +134,4 @@ function fail(message) {
   return 2;
 }
 
-process.exitCode = main(process.argv.slice(2));
+process.exitCode = await main(process.argv.slice(2));

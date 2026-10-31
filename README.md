@@ -72,7 +72,7 @@ pngdeer: to shrink the 4 flagged images in place (lossy, so commit first), run: 
 pngdeer: to shrink it too, run: npx oxlint-plugin-pngdeer public/unused-fire.png
 ```
 
-- **Each image warns once per file,** on the line that names it, and says how close to the original it would look.
+- **Each image warns once per file,** on the line that names it, and says how close to the original it would look. An image named in several files gets the full warning once per run, and a short one after that.
 - **The table at the end** counts each image once, biggest saving first.
 - **Images no JS or TS names** get their own list, since no warning can point at them. Each row says where the image is used instead: `used in src/App.css`, `mentioned in README.md` (a Markdown file that names it), or `nothing names it`, which may mean the image is unused and could be deleted. These aren't in `--flagged`; the list ends with the command for them.
 - **The table is left out** with `--quiet` and in formats other programs read (`json`, `checkstyle`, `junit`, `sarif`, `gitlab`).
@@ -91,7 +91,7 @@ pngdeer: 4 images, 1.0 MB → 310 kB (718 kB smaller). Lint again to check.
 
 - **It's lossy, and it writes over the file.** Commit first so git is your undo, or write a copy to compare with `-o hero.smaller.png`.
 - **A warning you turn off with a comment** stays out of the table and out of `--flagged`.
-- **It takes a few seconds per image,** one at a time.
+- **Several images run in parallel,** one engine per core, within a quarter of the machine's memory, like the lint's first run.
 - **`--flagged` uses the `target` each image was measured at.** For images you name, pass it yourself (`--target 90`), as the command in each warning does. `--help` lists the options.
 - **JPEGs keep their orientation and color profile;** other camera metadata (EXIF, GPS) is dropped.
 - **It marks each file it writes** with a short text tag (`pngdeer <size>`, in a PNG `tEXt` chunk or a JPEG comment), so the rule doesn't flag it again, on any machine.
@@ -159,7 +159,15 @@ Measured on a 16-core M-series Mac ([details](https://github.com/lndgalante/oxli
 
 ## In CI
 
-`npm ci` deletes `node_modules`, and the cache with it, so restore the cache after installing, and save it even when the lint fails:
+The simplest way to never start cold: keep the results in a folder you commit, so CI and every clone start with them.
+
+```json
+"settings": { "pngdeer": { "cacheDir": ".pngdeer" } }
+```
+
+Results are small JSON files, one per image version. After you add or change images, run `npx oxlint` and commit `.pngdeer` with them. Upgrading the plugin to a new engine measures everything again; delete the folder first to drop the old results.
+
+Or let CI cache it. `npm ci` deletes `node_modules`, and the default cache with it, so restore the cache after installing, and save it even when the lint fails:
 
 ```yaml
 - run: npm ci

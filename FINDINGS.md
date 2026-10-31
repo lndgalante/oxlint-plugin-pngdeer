@@ -50,6 +50,8 @@ src/images.js       PNG/JPEG headers: kind, dimensions, frames, size limits
 src/marker.js       marks pngdeer's output, so it's never measured again
 src/text.js         sizes and shell arguments, for messages
 src/summary.js      the table at the end of a run, and the list --flagged shrinks
+src/shrink.js       one image made smaller on disk, for the command, in its thread or on the pool
+src/tsconfig.js     path aliases from the project's tsconfig/jsconfig paths
 bin/pngdeer.js      npx oxlint-plugin-pngdeer IMAGE... | --flagged [-o OUT] [--target T], same engine
 engine/             pngdeer's wasm and its wasm-bindgen glue, as served by heydeer.ai
 docs/rules/         the rule's reference page (meta.docs.url)
@@ -143,10 +145,6 @@ A third review looked at the developer experience. Six reviewers had separate le
 - clearer option names (`minSavedBytes`, `minSavedPercent`, `measure`) and `static/` as a public folder;
 - a rule page, types and an issue template.
 
-Left for later:
-- a committed cache for CI (`settings.pngdeer.cacheDir`);
-- aliases read from tsconfig `paths`;
-- a `check` command;
-- a before/after image in the README.
+Left for later, then done in 0.3.0: a committed cache (`settings.pngdeer.cacheDir`), aliases read from tsconfig/jsconfig `paths` (through `extends` and `references`), one full warning per image per run (short ones in other files), and `--flagged` on the engine pool. On 16 illustrations, that took 14 s instead of 78 s one at a time, with the same bytes. Still left: a `check` command, a before/after image in the README.
 
 Sources: the oxlint 1.90.0 npm package (`dist/lint.js`, `dist/index.d.ts`, `configuration_schema.json`), oxc's source at the `oxlint_v1.90.0` tag, [the JS plugins docs](https://oxc.rs/docs/guide/usage/linter/js-plugins), [the alpha announcement](https://oxc.rs/blog/2026-03-11-oxlint-js-plugins-alpha), and `npm view` for package sizes. The 6-repo image count used clones of excalidraw, docusaurus, taxonomy, svelte.dev, vuejs/docs and starlight.

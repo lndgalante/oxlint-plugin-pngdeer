@@ -1,11 +1,12 @@
 // Fills the cache for a list of images, on a pool of worker threads (one wasm engine each, so all
-// cores work even though the engine itself is single-threaded), within a memory budget.
+// cores work even though the engine itself is single-threaded), within a memory budget. The command
+// shrinks several images on the same pool.
 import { readFileSync, rmSync } from "node:fs";
 import { availableParallelism, totalmem } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
-import { cacheDir, key, read, write } from "./cache.js";
+import { key, read, write } from "./cache.js";
 import { dimensions, kind, unsupported } from "./images.js";
 import { marked } from "./marker.js";
 
@@ -18,9 +19,8 @@ const BIG = 300e6;
  * Computes every file not cached yet; { computed, cached, skipped, failed, ms }. `progress(done,
  * total)` hears about each image the engine finishes.
  */
-export async function fill({ cwd, target, files }, progress = () => {}) {
+export async function fill({ dir, target, files }, progress = () => {}) {
   const start = performance.now();
-  const dir = cacheDir(cwd);
   // a cache that can't be written fails here, before any image is compressed for nothing
   write(dir, "probe", {});
   rmSync(join(dir, "probe.json"), { force: true });
@@ -50,12 +50,8 @@ export async function fill({ cwd, target, files }, progress = () => {}) {
       counts.skipped++;
       continue;
     }
-    const [width, height, frames] = dimensions(bytes, kind(bytes));
-    todo.push({ file, k, peak: peak(width * height * frames) });
+    todo.push({ file, k, peak: peakOf(bytes), message: { file, target } });
   }
-  // biggest first, so the slowest image doesn't start last
-  todo.sort((a, b) => b.peak - a.peak);
-  const total = todo.length;
 
   const record = (job, result) => {
     // the file changed or went away after it was queued: cache nothing, the next lint measures it again
@@ -76,6 +72,30 @@ export async function fill({ cwd, target, files }, progress = () => {}) {
     if (output !== input) write(dir, output, { original: entry.compressed, outcome: "output" });
   };
 
+  const total = todo.length;
+  await pool(todo, {
+    // the same bytes may have been marked as pngdeer's output since the batch started
+    skip: (job) => {
+      if (!read(dir, job.k)) return false;
+      counts.cached++;
+      return true;
+    },
+    done: (job, result) => {
+      record(job, result);
+      progress(counts.computed + counts.failed, total);
+    },
+  });
+  return { ...counts, ms: Math.round(performance.now() - start) };
+}
+
+/**
+ * Runs `jobs` ({ peak, message }) on a pool of engines (worker.js), biggest first, within the memory
+ * budget. `done(job, reply)` gets each reply as it comes; a job `skip(job)` turns down when its turn
+ * comes isn't sent. Rejects, with every engine stopped, if one fails or dies.
+ */
+export async function pool(jobs, { done, skip = () => false }) {
+  // biggest first, so the slowest image doesn't start last
+  const todo = [...jobs].sort((a, b) => b.peak - a.peak);
   const limit = budget();
   const lanes = Array.from({ length: Math.min(todo.length, MAX_WORKERS, Math.max(1, availableParallelism() - 1)) }, () => ({ worker: null, held: 0, busy: false }));
   const waiting = [];
@@ -93,16 +113,12 @@ export async function fill({ cwd, target, files }, progress = () => {}) {
         continue;
       }
       const [job] = todo.splice(index, 1);
-      // the same bytes may have been marked as pngdeer's output since the batch started
-      if (read(dir, job.k)) {
-        counts.cached++;
-        continue;
-      }
+      if (skip(job)) continue;
       self.busy = true;
       self.held = Math.max(self.held, job.peak);
-      self.worker ??= new Worker(new URL("./worker.js", import.meta.url), { workerData: { target } });
+      self.worker ??= new Worker(new URL("./worker.js", import.meta.url));
       try {
-        record(job, await ask(self.worker, { file: job.file }));
+        done(job, await ask(self.worker, job.message));
         if (job.peak > BIG) {
           await self.worker.terminate();
           self.worker = null;
@@ -114,7 +130,6 @@ export async function fill({ cwd, target, files }, progress = () => {}) {
         for (const l of lanes) l.worker?.terminate();
       } finally {
         self.busy = false;
-        progress(counts.computed + counts.failed, total);
         wake();
       }
     }
@@ -125,7 +140,13 @@ export async function fill({ cwd, target, files }, progress = () => {}) {
     await Promise.all(lanes.map((l) => l.worker?.terminate()));
   }
   if (failure) throw failure;
-  return { ...counts, ms: Math.round(performance.now() - start) };
+}
+
+/** An engine's expected peak memory for an image (by its header), for the pool's budget. */
+export function peakOf(bytes) {
+  const type = kind(bytes);
+  const [width, height, frames] = type ? dimensions(bytes, type) : [0, 0, 1];
+  return peak(width * height * frames);
 }
 
 /** An engine's expected peak memory for an image of this many pixels (over all its frames). */
@@ -157,7 +178,7 @@ function ask(worker, message) {
   });
 }
 
-// `node src/batch.js` with { cwd, target, files } as JSON on stdin, for trying it outside a linter
+// `node src/batch.js` with { dir, target, files } as JSON on stdin (dir: the cache folder), for trying it outside a linter
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   const request = JSON.parse(readFileSync(0, "utf8"));
   process.stdout.write(JSON.stringify(await fill(request)));

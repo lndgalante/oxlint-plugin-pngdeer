@@ -14,8 +14,10 @@ export interface CompressibleImageOptions {
 export interface PngdeerSettings {
   /** Folders where "/x.png" paths are looked up. Default ["public", "static"]. */
   publicDirs?: string[];
-  /** Path prefixes and the folders they stand for. Default { "@/": "src/", "~/": "src/" }. */
+  /** Path prefixes and the folders they stand for. Default: the project's tsconfig/jsconfig paths, else { "@/": "src/", "~/": "src/" }. */
   aliases?: Record<string, string>;
+  /** Where results are kept, relative to the project root: a folder you can commit. Default node_modules/.cache/pngdeer. */
+  cacheDir?: string;
 }
 
 // Shaped like an ESLint plugin, so `plugins: { pngdeer }` type-checks in eslint.config.ts and

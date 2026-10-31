@@ -1,6 +1,6 @@
 // The rule under oxlint, end to end.
 import assert from "node:assert/strict";
-import { chmodSync, cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fade, handled, names, oxlint, oxlintSummary, pngdeer, project } from "./helpers.js";
@@ -82,7 +82,7 @@ test("--flagged shrinks what the last lint flagged, at the target it measured", 
   oxlint(dir);
   const run = pngdeer(dir, "--flagged");
   assert.equal(run.status, 0, run.stderr);
-  assert.deepEqual(handled(run.stdout), ["public/hero.png", "src/assets/diagram.png", "public/photo.jpg", "src/assets/crystal-ball.png"]);
+  assert.deepEqual(handled(run.stdout).sort(), ["public/hero.png", "public/photo.jpg", "src/assets/crystal-ball.png", "src/assets/diagram.png"]);
   assert.match(run.stderr, /^pngdeer: shrinking 4 images in place \(lossy; commit first so you can undo\)$/m);
   assert.match(run.stderr, /^pngdeer: 4 images, 1\.0 MB → \d+ kB \(\d+ kB smaller\)\. Lint again to check\.$/m);
   assert.deepEqual(oxlint(dir).found, []);
@@ -169,4 +169,48 @@ test("aliases resolve, including subpath imports that start with #", () => {
   config.settings = { pngdeer: { aliases: { "@/": "src/", "#img/": "public/" } } };
   writeFileSync(join(dir, ".oxlintrc.json"), JSON.stringify(config));
   assert.deepEqual(names(oxlint(dir)), ["crystal-ball.png", "photo.jpg"]);
+});
+
+test("aliases come from the project's tsconfig paths, through references and comments", () => {
+  const files = {
+    "src/App.jsx": 'import ball from "@assets/crystal-ball.png";\n',
+    // Vite's templates keep paths in a referenced config; tsconfig files take comments and trailing commas
+    "tsconfig.json": '{ "files": [], "references": [{ "path": "./tsconfig.app.json" }] }\n',
+    "tsconfig.app.json": '{\n  // where images live\n  "compilerOptions": { "paths": { "@assets/*": ["./src/assets/*"], }, },\n}\n',
+  };
+  const dir = project({ files, images: ["src/assets/crystal-ball.png"] });
+  assert.deepEqual(names(oxlint(dir)), ["crystal-ball.png"]);
+  // settings win over the tsconfig
+  const config = JSON.parse(readFileSync(join(dir, ".oxlintrc.json"), "utf8"));
+  config.settings = { pngdeer: { aliases: { "@/": "src/" } } };
+  writeFileSync(join(dir, ".oxlintrc.json"), JSON.stringify(config));
+  assert.deepEqual(oxlint(dir).found, []);
+});
+
+test("a committed cache folder keeps a fresh clone from measuring again", () => {
+  const files = { "src/App.jsx": 'import ball from "./assets/crystal-ball.png";\n' };
+  const dir = project({ files, images: ["src/assets/crystal-ball.png"] });
+  const config = JSON.parse(readFileSync(join(dir, ".oxlintrc.json"), "utf8"));
+  config.settings = { pngdeer: { cacheDir: ".pngdeer" } };
+  writeFileSync(join(dir, ".oxlintrc.json"), JSON.stringify(config));
+  assert.match(oxlintSummary(dir), /measured 1 image/);
+  assert.ok(readdirSync(join(dir, ".pngdeer")).some((name) => name.endsWith(".json")));
+  // a clone: the committed folder, no node_modules
+  rmSync(join(dir, "node_modules"), { recursive: true, force: true });
+  const stderr = oxlintSummary(dir);
+  assert.doesNotMatch(stderr, /measur/);
+  assert.match(stderr, /1 flagged image could be/);
+});
+
+test("an image named in several files gets one full warning, then short ones", () => {
+  const files = {
+    "src/A.jsx": 'import ball from "./assets/crystal-ball.png";\n',
+    "src/B.jsx": 'import ball from "./assets/crystal-ball.png";\n',
+  };
+  const dir = project({ files, images: ["src/assets/crystal-ball.png"] });
+  const { found } = oxlint(dir);
+  assert.equal(found.length, 2);
+  assert.equal(found.filter((d) => /and look .* \(quality \d+\/100\)/.test(d.message)).length, 1);
+  assert.equal(found.filter((d) => /as warned where it's first used\. Run: npx oxlint-plugin-pngdeer src\/assets\/crystal-ball\.png$/.test(d.message)).length, 1);
+  assert.match(oxlintSummary(dir), /^pngdeer: 1 flagged image \(2 warnings\) could be/m);
 });

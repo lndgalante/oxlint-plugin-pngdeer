@@ -6,6 +6,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { cacheDir, fileKey, read, reportable } from "./cache.js";
 import { projectImages } from "./scan.js";
 import { flag, name, summarize, watch } from "./summary.js";
+import { configAliases } from "./tsconfig.js";
 import { fillInBackground, fillSync } from "./sync.js";
 import { count, looks, pathFrom, quote, size, smaller } from "./text.js";
 
@@ -13,6 +14,8 @@ const RULE = "pngdeer/compressible-image";
 const IMAGE = /\.(png|apng|jpe?g)$/i;
 const REMOTE = /^[a-z][a-z0-9+.-]*:|^\/\//i;
 const DEFAULTS = { minSavedBytes: 4096, minSavedPercent: 10, target: "auto", measure: "auto" };
+// when neither the settings nor the project's tsconfig/jsconfig define aliases
+const ALIASES = { "@/": "src/", "~/": "src/" };
 
 // Editors lint on every keystroke, so there the rule measures in the background and reports on a
 // later lint. Everywhere else it waits: a one-off run (the oxlint or eslint command, or a tool calling
@@ -26,9 +29,10 @@ const EDITOR =
 
 // Per process (the language server's lasts the whole editor session):
 const roots = new Map(); // directory -> its project root
-const scanned = new Set(); // `${root}\0${target}` whose images were all measured, or queued, once
+const scanned = new Set(); // `${dir}\0${target}` whose project images were all measured, or queued, once
 const failed = new Set(); // outside editors: roots whose batch failed, not tried again this run
 const told = new Set(); // outside editors: images already named on stderr
+const warned = new Set(); // outside editors: images with a full warning in this run; later ones are short
 
 export default {
   meta: {
@@ -40,6 +44,8 @@ export default {
     },
     messages: {
       compressible: "{{name}} could be {{percent}}% smaller ({{before}} → {{after}}) and look {{looks}} (quality {{quality}}/100). Run: {{command}}",
+      // the same image again, in another file of the same run: its first warning said the rest
+      again: "{{name}} could be {{percent}}% smaller ({{before}} → {{after}}), as warned where it's first used. Run: {{command}}",
       lossless: "{{name}} could be {{percent}}% smaller ({{before}} → {{after}}), losslessly. Run: {{command}}",
     },
     schema: [
@@ -62,11 +68,14 @@ export default {
   create(context) {
     const { minSavedBytes, minSavedPercent, target: option, measure } = { ...DEFAULTS, ...context.options[0] };
     const target = option === "auto" ? undefined : option;
-    const { publicDirs = ["public", "static"], aliases = { "@/": "src/", "~/": "src/" } } = context.settings.pngdeer ?? {};
+    const settings = context.settings.pngdeer ?? {};
     const from = context.physicalFilename ?? context.filename;
     // public dirs, aliases and the cache belong to the package, wherever the linter was started
     const root = projectRoot(dirname(from), context.cwd);
-    const dir = cacheDir(root);
+    const { publicDirs = ["public", "static"] } = settings;
+    const aliases = settings.aliases ?? configAliases(root) ?? ALIASES;
+    // a folder the team commits (settings.pngdeer.cacheDir) keeps CI and fresh clones warm
+    const dir = settings.cacheDir ? resolve(root, settings.cacheDir) : cacheDir(root);
     const find = (path) => locate(path, from, root, publicDirs, aliases);
     // a path as the person running the linter would type it
     const shown = (file) => pathFrom(context.cwd, file);
@@ -75,7 +84,7 @@ export default {
 
     const reported = new Set(); // images warned about in this file: once each, at their first mention
     let disabled; // (line) => whether a comment turns this rule off there, read on first use
-    if (!EDITOR) watch(root, { minSavedBytes, minSavedPercent, target });
+    if (!EDITOR) watch(root, { minSavedBytes, minSavedPercent, target, dir });
 
     function check(node, text) {
       for (const { file, part } of imagesIn(text, find)) {
@@ -107,10 +116,12 @@ export default {
       // this package's own command (bin/pngdeer.js), at the target measured, so it writes exactly the
       // file this promises; named by the package, so npx can't fetch someone else's
       const command = `npx oxlint-plugin-pngdeer ${quote(shown(file))}${target === undefined ? "" : ` --target ${target}`}`;
+      const repeat = !EDITOR && warned.has(file);
+      if (!EDITOR) warned.add(file);
       context.report({
         node,
         loc: loc ?? undefined,
-        messageId: result.outcome === "hit" ? "compressible" : "lossless",
+        messageId: repeat ? "again" : result.outcome === "hit" ? "compressible" : "lossless",
         data: {
           name: basename(file),
           percent: smaller(result.original, result.compressed),
@@ -141,14 +152,14 @@ export default {
       // takes every image in it, named or not, in the same parallel batch: the files linted next find
       // theirs cached, and the summary can tell about images only CSS or HTML use.
       "Program:exit"() {
-        const group = `${root}\0${target}`;
+        const group = `${dir}\0${target}`;
         const first = measure !== "never" && !scanned.has(group);
         if (found.length === 0 && !first) return;
         scanned.add(group);
         const missing = measure === "never" ? [] : found.filter(({ k }) => !read(dir, k)).map(({ file }) => file);
         const files = [...new Set(first ? [...missing, ...projectImages(root, minSavedBytes)] : missing)];
         if (files.length) {
-          if (!wait) fillInBackground({ cwd: root, target, files });
+          if (!wait) fillInBackground({ dir, target, files });
           else if (!failed.has(root)) measureNow(files);
         }
         for (const ref of found) {
@@ -171,7 +182,7 @@ export default {
       const tty = Boolean(process.stderr.isTTY);
       process.stderr.write(`pngdeer: measuring ${count(fresh, "image")} not in the cache yet...${tty ? "" : "\n"}`);
       try {
-        const { computed, ms } = fillSync({ cwd: root, target, files, progress: tty });
+        const { computed, ms } = fillSync({ dir, target, files, progress: tty });
         if (tty) process.stderr.write("\r\x1b[K");
         if (computed) process.stderr.write(`pngdeer: measured ${count(computed, "image")} in ${(ms / 1000).toFixed(1)} s; later runs read the cache\n`);
       } catch (error) {
