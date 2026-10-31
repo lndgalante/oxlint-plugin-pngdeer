@@ -3,13 +3,14 @@
 // oxlint never lints image files themselves, so the reference is where the warning goes.
 import { readFileSync, statSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
-import { cacheDir, key, read } from "./cache.js";
+import { cacheDir, key, read, reportable } from "./cache.js";
 import { marked } from "./marker.js";
 import { projectImages } from "./scan.js";
-import { flag, summarize } from "./summary.js";
+import { flag, name, summarize, watch } from "./summary.js";
 import { fillInBackground, fillSync } from "./sync.js";
-import { count, pathFrom, quote, size, smaller } from "./text.js";
+import { count, looks, pathFrom, quote, size, smaller } from "./text.js";
 
+const RULE = "pngdeer/compressible-image";
 const IMAGE = /\.(png|apng|jpe?g)$/i;
 const REMOTE = /^[a-z][a-z0-9+.-]*:|^\/\//i;
 const DEFAULTS = { minSavedBytes: 4096, minSavedPercent: 10, target: "auto", measure: "auto" };
@@ -40,7 +41,7 @@ export default {
       url: "https://github.com/lndgalante/oxlint-plugin-pngdeer/blob/main/docs/rules/compressible-image.md",
     },
     messages: {
-      compressible: "{{name}} could be {{percent}}% smaller ({{before}} → {{after}}) {{quality}}. Run: {{command}}",
+      compressible: "{{name}} could be {{percent}}% smaller ({{before}} → {{after}}) and look {{looks}} (quality {{quality}}/100). Run: {{command}}",
       lossless: "{{name}} could be {{percent}}% smaller ({{before}} → {{after}}), losslessly. Run: {{command}}",
     },
     schema: [
@@ -75,11 +76,14 @@ export default {
     const found = [];
 
     const reported = new Set(); // images warned about in this file: once each, at their first mention
+    let disabled; // (line) => whether a comment turns this rule off there, read on first use
+    if (!EDITOR) watch(root, { minSavedBytes, minSavedPercent, target });
 
     function check(node, text) {
       for (const { file, part } of imagesIn(text, find)) {
         const image = fileKey(file, target);
         // a file smaller than minSavedBytes can't save that much: not worth measuring
+        if (!EDITOR) name(file);
         if (image && image.size >= minSavedBytes) found.push({ node, file, k: image.key, loc: part && within(node, part) });
       }
     }
@@ -95,12 +99,13 @@ export default {
     }
 
     function report({ node, file, loc }, result) {
-      if (!result || result.skipped || !["hit", "exact", "lossless"].includes(result.outcome)) return;
-      const saved = result.original - result.compressed;
-      const percent = smaller(result.original, result.compressed);
-      if (saved < minSavedBytes || percent < minSavedPercent || reported.has(file)) return;
+      if (!reportable(result, { minSavedBytes, minSavedPercent }) || reported.has(file)) return;
+      // The linter hides a warning a comment turns off by itself, but the image mustn't count as
+      // flagged either, or --flagged would rewrite an image someone chose to keep.
+      disabled ??= disabledLines(context.sourceCode);
+      if (disabled((loc?.start ?? node.loc.start).line)) return;
       reported.add(file);
-      if (!EDITOR) flag(file, { original: result.original, compressed: result.compressed, target });
+      if (!EDITOR) flag(file, { original: result.original, compressed: result.compressed, score: result.score, target });
       // this package's own command (bin/pngdeer.js), at the target measured, so it writes exactly the
       // file this promises; named by the package, so npx can't fetch someone else's
       const command = `npx oxlint-plugin-pngdeer ${quote(shown(file))}${target === undefined ? "" : ` --target ${target}`}`;
@@ -110,10 +115,11 @@ export default {
         messageId: result.outcome === "hit" ? "compressible" : "lossless",
         data: {
           name: basename(file),
-          percent,
+          percent: smaller(result.original, result.compressed),
           before: size(result.original),
           after: size(result.compressed),
-          quality: target === undefined ? "and look about the same" : `at SSIMULACRA2 ${target}`,
+          looks: looks(result.score),
+          quality: Math.round(result.score),
           command,
         },
       });
@@ -159,15 +165,18 @@ export default {
         const image = fileKey(file, target);
         return image && !image.marked && !read(dir, image.key);
       }).length;
-      if (fresh) process.stderr.write(`pngdeer: measuring ${count(fresh, "image")} not in the cache yet...\n`);
+      // on a terminal the batch rewrites this line as a count (fill-worker.js), and it's cleared after
+      const tty = Boolean(fresh && process.stderr.isTTY);
+      if (fresh) process.stderr.write(`pngdeer: measuring ${count(fresh, "image")} not in the cache yet...${tty ? "" : "\n"}`);
       try {
-        const { computed, ms } = fillSync({ cwd: root, target, files });
+        const { computed, ms } = fillSync({ cwd: root, target, files, progress: tty });
+        if (tty) process.stderr.write("\r\x1b[K");
         if (computed) process.stderr.write(`pngdeer: measured ${count(computed, "image")} in ${(ms / 1000).toFixed(1)} s; later runs read the cache\n`);
       } catch (error) {
         // the images stay unmeasured (and unreported) rather than failing the lint, and the rest
         // of this run doesn't try again
         failed.add(root);
-        process.stderr.write(`${error.message}\n`);
+        process.stderr.write(`${tty ? "\n" : ""}${error.message}\n`);
       }
     }
   },
@@ -193,6 +202,32 @@ function imagesIn(text, find) {
     .filter((part) => usable(strip(part)))
     .map((part) => ({ file: find(strip(part)), part }))
     .filter(({ file }) => file);
+}
+
+/**
+ * Whether a comment turns this rule off at a line: `oxlint-` or `eslint-disable-next-line` above it,
+ * `-disable-line` on it, or a `-disable` block around it, for this rule or for all rules.
+ */
+function disabledLines(source) {
+  const lines = new Set();
+  const blocks = [];
+  let open = null;
+  for (const comment of source.getAllComments()) {
+    const directive = /^\s*(?:oxlint|eslint)-(disable-next-line|disable-line|disable|enable)\b(.*)$/s.exec(comment.value);
+    if (!directive) continue;
+    const [, kind, rest] = directive;
+    const rules = rest.split("--")[0].split(",").map((rule) => rule.trim()).filter(Boolean);
+    if (rules.length && !rules.includes(RULE)) continue;
+    if (kind === "disable-next-line") lines.add(comment.loc.end.line + 1);
+    else if (kind === "disable-line") lines.add(comment.loc.start.line);
+    else if (kind === "disable") open ??= comment.loc.start.line;
+    else if (open !== null) {
+      blocks.push([open, comment.loc.start.line]);
+      open = null;
+    }
+  }
+  if (open !== null) blocks.push([open, Infinity]);
+  return (line) => lines.has(line) || blocks.some(([from, to]) => line >= from && line <= to);
 }
 
 /** The file a path in `from` names, or null: relative to the file, or "/x" in a public dir or the root. */

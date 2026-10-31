@@ -8,7 +8,7 @@ import { compress } from "../src/engine.js";
 import { unsupported } from "../src/images.js";
 import { mark, marked } from "../src/marker.js";
 import { readFlagged } from "../src/summary.js";
-import { pathFrom, size, smaller } from "../src/text.js";
+import { count, looks, pathFrom, size, smaller } from "../src/text.js";
 
 const HELP = `usage: oxlint-plugin-pngdeer IMAGE... [--target auto|T]
        oxlint-plugin-pngdeer --flagged [--target auto|T]
@@ -77,24 +77,40 @@ function main(args) {
       }))
     : inputs.map((input) => ({ input, target }));
 
+  // several images take a while, one after another: say what's coming, count, and add it all up
+  const many = jobs.length > 1;
+  if (many) console.error(`pngdeer: shrinking ${count(jobs.length, "image")} in place (lossy; commit first so you can undo)`);
   let status = 0;
-  for (const { input, target } of jobs) {
+  let original = 0;
+  let compressed = 0;
+  let shrunk = 0;
+  for (const [i, { input, target }] of jobs.entries()) {
+    const step = many ? `[${i + 1}/${jobs.length}] ` : "";
     try {
-      console.log(`${input}: ${shrink(input, output ?? input, target)}`);
+      const result = shrink(input, output ?? input, target);
+      console.log(`${step}${input}: ${result.text}`);
+      if (result.written) {
+        shrunk++;
+        original += result.original;
+        compressed += result.written;
+      }
     } catch (error) {
-      console.error(`${input}: ${plain(error)}`);
+      console.error(`${step}${input}: ${plain(error)}`);
       status = 1;
     }
+  }
+  if (many && shrunk) {
+    console.error(`pngdeer: ${count(shrunk, "image")}, ${size(original)} → ${size(compressed)} (${size(original - compressed)} smaller). Lint again to check.`);
   }
   return status;
 }
 
-/** Writes `input` made smaller to `output`, and says what happened. */
+/** Writes `input` made smaller to `output`: { text } saying what happened, and the sizes if it wrote. */
 function shrink(input, output, target) {
   const bytes = readFileSync(input);
   const unchanged = (note) => {
     if (output !== input) save(output, bytes);
-    return `${note}; left as is`;
+    return { text: `${note}; left as is` };
   };
   if (marked(bytes)) return unchanged("already pngdeer's");
   const why = unsupported(bytes);
@@ -103,14 +119,15 @@ function shrink(input, output, target) {
   const { output: compressed, outcome, score } = compress(bytes, target);
   if (outcome === "miss") {
     const wanted = target === undefined ? "the automatic quality" : `--target ${target}`;
-    return unchanged(`no smaller file reaches ${wanted} (the best scores ${score.toFixed(1)})`);
+    return unchanged(`no smaller file reaches ${wanted} (the best reaches quality ${Math.round(score)}/100)`);
   }
   // the mark costs a few dozen bytes, more than pngdeer saves on some tiny files
   const result = outcome === "original" ? null : mark(compressed);
   if (!result || result.length >= bytes.length) return unchanged("pngdeer can't make it smaller");
   save(output, result);
-  const percent = smaller(bytes.length, result.length);
-  return `${size(bytes.length)} → ${size(result.length)} (${percent}% smaller, SSIMULACRA2 ${score.toFixed(1)})`;
+  const quality = outcome === "hit" ? `quality ${Math.round(score)}/100: looks ${looks(score)}` : "lossless: looks identical";
+  const text = `${size(bytes.length)} → ${size(result.length)} (${smaller(bytes.length, result.length)}% smaller, ${quality})`;
+  return { text, original: bytes.length, written: result.length };
 }
 
 /** Writes a whole new file or nothing: the image is often written over itself. */

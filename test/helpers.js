@@ -56,6 +56,16 @@ export function oxlint(dir, ...args) {
   return { found: JSON.parse(run.stdout).diagnostics.filter((d) => d.code.includes("pngdeer")), stderr: run.stderr };
 }
 
+/** oxlint's run in `dir` in a format people read (the summary is left out of machine formats): its stderr. */
+export function oxlintSummary(dir, ...args) {
+  const run = spawnSync(process.execPath, [join(plugin, "node_modules", "oxlint", "bin", "oxlint"), "--format", "unix", ...args], { cwd: dir, encoding: "utf8" });
+  assert.equal(run.status, 0, run.stderr || run.stdout);
+  return run.stderr;
+}
+
+/** The images a run of the command says it handled, in order (without its [3/5] counters). */
+export const handled = (stdout) => stdout.trim().split("\n").map((line) => line.replace(/^\[\d+\/\d+\] /, "").split(":")[0]);
+
 /** ESLint's run in `dir`, in the same shape as oxlint(). */
 export function eslint(dir, ...args) {
   const run = spawnSync(process.execPath, [join(plugin, "node_modules", "eslint", "bin", "eslint.js"), "--format", "json", ...args], { cwd: dir, encoding: "utf8" });

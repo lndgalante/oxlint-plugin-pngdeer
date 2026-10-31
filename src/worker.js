@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { parentPort, workerData } from "node:worker_threads";
 import { key } from "./cache.js";
 import { compress } from "./engine.js";
+import { mark } from "./marker.js";
 
 const why = (error) => String(error?.message ?? error);
 
@@ -19,9 +20,11 @@ parentPort.on("message", ({ file }) => {
   }
   const input = key(bytes, workerData.target);
   try {
-    const { output, outcome } = compress(bytes, workerData.target);
+    const { output, outcome, score } = compress(bytes, workerData.target);
     const ms = Math.round(performance.now() - start);
-    parentPort.postMessage({ input, original: bytes.length, compressed: output.length, outcome, ms, output: key(output, workerData.target) });
+    // the size the command will write, mark included, so the warning and the command agree
+    const compressed = outcome === "original" ? bytes.length : mark(output).length;
+    parentPort.postMessage({ input, original: bytes.length, compressed, outcome, score, ms, output: key(output, workerData.target) });
   } catch (error) {
     parentPort.postMessage({ input, error: why(error) });
   }

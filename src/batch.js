@@ -14,8 +14,11 @@ const MAX_WORKERS = 8;
 // replaced rather than kept.
 const BIG = 300e6;
 
-/** Computes every file not cached yet; { computed, cached, skipped, failed, ms }. */
-export async function fill({ cwd, target, files }) {
+/**
+ * Computes every file not cached yet; { computed, cached, skipped, failed, ms }. `progress(done,
+ * total)` hears about each image the engine finishes.
+ */
+export async function fill({ cwd, target, files }, progress = () => {}) {
   const start = performance.now();
   const dir = cacheDir(cwd);
   // a cache that can't be written fails here, before any image is compressed for nothing
@@ -52,6 +55,7 @@ export async function fill({ cwd, target, files }) {
   }
   // biggest first, so the slowest image doesn't start last
   todo.sort((a, b) => b.peak - a.peak);
+  const total = todo.length;
 
   const record = (job, result) => {
     // the file changed or went away after it was queued: cache nothing, the next lint measures it again
@@ -110,6 +114,7 @@ export async function fill({ cwd, target, files }) {
         for (const l of lanes) l.worker?.terminate();
       } finally {
         self.busy = false;
+        progress(counts.computed + counts.failed, total);
         wake();
       }
     }

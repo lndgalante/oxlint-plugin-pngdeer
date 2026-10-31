@@ -9,7 +9,7 @@
 A lint rule for [oxlint](https://oxc.rs/docs/guide/usage/linter) and ESLint. It runs [pngdeer](https://github.com/heydeer/pngdeer), a lossy PNG and JPEG compressor in the spirit of TinyPNG, locally on the images your code imports or points to. When an image could be much smaller at about the same visual quality, the rule warns on that line, with the saving and the command that shrinks the file.
 
 ```
-  ⚠ pngdeer(compressible-image): hero.png could be 70% smaller (509 kB → 151 kB) and look about the same. Run: npx oxlint-plugin-pngdeer public/hero.png
+  ⚠ pngdeer(compressible-image): hero.png could be 70% smaller (509 kB → 151 kB) and look the same side by side (quality 87/100). Run: npx oxlint-plugin-pngdeer public/hero.png
     ╭─[src/App.jsx:10:16]
   9 │     <main>
  10 │       <img src="/hero.png" alt="An arcade stick" />
@@ -55,30 +55,40 @@ $ npx oxlint
 pngdeer: measuring 5 images not in the cache yet...
 pngdeer: measured 5 images in 4.6 s; later runs read the cache
 
-  ⚠ pngdeer(compressible-image): hero.png could be 70% smaller (509 kB → 151 kB) and look about the same. Run: npx oxlint-plugin-pngdeer public/hero.png
+  ⚠ pngdeer(compressible-image): hero.png could be 70% smaller (509 kB → 151 kB) and look the same side by side (quality 87/100). Run: npx oxlint-plugin-pngdeer public/hero.png
+  ⚠ pngdeer(compressible-image): photo.jpg could be 64% smaller (235 kB → 85 kB) and look close, with differences you might spot side by side (quality 76/100). Run: npx oxlint-plugin-pngdeer public/photo.jpg
   …
 
-pngdeer: 4 images could be 718 kB smaller in all (1.0 MB → 310 kB, 70%)
-  public/hero.png              509 kB → 151 kB  70%
-  src/assets/diagram.png       248 kB →  63 kB  75%
-  public/photo.jpg             235 kB →  85 kB  64%
-  src/assets/crystal-ball.png   35 kB →  11 kB  69%
-pngdeer: to shrink them all, run: npx oxlint-plugin-pngdeer --flagged
+pngdeer: 4 flagged images could be 718 kB smaller in all (1.0 MB → 310 kB, 70% smaller):
+  image                           now    after   saves  quality
+  public/hero.png              509 kB → 151 kB  359 kB       87
+  src/assets/diagram.png       248 kB →  63 kB  185 kB       90
+  public/photo.jpg             235 kB →  85 kB  150 kB       76
+  src/assets/crystal-ball.png   35 kB →  11 kB   24 kB       87
+pngdeer: 1 more image could be 5.1 kB smaller, but no linted code names it (used from CSS or HTML, or not at all):
+  public/unused-fire.png        13 kB → 7.5 kB  5.1 kB       90
+pngdeer: quality is SSIMULACRA2, out of 100: 90+ looks identical, 80+ the same side by side, 70+ close, with differences you might spot side by side
+pngdeer: to shrink the 4 flagged images in place (lossy, so commit first), run: npx oxlint-plugin-pngdeer --flagged
 ```
 
-Each image warns once per file, on the line that names it. The table at the end counts each image once, biggest saving first.
+- **Each image warns once per file,** on the line that names it, and says how close to the original it would look.
+- **The table at the end** counts each image once, biggest saving first. It also lists images the run measured that no linted code names, like a CSS background, which no warning can point at.
+- **The table is left out** with `--quiet` and in formats other programs read (`json`, `checkstyle`, `junit`, `sarif`, `gitlab`).
 
 Then shrink what it found. There's no autofix (lint fixes can only edit code), so run the command: `--flagged` takes every image the last lint in that folder warned about, or name images yourself.
 
 ```console
 $ npx oxlint-plugin-pngdeer --flagged
-public/hero.png: 509 kB → 151 kB (70% smaller, SSIMULACRA2 87.3)
-src/assets/diagram.png: 248 kB → 63 kB (75% smaller, SSIMULACRA2 89.5)
-public/photo.jpg: 235 kB → 85 kB (64% smaller, SSIMULACRA2 75.5)
-src/assets/crystal-ball.png: 35 kB → 11 kB (68% smaller, SSIMULACRA2 86.9)
+pngdeer: shrinking 4 images in place (lossy; commit first so you can undo)
+[1/4] public/hero.png: 509 kB → 151 kB (70% smaller, quality 87/100: looks the same side by side)
+[2/4] src/assets/diagram.png: 248 kB → 63 kB (75% smaller, quality 90/100: looks identical)
+[3/4] public/photo.jpg: 235 kB → 85 kB (64% smaller, quality 76/100: looks close, with differences you might spot side by side)
+[4/4] src/assets/crystal-ball.png: 35 kB → 11 kB (68% smaller, quality 87/100: looks the same side by side)
+pngdeer: 4 images, 1.0 MB → 310 kB (718 kB smaller). Lint again to check.
 ```
 
 - **It's lossy, and it writes over the file.** Commit first so git is your undo, or write a copy to compare with `-o hero.smaller.png`.
+- **A warning you turn off with a comment** stays out of the table and out of `--flagged`.
 - **It takes a few seconds per image,** one at a time.
 - **`--flagged` uses the `target` each image was measured at.** For images you name, pass it yourself (`--target 90`), as the command in each warning does. `--help` lists the options.
 - **JPEGs keep their orientation and color profile;** other camera metadata (EXIF, GPS) is dropped.

@@ -23,7 +23,9 @@ const missing = "/no-such-file.png"; // names no file
 const bare = "assets/logo.png"; // no ./, ../, / or alias prefix: not looked up
 ```
 
-Each image warns once per file, at its first mention, and only its own path is underlined, even inside a `srcSet`. On the command line, the run ends with a table of everything it flagged, each image counted once, biggest saving first.
+Each image warns once per file, at its first mention, and only its own path is underlined, even inside a `srcSet`. The warning says how close to the original the smaller file would look, from its SSIMULACRA2 score: "identical" from 90, "the same side by side" from 80, "close, with differences you might spot side by side" from 70.
+
+On the command line, the run ends with a table of everything it flagged, each image counted once, biggest saving first, with each one's quality. Below it are images the run measured that no linted code names, like a CSS background: no warning can point at them, and `--flagged` leaves them alone.
 
 ## How to fix it
 
@@ -87,7 +89,7 @@ For images whose bytes must not change, like test fixtures, turn the rule off by
 "overrides": [{ "files": ["test/**", "e2e/**"], "rules": { "pngdeer/compressible-image": "off" } }]
 ```
 
-For one reference, `// oxlint-disable-next-line pngdeer/compressible-image` (in JSX, `{/* oxlint-disable-next-line pngdeer/compressible-image */}`), or `eslint-disable-next-line` in ESLint.
+For one reference, `// oxlint-disable-next-line pngdeer/compressible-image` (in JSX, `{/* oxlint-disable-next-line pngdeer/compressible-image */}`), or `eslint-disable-next-line` in ESLint. An image whose warning is turned off this way stays out of the summary and out of `--flagged`.
 
 ## When not to use it
 

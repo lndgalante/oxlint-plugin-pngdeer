@@ -13,14 +13,13 @@ test("ESLint gives the same warnings as oxlint, and waits for a cold cache the s
   const first = eslint(dir, "src");
   assert.deepEqual(names(first), ["crystal-ball.png", "diagram.png", "hero.png", "photo.jpg"]);
   assert.match(first.stderr, /^pngdeer: measured 5 images in /m);
-  assert.match(first.stderr, /^pngdeer: 4 images could be \d+ kB smaller in all/m);
   assert.deepEqual(names(oxlint(dir)), names(first));
 });
 
 test("ESLint takes the rule's options", () => {
   const dir = project({ files: { "src/App.jsx": 'import ball from "./assets/crystal-ball.png";\n' }, options: { target: 70, minSavedPercent: 50 }, images: ["src/assets/crystal-ball.png"] });
   const [found] = eslint(dir, "src").found;
-  assert.match(found.message, / at SSIMULACRA2 70\. Run: npx oxlint-plugin-pngdeer src\/assets\/crystal-ball\.png --target 70$/);
+  assert.match(found.message, / \(quality 7\d\/100\)\. Run: npx oxlint-plugin-pngdeer src\/assets\/crystal-ball\.png --target 70$/);
 });
 
 test("a tool calling ESLint's Node API waits, and an editor's language server doesn't", () => {

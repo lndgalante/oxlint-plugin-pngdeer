@@ -4,6 +4,7 @@
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { smaller } from "./text.js";
 
 // The engine's identity: the first 16 hex digits of the wasm's SHA-256 (a few ms for 2 MB). A new
 // engine invalidates every entry.
@@ -16,14 +17,18 @@ export function cacheDir(cwd) {
   return join(cwd, "node_modules", ".cache", "pngdeer");
 }
 
+// What an entry holds: a new shape (2 added the score) measures everything again.
+const FORMAT = 2;
+
 /** The cache key of an image's bytes for a given target (undefined: automatic quality). */
 export function key(bytes, target) {
-  return createHash("sha256").update(bytes).update(`\0${ENGINE}\0${target ?? "auto"}`).digest("hex");
+  return createHash("sha256").update(bytes).update(`\0${ENGINE}\0${target ?? "auto"}\0${FORMAT}`).digest("hex");
 }
 
 /**
- * { original, compressed, outcome, ms }; { skipped } (with failed: true if pngdeer itself failed);
- * { outcome: "output" } for bytes pngdeer wrote; or null if not cached yet.
+ * { original, compressed, outcome, score, ms }, compressed counting the mark the command adds;
+ * { skipped } (with failed: true if pngdeer itself failed); { outcome: "output" } for bytes pngdeer
+ * wrote; or null if not cached yet.
  */
 export function read(dir, k) {
   try {
@@ -31,6 +36,13 @@ export function read(dir, k) {
   } catch {
     return null;
   }
+}
+
+/** Whether an entry is a saving the rule reports: smaller at the target, by both thresholds. */
+export function reportable(entry, { minSavedBytes, minSavedPercent }) {
+  if (!entry || entry.skipped || !["hit", "exact", "lossless"].includes(entry.outcome)) return false;
+  const saved = entry.original - entry.compressed;
+  return saved >= minSavedBytes && smaller(entry.original, entry.compressed) >= minSavedPercent;
 }
 
 export function write(dir, k, entry) {

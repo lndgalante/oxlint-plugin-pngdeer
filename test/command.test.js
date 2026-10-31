@@ -4,14 +4,15 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { marked } from "../src/marker.js";
-import { fade, plugin, pngdeer, project } from "./helpers.js";
+import { fade, handled, plugin, pngdeer, project } from "./helpers.js";
 
 test("makes several images smaller in place, and marks them", () => {
   const dir = project({ images: ["src/assets/crystal-ball.png", "public/photo.jpg"] });
   const run = pngdeer(dir, "src/assets/crystal-ball.png", "public/photo.jpg");
   assert.equal(run.status, 0, run.stderr);
-  assert.match(run.stdout, /^src\/assets\/crystal-ball\.png: 35 kB → 11 kB \(\d+% smaller, SSIMULACRA2 \d+\.\d\)$/m);
-  assert.match(run.stdout, /^public\/photo\.jpg: 235 kB → 85 kB \(\d+% smaller, SSIMULACRA2 \d+\.\d\)$/m);
+  assert.match(run.stdout, /^\[1\/2\] src\/assets\/crystal-ball\.png: 35 kB → 11 kB \(68% smaller, quality 87\/100: looks the same side by side\)$/m);
+  assert.match(run.stdout, /^\[2\/2\] public\/photo\.jpg: 235 kB → 85 kB \(64% smaller, quality 76\/100: looks close, with differences you might spot side by side\)$/m);
+  assert.match(run.stderr, /^pngdeer: 2 images, 271 kB → 96 kB \(174 kB smaller\)\. Lint again to check\.$/m);
   assert.equal(marked(readFileSync(join(dir, "public/photo.jpg"))), true);
   assert.match(pngdeer(dir, "public/photo.jpg").stdout, /^public\/photo\.jpg: already pngdeer's; left as is$/m);
 });
@@ -29,7 +30,7 @@ test("a target it can't reach leaves the file as it was", () => {
   const before = readFileSync(join(dir, "src/assets/crystal-ball.png"));
   const run = pngdeer(dir, "src/assets/crystal-ball.png", "--target", "95");
   assert.equal(run.status, 0);
-  assert.match(run.stdout, /no smaller file reaches --target 95 \(the best scores \d+\.\d\); left as is$/m);
+  assert.match(run.stdout, /no smaller file reaches --target 95 \(the best reaches quality 88\/100\); left as is$/m);
   assert.deepEqual(readFileSync(join(dir, "src/assets/crystal-ball.png")), before);
 });
 
@@ -47,9 +48,9 @@ test("errors name the file, say why, and the others still get done", () => {
   const dir = project({ files: { "fade.png": fade() }, images: ["src/assets/crystal-ball.png"] });
   const run = pngdeer(dir, "missing.png", "fade.png", "src/assets/crystal-ball.png", "--target", "90");
   assert.equal(run.status, 1);
-  assert.match(run.stderr, /^missing\.png: no such file$/m);
-  assert.match(run.stderr, /^fade\.png: pngdeer couldn't compress this image: unreachable/m);
-  assert.match(run.stdout, /^src\/assets\/crystal-ball\.png: /m);
+  assert.match(run.stderr, /^\[1\/3\] missing\.png: no such file$/m);
+  assert.match(run.stderr, /^\[2\/3\] fade\.png: pngdeer couldn't compress this image: unreachable/m);
+  assert.deepEqual(handled(run.stdout), ["src/assets/crystal-ball.png"]);
 });
 
 test("arguments are checked, with help on a mistake", () => {
