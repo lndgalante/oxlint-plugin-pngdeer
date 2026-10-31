@@ -25,7 +25,7 @@ const bare = "assets/logo.png"; // no ./, ../, / or alias prefix: not looked up
 
 Each image warns once per file, at its first mention, and only its own path is underlined, even inside a `srcSet`. Outside an editor, an image named in several files gets the full warning once per run and a shorter one in the other files, and the summary counts the warnings. The warning says how close to the original the smaller file would look, from its SSIMULACRA2 score: "identical" from 90, "the same side by side" from 80, "close, with differences you might spot side by side" from 70.
 
-On the command line, the run ends with a table of everything it flagged, each image counted once, biggest saving first, with each one's quality. Below it are images the run measured that no linted JS or TS names, like a CSS background. No warning can point at them, so each row says where the image is used: in a stylesheet, HTML page, template, MDX or data file (`used in src/App.css`), only in Markdown (`mentioned in README.md`), or nowhere (`nothing names it`, maybe an unused image). `--flagged` leaves them alone; the list ends with the command that shrinks them.
+On the command line, the run ends with a table of everything it flagged, each image counted once, biggest saving first, with each one's quality. Below it are images the run measured that no linted JS or TS names, like a CSS background. No warning can point at them, so each row says where the image is used: in a stylesheet, HTML page, template, MDX or data file (`used in src/App.css`), only in Markdown (`mentioned in README.md`), or nowhere (`nothing names it`, maybe an unused image). `--flagged` leaves them alone; the list ends with the command that shrinks them. `--quiet` and the formats other programs read (`json`, `checkstyle`, `junit`, `sarif`, `gitlab`) leave the table out.
 
 ## How to fix it
 
@@ -43,7 +43,11 @@ To shrink everything the last lint flagged, at the target each image was measure
 npx oxlint-plugin-pngdeer --flagged
 ```
 
-A lint outside the editor leaves that list in `node_modules/.cache/pngdeer/flagged.json`, in the folder it ran from. `--help` lists the rest.
+A lint outside the editor leaves that list in `node_modules/.cache/pngdeer/flagged.json`, in the folder it ran from. Several images run in parallel, one engine per core. `--help` lists the rest.
+
+- **JPEGs keep their orientation and color profile.** Other camera metadata (EXIF, GPS) is dropped.
+- **The mark is a short text tag** (`pngdeer <size>`, in a PNG `tEXt` chunk or a JPEG comment), so a fixed file stays fixed on every machine. Metadata strippers (`oxipng --strip`, ImageOptim) remove it, and images shrunk by pngdeer's web app or Homebrew command aren't marked: the rule measures those again and may flag them. Don't shrink an image twice, as each lossy pass costs quality.
+- **Images another tool already compressed can still be flagged,** because pngdeer compares with the file you have, not the original. Compare by eye before shrinking those.
 
 ## Options
 
@@ -76,11 +80,44 @@ Shared by every file. In `.oxlintrc.json`, `settings` sits next to `rules`; in E
 
 Paths starting with `./` or `../` resolve from the file. A path with none of these prefixes (`assets/logo.png`) isn't looked up, unless you add an alias for it, like `{ "assets/": "src/assets/" }`. The project root is the nearest folder above the file with a `package.json`.
 
+## The cache
+
+Outside an editor, the first run measures every PNG and JPEG in the project (the folder with your `package.json`), not only the ones your code names, so the files linted after it find theirs cached. It skips images too small to save `minSavedBytes`, and folders nobody ships: dependencies, build output, dot folders, and test output like Playwright and Cypress snapshots.
+
+- **It uses one engine per core, minus one (8 at most),** within a quarter of the machine's memory (1 to 4 GB). A median image takes about 3 s of one core.
+- **Results are kept by the image's bytes and the target,** so a moved or renamed image stays cached. A plugin version with a new engine measures everything again.
+- **One lint measures at a time per project.** Another one waits, then finds the results cached. ESLint's `--concurrency` threads take turns the same way and print one summary.
+- **A first run that passes 15 minutes stops** and reports what it measured, and the next run carries on.
+- **It fails open.** If measuring fails, the rule reports what's cached, says why on stderr, and doesn't fail the lint by itself.
+
+To commit the results, set `cacheDir` (see [Settings](#settings)) and commit that folder after adding or changing images. Its JSON is formatted the way Prettier formats JSON (Biome users: add `!.pngdeer` to `files.includes`). Images pngdeer fails on are remembered on each machine only. After upgrading to a new engine, delete the folder to drop the old results.
+
+Or let GitHub Actions cache it. `npm ci` deletes `node_modules`, and the default cache with it, so restore the cache after installing, and save it even when the lint fails:
+
+```yaml
+- run: npm ci
+- uses: actions/cache/restore@v4
+  with:
+    path: node_modules/.cache/pngdeer
+    key: pngdeer-${{ github.run_id }}
+    restore-keys: pngdeer-
+- run: npx oxlint
+- uses: actions/cache/save@v4
+  if: always()
+  with:
+    path: node_modules/.cache/pngdeer
+    key: pngdeer-${{ github.run_id }}
+```
+
+In a monorepo, each package has its own cache: list them all in both `path`s, like `packages/*/node_modules/.cache/pngdeer`.
+
 ## What it skips
 
 - Strings that name no file, remote URLs, and paths built at runtime, silently.
 - Images over 40 megapixels (30 for an animation, over all its frames), and files that aren't really PNGs or JPEGs. A command-line run names them on stderr, as it does images pngdeer fails on.
-- Images used only from CSS, HTML or Markdown, which oxlint doesn't read.
+- Images used only from CSS, HTML or Markdown, which oxlint doesn't read. The first run still measures them, and the summary lists them.
+- Two kinds of image this release of pngdeer fails on. Flat-color JPEGs (a solid-color banner, say) can't be measured at the default target, nor at most targets below about 88. PNGs with a smooth fade to transparent can't be measured at targets of 70 and above. A command-line run names them on stderr.
+- Everything, on machines that aren't 64-bit little-endian, where oxlint silently skips JS plugins.
 
 ## Turning it off
 
