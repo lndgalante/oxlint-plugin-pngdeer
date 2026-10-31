@@ -2,7 +2,7 @@
 // saving only changes when its bytes, the engine or the target do. One small JSON file per entry,
 // so parallel lint threads and batch workers never write the same file twice over.
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { marked } from "./marker.js";
 import { smaller } from "./text.js";
@@ -76,7 +76,15 @@ export function write(dir, k, entry) {
   mkdirSync(dir, { recursive: true });
   // written whole and renamed, so a reader never sees half an entry; formatted the way Prettier
   // would, so a committed cache folder passes `prettier --check`
+  const path = join(dir, `${k}.json`);
   const tmp = join(dir, `${k}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`);
   writeFileSync(tmp, `${JSON.stringify(entry, null, 2)}\n`);
-  renameSync(tmp, join(dir, `${k}.json`));
+  try {
+    renameSync(tmp, path);
+  } catch (error) {
+    // Windows won't replace a file another writer is replacing at that moment (packages sharing a
+    // cache folder, say); an entry is named by its content, so that writer's is as good
+    rmSync(tmp, { force: true });
+    if (!existsSync(path)) throw error;
+  }
 }

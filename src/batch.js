@@ -5,7 +5,7 @@ import { readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { availableParallelism, totalmem } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { Worker } from "node:worker_threads";
+import { Worker, threadId } from "node:worker_threads";
 import { key, read, readFirst, write } from "./cache.js";
 import { dimensions, kind, unsupported } from "./images.js";
 import { marked } from "./marker.js";
@@ -25,10 +25,12 @@ export async function fill({ dir, failures = dir, target, files }, progress = ()
   // a result in either folder counts: `failures` keeps what pngdeer failed on, on this machine only
   const cached = (k) => readFirst(k, dir, failures);
   const start = performance.now();
-  // a cache that can't be written fails here, before any image is compressed for nothing
+  // a cache that can't be written fails here, before any image is compressed for nothing; each
+  // thread probes with its own file, as ESLint's --concurrency threads probe at once
+  const probe = `probe-${process.pid}-${threadId}`;
   for (const folder of new Set([dir, failures])) {
-    write(folder, "probe", {});
-    rmSync(join(folder, "probe.json"), { force: true });
+    write(folder, probe, {});
+    rmSync(join(folder, `${probe}.json`), { force: true });
   }
   const release = await lock(failures);
   try {
