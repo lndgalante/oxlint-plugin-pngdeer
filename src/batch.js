@@ -1,7 +1,7 @@
 // Fills the cache for a list of images, on a pool of worker threads (one wasm engine each, so all
 // cores work even though the engine itself is single-threaded), within a memory budget. The command
 // shrinks several images on the same pool.
-import { mkdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { availableParallelism, totalmem } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -166,18 +166,30 @@ async function lock(folder) {
   const path = join(folder, "measuring.lock");
   for (;;) {
     try {
-      mkdirSync(path);
-      return () => rmSync(path, { recursive: true, force: true });
+      // the holder's pid, so a lint stopped while it measured (Ctrl-C, an editor closing) holds nothing
+      writeFileSync(path, `${process.pid}`, { flag: "wx" });
+      return () => rmSync(path, { force: true });
     } catch (error) {
       // a folder where nothing can be locked: measure anyway
       if (error.code !== "EEXIST") return () => {};
     }
-    try {
-      if (Date.now() - statSync(path).mtimeMs > STALE_MS) rmSync(path, { recursive: true, force: true });
-    } catch {
-      // released meanwhile
-    }
+    // recursive: 0.3.0 locked with a folder
+    if (abandoned(path)) rmSync(path, { recursive: true, force: true });
     await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+}
+
+/** Whether the batch holding the lock at `path` is gone: its process ended, or it's older than any batch. */
+function abandoned(path) {
+  try {
+    if (Date.now() - statSync(path).mtimeMs > STALE_MS) return true;
+    // empty while its holder writes it
+    const pid = Number(readFileSync(path, "utf8"));
+    if (pid) process.kill(pid, 0);
+    return false;
+  } catch (error) {
+    // released meanwhile (ENOENT), or held by another user's process (EPERM)
+    return error.code === "ESRCH";
   }
 }
 

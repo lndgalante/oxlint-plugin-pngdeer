@@ -1,6 +1,7 @@
 // The rule under oxlint, end to end.
 import assert from "node:assert/strict";
-import { chmodSync, cpSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fade, handled, names, oxlint, oxlintSummary, plugin, pngdeer, project } from "./helpers.js";
@@ -200,6 +201,19 @@ test("a committed cache folder keeps a fresh clone from measuring again", () => 
   const stderr = oxlintSummary(dir);
   assert.doesNotMatch(stderr, /measur/);
   assert.match(stderr, /1 flagged image could be/);
+});
+
+test("a lint stopped while it measured doesn't keep the next one waiting", () => {
+  const files = { "src/App.jsx": 'import ball from "./assets/crystal-ball.png";\n' };
+  const dir = project({ files, images: ["src/assets/crystal-ball.png"] });
+  const cache = join(dir, "node_modules", ".cache", "pngdeer");
+  mkdirSync(cache, { recursive: true });
+  // the lock of a process that has ended
+  writeFileSync(join(cache, "measuring.lock"), `${spawnSync(process.execPath, ["-e", ""]).pid}`);
+  const start = performance.now();
+  assert.match(oxlintSummary(dir), /measured 1 image/);
+  assert.ok(performance.now() - start < 60_000);
+  assert.ok(!existsSync(join(cache, "measuring.lock")));
 });
 
 test("an image named in several files gets one full warning, then short ones", () => {
