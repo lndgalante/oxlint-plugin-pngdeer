@@ -1,10 +1,9 @@
 // pngdeer/compressible-image: on each string in the code that names a local PNG or JPEG (imports,
 // require, new URL, JSX src and srcSet, plain strings), says how much smaller pngdeer would make it.
 // oxlint never lints image files themselves, so the reference is where the warning goes.
-import { readFileSync, statSync } from "node:fs";
+import { statSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
-import { cacheDir, key, read, reportable } from "./cache.js";
-import { marked } from "./marker.js";
+import { cacheDir, fileKey, read, reportable } from "./cache.js";
 import { projectImages } from "./scan.js";
 import { flag, name, summarize, watch } from "./summary.js";
 import { fillInBackground, fillSync } from "./sync.js";
@@ -26,7 +25,6 @@ const EDITOR =
   process.env.ELECTRON_RUN_AS_NODE === "1";
 
 // Per process (the language server's lasts the whole editor session):
-const keys = new Map(); // image path -> { size, mtimeMs, target, key, marked }, so images aren't re-read on every keystroke
 const roots = new Map(); // directory -> its project root
 const scanned = new Set(); // `${root}\0${target}` whose images were all measured, or queued, once
 const failed = new Set(); // outside editors: roots whose batch failed, not tried again this run
@@ -139,15 +137,17 @@ export default {
       TemplateLiteral(node) {
         if (node.expressions.length === 0) check(node, node.quasis[0].value.cooked ?? "");
       },
-      // What this file names is measured, then reported. The first time, every image in the
-      // project goes in the same parallel batch, so the files linted next find theirs cached.
+      // What this file names is measured, then reported. The first file of a project in a run also
+      // takes every image in it, named or not, in the same parallel batch: the files linted next find
+      // theirs cached, and the summary can tell about images only CSS or HTML use.
       "Program:exit"() {
-        if (found.length === 0) return;
-        const missing = measure === "never" ? [] : [...new Set(found.filter(({ k }) => !read(dir, k)).map(({ file }) => file))];
-        if (missing.length) {
-          const group = `${root}\0${target}`;
-          const files = scanned.has(group) ? missing : [...new Set([...missing, ...projectImages(root, minSavedBytes)])];
-          scanned.add(group);
+        const group = `${root}\0${target}`;
+        const first = measure !== "never" && !scanned.has(group);
+        if (found.length === 0 && !first) return;
+        scanned.add(group);
+        const missing = measure === "never" ? [] : found.filter(({ k }) => !read(dir, k)).map(({ file }) => file);
+        const files = [...new Set(first ? [...missing, ...projectImages(root, minSavedBytes)] : missing)];
+        if (files.length) {
           if (!wait) fillInBackground({ cwd: root, target, files });
           else if (!failed.has(root)) measureNow(files);
         }
@@ -165,9 +165,11 @@ export default {
         const image = fileKey(file, target);
         return image && !image.marked && !read(dir, image.key);
       }).length;
+      // everything cached (or pngdeer's own output, which needs no engine): nothing to wait for
+      if (!fresh) return;
       // on a terminal the batch rewrites this line as a count (fill-worker.js), and it's cleared after
-      const tty = Boolean(fresh && process.stderr.isTTY);
-      if (fresh) process.stderr.write(`pngdeer: measuring ${count(fresh, "image")} not in the cache yet...${tty ? "" : "\n"}`);
+      const tty = Boolean(process.stderr.isTTY);
+      process.stderr.write(`pngdeer: measuring ${count(fresh, "image")} not in the cache yet...${tty ? "" : "\n"}`);
       try {
         const { computed, ms } = fillSync({ cwd: root, target, files, progress: tty });
         if (tty) process.stderr.write("\r\x1b[K");
@@ -250,21 +252,6 @@ function projectRoot(dir, fallback) {
     roots.set(dir, isFile(join(dir, "package.json")) ? dir : parent === dir ? fallback : projectRoot(parent, fallback));
   }
   return roots.get(dir);
-}
-
-/** An image's size, the cache key of its current bytes and whether pngdeer wrote it; null if it can't be read. */
-function fileKey(file, target) {
-  try {
-    const { size, mtimeMs } = statSync(file);
-    const memo = keys.get(file);
-    if (memo && memo.size === size && memo.mtimeMs === mtimeMs && memo.target === target) return memo;
-    const bytes = readFileSync(file);
-    const image = { size, mtimeMs, target, key: key(bytes, target), marked: marked(bytes) };
-    keys.set(file, image);
-    return image;
-  } catch {
-    return null;
-  }
 }
 
 function isFile(path) {

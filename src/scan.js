@@ -1,8 +1,9 @@
-// Every PNG and JPEG in a project, to measure them all in one parallel batch the first time the
-// rule meets an image it hasn't seen (later references then find them cached). Folders are skipped
-// by name, not by reading .gitignore: dot folders, dependencies, build output, and test output such
-// as visual-regression snapshots, which are images too but never shipped. A folder with its own
-// package.json is another project, with its own cache, and is left to it.
+// Every PNG and JPEG in a project, to measure them all in one parallel batch on a run's first file
+// (later references then find them cached), and the other files the summary searches for images no
+// linted code names. Folders are skipped by name, not by reading .gitignore: dot folders,
+// dependencies, build output, and test output such as visual-regression snapshots, which are images
+// too but never shipped. A folder with its own package.json is another project, with its own cache,
+// and is left to it.
 import { readdirSync, statSync } from "node:fs";
 import { extname, join } from "node:path";
 import { EXTENSIONS } from "./images.js";
@@ -15,6 +16,11 @@ const SKIP = new Set([
 
 /** The project's images of at least `minSize` bytes. */
 export function projectImages(root, minSize = 0) {
+  return projectFiles(root, EXTENSIONS, minSize);
+}
+
+/** The project's files with one of `extensions`, from `minSize` to `maxSize` bytes. */
+export function projectFiles(root, extensions, minSize = 0, maxSize = Infinity) {
   const found = [];
   const walk = (dir) => {
     let entries;
@@ -30,8 +36,9 @@ export function projectImages(root, minSize = 0) {
       if (entry.isDirectory()) {
         // Playwright keeps a test's snapshots in "<test file>-snapshots"
         if (!SKIP.has(entry.name) && !entry.name.endsWith("-snapshots")) walk(path);
-      } else if (entry.isFile() && EXTENSIONS.includes(extname(entry.name).toLowerCase()) && size(path) >= minSize) {
-        found.push(path);
+      } else if (entry.isFile() && extensions.includes(extname(entry.name).toLowerCase())) {
+        const bytes = size(path);
+        if (bytes >= minSize && bytes <= maxSize) found.push(path);
       }
     }
   };

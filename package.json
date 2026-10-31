@@ -1,6 +1,6 @@
 {
   "name": "oxlint-plugin-pngdeer",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Lint rule for oxlint and ESLint: flags PNGs and JPEGs your code uses that could be much smaller at about the same visual quality, with the command that shrinks them. Local WebAssembly, no upload.",
   "keywords": [
     "oxlint",

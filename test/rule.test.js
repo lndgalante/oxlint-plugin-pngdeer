@@ -30,7 +30,9 @@ test("says what the first run is doing, and what the warnings add up to", () => 
   // one command for all the flagged images
   const rows = stderr.split("\n").filter((line) => line.startsWith("  ")).map((line) => line.trim().split(/\s+/)[0]);
   assert.deepEqual(rows, ["image", "public/hero.png", "src/assets/diagram.png", "public/photo.jpg", "src/assets/crystal-ball.png", "public/unused-fire.png"]);
-  assert.match(stderr, /^pngdeer: 1 more image could be 5\.\d kB smaller, but no linted code names it \(used from CSS or HTML, or not at all\):$/m);
+  assert.match(stderr, /^pngdeer: also 1 image that no linted JS or TS names could be 5\.\d kB smaller:$/m);
+  assert.match(stderr, /^  public\/unused-fire\.png .* mentioned in (README|SOURCES)\.md$/m);
+  assert.match(stderr, /^pngdeer: to shrink it too, run: npx oxlint-plugin-pngdeer public\/unused-fire\.png$/m);
   assert.match(stderr, /^pngdeer: quality is SSIMULACRA2, out of 100: 90\+ looks identical/m);
   assert.match(stderr, /^pngdeer: to shrink the 4 flagged images in place \(lossy, so commit first\), run: npx oxlint-plugin-pngdeer --flagged$/m);
   const again = oxlintSummary(dir);
@@ -39,6 +41,21 @@ test("says what the first run is doing, and what the warnings add up to", () => 
   // nothing for machine formats or --quiet
   assert.doesNotMatch(oxlint(dir).stderr, /flagged images/);
   assert.doesNotMatch(oxlintSummary(dir, "--quiet"), /flagged images/);
+});
+
+test("the summary says where an image no JS or TS names is used, or that nothing names it", () => {
+  const files = {
+    "src/App.jsx": "export const app = 1;\n",
+    "src/styles.css": "body { background: url('/hero.png'); }\n",
+  };
+  const dir = project({ files, images: ["public/hero.png", "public/photo.jpg"] });
+  oxlint(dir);
+  const stderr = oxlintSummary(dir);
+  assert.match(stderr, /^pngdeer: no warnings, but 2 images that no linted JS or TS names could be \d+ kB smaller:$/m);
+  assert.match(stderr, /^  public\/hero\.png .* used in src\/styles\.css$/m);
+  assert.match(stderr, /^  public\/photo\.jpg .* nothing names it$/m);
+  assert.match(stderr, /^pngdeer: to shrink them in place \(lossy, so commit first\), run: npx oxlint-plugin-pngdeer public\/hero\.png public\/photo\.jpg$/m);
+  assert.match(stderr, /^pngdeer: an image nothing names may be unused/m);
 });
 
 test("an image whose warning a comment turns off is left out of the summary and --flagged", () => {

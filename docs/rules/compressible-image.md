@@ -25,7 +25,7 @@ const bare = "assets/logo.png"; // no ./, ../, / or alias prefix: not looked up
 
 Each image warns once per file, at its first mention, and only its own path is underlined, even inside a `srcSet`. The warning says how close to the original the smaller file would look, from its SSIMULACRA2 score: "identical" from 90, "the same side by side" from 80, "close, with differences you might spot side by side" from 70.
 
-On the command line, the run ends with a table of everything it flagged, each image counted once, biggest saving first, with each one's quality. Below it are images the run measured that no linted code names, like a CSS background: no warning can point at them, and `--flagged` leaves them alone.
+On the command line, the run ends with a table of everything it flagged, each image counted once, biggest saving first, with each one's quality. Below it are images the run measured that no linted JS or TS names, like a CSS background. No warning can point at them, so each row says where the image is used: in a stylesheet, HTML page, template, MDX or data file (`used in src/App.css`), only in Markdown (`mentioned in README.md`), or nowhere (`nothing names it`, maybe an unused image). `--flagged` leaves them alone; the list ends with the command that shrinks them.
 
 ## How to fix it
 

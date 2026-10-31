@@ -65,14 +65,16 @@ pngdeer: 4 flagged images could be 718 kB smaller in all (1.0 MB → 310 kB, 70%
   src/assets/diagram.png       248 kB →  63 kB  185 kB       90
   public/photo.jpg             235 kB →  85 kB  150 kB       76
   src/assets/crystal-ball.png   35 kB →  11 kB   24 kB       87
-pngdeer: 1 more image could be 5.1 kB smaller, but no linted code names it (used from CSS or HTML, or not at all):
-  public/unused-fire.png        13 kB → 7.5 kB  5.1 kB       90
+pngdeer: also 1 image that no linted JS or TS names could be 5.1 kB smaller:
+  public/unused-fire.png        13 kB → 7.5 kB  5.1 kB       90  mentioned in README.md
 pngdeer: quality is SSIMULACRA2, out of 100: 90+ looks identical, 80+ the same side by side, 70+ close, with differences you might spot side by side
 pngdeer: to shrink the 4 flagged images in place (lossy, so commit first), run: npx oxlint-plugin-pngdeer --flagged
+pngdeer: to shrink it too, run: npx oxlint-plugin-pngdeer public/unused-fire.png
 ```
 
 - **Each image warns once per file,** on the line that names it, and says how close to the original it would look.
-- **The table at the end** counts each image once, biggest saving first. It also lists images the run measured that no linted code names, like a CSS background, which no warning can point at.
+- **The table at the end** counts each image once, biggest saving first.
+- **Images no JS or TS names** get their own list, since no warning can point at them. Each row says where the image is used instead: `used in src/App.css`, `mentioned in README.md` (a Markdown file that names it), or `nothing names it`, which may mean the image is unused and could be deleted. These aren't in `--flagged`; the list ends with the command for them.
 - **The table is left out** with `--quiet` and in formats other programs read (`json`, `checkstyle`, `junit`, `sarif`, `gitlab`).
 
 Then shrink what it found. There's no autofix (lint fixes can only edit code), so run the command: `--flagged` takes every image the last lint in that folder warned about, or name images yourself.
