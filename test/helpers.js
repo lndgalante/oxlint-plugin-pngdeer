@@ -53,7 +53,7 @@ export default [{
 export function oxlint(dir, ...args) {
   const run = spawnSync(process.execPath, [join(plugin, "node_modules", "oxlint", "bin", "oxlint"), "--format", "json", ...args], { cwd: dir, encoding: "utf8" });
   assert.equal(run.status, 0, run.stderr || run.stdout);
-  return { found: JSON.parse(run.stdout).diagnostics.filter((d) => d.code.includes("pngdeer")), stderr: run.stderr };
+  return { found: JSON.parse(run.stdout).diagnostics.filter((d) => d.code.includes("compressible-image")), stderr: run.stderr };
 }
 
 /** oxlint's run in `dir` in a format people read (the summary is left out of machine formats): its stderr. */
@@ -72,6 +72,13 @@ export function eslint(dir, ...args) {
   assert.equal(run.status, 0, run.stderr || run.stdout);
   const found = JSON.parse(run.stdout).flatMap((file) => file.messages).filter((m) => m.ruleId === "pngdeer/compressible-image");
   return { found, stderr: run.stderr };
+}
+
+/** ESLint's run in `dir` in a format people read (the summary is left out of machine formats): its stderr. */
+export function eslintSummary(dir, ...args) {
+  const run = spawnSync(process.execPath, [join(plugin, "node_modules", "eslint", "bin", "eslint.js"), ...args], { cwd: dir, encoding: "utf8" });
+  assert.ok(run.status === 0 || run.status === 1, run.stderr || run.stdout);
+  return run.stderr;
 }
 
 /** The command's run in `cwd`. */

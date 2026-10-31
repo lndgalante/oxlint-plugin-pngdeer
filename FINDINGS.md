@@ -147,4 +147,11 @@ A third review looked at the developer experience. Six reviewers had separate le
 
 Left for later, then done in 0.3.0: a committed cache (`settings.pngdeer.cacheDir`), aliases read from tsconfig/jsconfig `paths` (through `extends` and `references`), one full warning per image per run (short ones in other files), and `--flagged` on the engine pool. On 16 illustrations, that took 14 s instead of 78 s one at a time, with the same bytes. Still left: a `check` command, a before/after image in the README.
 
+A review of 0.3.0 before its release raised 18 findings, all reproduced and fixed:
+- Alias reading: a `"baseUrl": null` that TypeScript accepts crashed every file in the lint. `${configDir}`, a `baseUrl` inherited through `extends`, `extends` arrays and paths without `.json`, BOMs, and editing a config during an editor session each gave wrong or missing aliases. src/tsconfig.js now resolves configs the way TypeScript does.
+- ESLint's `--concurrency` lints in worker threads, each with its own copy of the plugin. Each printed a partial summary and ran its own engine pool, and the main thread, having linted nothing, emptied `--flagged`'s list. The threads now leave what they saw for the main thread, which prints once, and batches take a lock so one measures at a time.
+- Repeats were keyed by image only. ESLint's `--fix` passes, watch modes and eslint_d lost a file's full warning, and folders with different targets mixed their numbers. A disable comment under a renamed plugin wasn't recognized either.
+- Packages sharing a `cacheDir` skipped all but the first package's project scan. The editor wrote entries the command line didn't, which dirtied a committed folder. A failure on one machine stuck for a whole team. Entries failed `prettier --check`.
+- The command raced on one temp file when the same image came twice.
+
 Sources: the oxlint 1.90.0 npm package (`dist/lint.js`, `dist/index.d.ts`, `configuration_schema.json`), oxc's source at the `oxlint_v1.90.0` tag, [the JS plugins docs](https://oxc.rs/docs/guide/usage/linter/js-plugins), [the alpha announcement](https://oxc.rs/blog/2026-03-11-oxlint-js-plugins-alpha), and `npm view` for package sizes. The 6-repo image count used clones of excalidraw, docusaurus, taxonomy, svelte.dev, vuejs/docs and starlight.

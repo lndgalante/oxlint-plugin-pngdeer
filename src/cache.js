@@ -41,6 +41,15 @@ export function read(dir, k) {
   }
 }
 
+/** The entry for `k` in the first of `dirs` that has one, or null. */
+export function readFirst(k, ...dirs) {
+  for (const dir of new Set(dirs)) {
+    const entry = read(dir, k);
+    if (entry) return entry;
+  }
+  return null;
+}
+
 /** Whether an entry is a saving the rule reports: smaller at the target, by both thresholds. */
 export function reportable(entry, { minSavedBytes, minSavedPercent }) {
   if (!entry || entry.skipped || !["hit", "exact", "lossless"].includes(entry.outcome)) return false;
@@ -65,8 +74,9 @@ export function fileKey(file, target) {
 
 export function write(dir, k, entry) {
   mkdirSync(dir, { recursive: true });
-  // written whole and renamed, so a reader never sees half an entry
+  // written whole and renamed, so a reader never sees half an entry; formatted the way Prettier
+  // would, so a committed cache folder passes `prettier --check`
   const tmp = join(dir, `${k}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`);
-  writeFileSync(tmp, JSON.stringify(entry));
+  writeFileSync(tmp, `${JSON.stringify(entry, null, 2)}\n`);
   renameSync(tmp, join(dir, `${k}.json`));
 }

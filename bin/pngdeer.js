@@ -2,7 +2,7 @@
 // oxlint-plugin-pngdeer: makes the images the lint rule flags smaller, with the engine the rule
 // measures with, so each file it writes is the one the warning promised. Files it writes are marked
 // as pngdeer's (src/marker.js), so the rule never measures them again, on any machine.
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { peakOf, pool } from "../src/batch.js";
 import { plain, shrink } from "../src/shrink.js";
 import { readFlagged } from "../src/summary.js";
@@ -68,12 +68,11 @@ async function main(args) {
     return 0;
   }
   // each image, the path to show for it, and its target: a --target given here wins over the lint's
-  const jobs = fromLint
-    ? flagged.map((image) => ({
-        input: pathFrom(process.cwd(), image.file),
-        target: targeted ? target : image.target,
-      }))
-    : inputs.map((input) => ({ input, target }));
+  const jobs = once(
+    fromLint
+      ? flagged.map((image) => ({ input: pathFrom(process.cwd(), image.file), target: targeted ? target : image.target }))
+      : inputs.map((input) => ({ input, target })),
+  );
 
   // one image runs here; several run on a pool of engines, one per core, each line printed as it lands
   if (jobs.length === 1) {
@@ -127,6 +126,22 @@ async function main(args) {
     console.error(`pngdeer: ${count(shrunk, "image")}, ${size(original)} → ${size(compressed)} (${size(original - compressed)} smaller). Lint again to check.`);
   }
   return status;
+}
+
+/** Each image once: overlapping globs or ./ forms would shrink it twice, the second time lossily. */
+function once(jobs) {
+  const seen = new Set();
+  return jobs.filter(({ input }) => {
+    let path = input;
+    try {
+      path = realpathSync(input);
+    } catch {
+      // a missing file is reported when it's read
+    }
+    if (seen.has(path)) return false;
+    seen.add(path);
+    return true;
+  });
 }
 
 function fail(message) {

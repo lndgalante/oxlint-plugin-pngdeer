@@ -45,7 +45,8 @@ export function plain(error) {
 
 /** Writes a whole new file or nothing: the image is often written over itself. */
 function save(path, bytes) {
-  const tmp = join(dirname(path), `.${basename(path)}.${process.pid}.tmp`);
+  // unique per writer: the pool's engines share the process, and one image may come twice
+  const tmp = join(dirname(path), `.${basename(path)}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`);
   try {
     writeFileSync(tmp, bytes);
     try {

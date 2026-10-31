@@ -100,7 +100,7 @@ Already have oxlint 1.90 or later? Install only `oxlint-plugin-pngdeer`. If your
 
 ## Using ESLint
 
-The same rule runs in ESLint 9 and 10, and shares the cache with oxlint:
+The same rule runs in ESLint 9 and 10, and shares the cache with oxlint. With `--concurrency`, ESLint's threads take turns measuring and print one summary:
 
 ```bash
 npm install --save-dev oxlint-plugin-pngdeer
@@ -165,7 +165,7 @@ The simplest way to never start cold: keep the results in a folder you commit, s
 "settings": { "pngdeer": { "cacheDir": ".pngdeer" } }
 ```
 
-Results are small JSON files, one per image version. After you add or change images, run `npx oxlint` and commit `.pngdeer` with them. Upgrading the plugin to a new engine measures everything again; delete the folder first to drop the old results.
+Results are small JSON files, one per image version, formatted the way Prettier formats JSON (Biome users: add `!.pngdeer` to `files.includes`). After you add or change images, run `npx oxlint` and commit `.pngdeer` with them. Images pngdeer fails on are remembered on each machine only, never in the committed folder. Upgrading the plugin to a new engine measures everything again; delete the folder first to drop the old results. In a monorepo, packages can share one folder (`"cacheDir": "../../.pngdeer"`).
 
 Or let CI cache it. `npm ci` deletes `node_modules`, and the default cache with it, so restore the cache after installing, and save it even when the lint fails:
 

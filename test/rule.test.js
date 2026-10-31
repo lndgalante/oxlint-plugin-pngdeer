@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { chmodSync, cpSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { fade, handled, names, oxlint, oxlintSummary, pngdeer, project } from "./helpers.js";
+import { fade, handled, names, oxlint, oxlintSummary, plugin, pngdeer, project } from "./helpers.js";
 
 test("warns on each reference to a compressible image, with the command that fixes it", () => {
   const dir = project();
@@ -213,4 +213,41 @@ test("an image named in several files gets one full warning, then short ones", (
   assert.equal(found.filter((d) => /and look .* \(quality \d+\/100\)/.test(d.message)).length, 1);
   assert.equal(found.filter((d) => /as warned where it's first used\. Run: npx oxlint-plugin-pngdeer src\/assets\/crystal-ball\.png$/.test(d.message)).length, 1);
   assert.match(oxlintSummary(dir), /^pngdeer: 1 flagged image \(2 warnings\) could be/m);
+});
+
+test("packages that share a cache folder each get their images measured", () => {
+  const files = {
+    "packages/a/package.json": "{}",
+    "packages/a/src/A.jsx": 'import ball from "./ball.png";\n',
+    "packages/b/package.json": "{}",
+    "packages/b/src/B.jsx": "export const b = 1;\n",
+    "packages/b/src/b.css": "body { background: url('./bg.png'); }\n",
+  };
+  const dir = project({ files, images: [] });
+  mkdirSync(join(dir, "packages/a/src"), { recursive: true });
+  cpSync(new URL("../example/src/assets/crystal-ball.png", import.meta.url), join(dir, "packages/a/src/ball.png"));
+  cpSync(new URL("../example/src/assets/diagram.png", import.meta.url), join(dir, "packages/b/src/bg.png"));
+  const config = JSON.parse(readFileSync(join(dir, ".oxlintrc.json"), "utf8"));
+  config.settings = { pngdeer: { cacheDir: "../../.pngdeer" } };
+  writeFileSync(join(dir, ".oxlintrc.json"), JSON.stringify(config));
+  const stderr = oxlintSummary(dir, "packages");
+  assert.match(stderr, /1 flagged image could be/);
+  assert.match(stderr, /^  packages\/b\/src\/bg\.png .* used in packages\/b\/src\/b\.css$/m);
+  // entries are formatted for Prettier: two-space JSON and a final newline
+  const entry = readdirSync(join(dir, ".pngdeer")).find((name) => name.endsWith(".json"));
+  assert.match(readFileSync(join(dir, ".pngdeer", entry), "utf8"), /^\{\n  "[\s\S]*\n\}\n$/);
+});
+
+test("a renamed plugin's disable comment counts, and the other file keeps its full warning", () => {
+  const files = {
+    "src/A.jsx": '// oxlint-disable-next-line img/compressible-image\nexport const a = "./assets/crystal-ball.png";\n',
+    "src/B.jsx": 'export const b = "./assets/crystal-ball.png";\n',
+  };
+  const dir = project({ files, images: ["src/assets/crystal-ball.png"] });
+  const config = { jsPlugins: [{ name: "img", specifier: join(plugin, "src", "index.js") }], rules: { "img/compressible-image": "warn" } };
+  writeFileSync(join(dir, ".oxlintrc.json"), JSON.stringify(config));
+  const { found } = oxlint(dir);
+  assert.equal(found.length, 1);
+  assert.match(found[0].message, /and look .* \(quality \d+\/100\)/);
+  assert.match(oxlintSummary(dir), /^pngdeer: 1 flagged image could be/m);
 });

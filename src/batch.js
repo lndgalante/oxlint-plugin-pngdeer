@@ -1,12 +1,12 @@
 // Fills the cache for a list of images, on a pool of worker threads (one wasm engine each, so all
 // cores work even though the engine itself is single-threaded), within a memory budget. The command
 // shrinks several images on the same pool.
-import { readFileSync, rmSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { availableParallelism, totalmem } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
-import { key, read, write } from "./cache.js";
+import { key, read, readFirst, write } from "./cache.js";
 import { dimensions, kind, unsupported } from "./images.js";
 import { marked } from "./marker.js";
 
@@ -14,17 +14,32 @@ const MAX_WORKERS = 8;
 // Wasm memory never shrinks, so a worker that measured an image expected to peak above this is
 // replaced rather than kept.
 const BIG = 300e6;
+// A batch holding the lock longer than this died with it (sync.js gives up waiting at 15 minutes too).
+const STALE_MS = 15 * 60 * 1000;
 
 /**
  * Computes every file not cached yet; { computed, cached, skipped, failed, ms }. `progress(done,
  * total)` hears about each image the engine finishes.
  */
-export async function fill({ dir, target, files }, progress = () => {}) {
+export async function fill({ dir, failures = dir, target, files }, progress = () => {}) {
+  // a result in either folder counts: `failures` keeps what pngdeer failed on, on this machine only
+  const cached = (k) => readFirst(k, dir, failures);
   const start = performance.now();
   // a cache that can't be written fails here, before any image is compressed for nothing
-  write(dir, "probe", {});
-  rmSync(join(dir, "probe.json"), { force: true });
+  for (const folder of new Set([dir, failures])) {
+    write(folder, "probe", {});
+    rmSync(join(folder, "probe.json"), { force: true });
+  }
+  const release = await lock(failures);
+  try {
+    return await measure({ dir, failures, target, files, cached }, progress, start);
+  } finally {
+    release();
+  }
+}
 
+/** fill() once it holds the lock: what's cached by then is skipped, the rest goes to the pool. */
+async function measure({ dir, failures, target, files, cached }, progress, start) {
   const todo = [];
   const counts = { computed: 0, cached: 0, skipped: 0, failed: 0 };
   for (const file of new Set(files)) {
@@ -35,12 +50,12 @@ export async function fill({ dir, target, files }, progress = () => {}) {
       continue;
     }
     const k = key(bytes, target);
-    if (read(dir, k)) {
+    if (cached(k)) {
       counts.cached++;
       continue;
     }
+    // pngdeer's own output needs no engine, and no entry: the rule knows it by its mark
     if (marked(bytes)) {
-      write(dir, k, { original: bytes.length, outcome: "output" });
       counts.skipped++;
       continue;
     }
@@ -60,7 +75,7 @@ export async function fill({ dir, target, files }, progress = () => {}) {
       return;
     }
     if (result.error) {
-      write(dir, job.k, { skipped: result.error, failed: true });
+      write(failures, job.k, { skipped: result.error, failed: true });
       counts.failed++;
       return;
     }
@@ -76,7 +91,7 @@ export async function fill({ dir, target, files }, progress = () => {}) {
   await pool(todo, {
     // the same bytes may have been marked as pngdeer's output since the batch started
     skip: (job) => {
-      if (!read(dir, job.k)) return false;
+      if (!cached(job.k)) return false;
       counts.cached++;
       return true;
     },
@@ -140,6 +155,30 @@ export async function pool(jobs, { done, skip = () => false }) {
     await Promise.all(lanes.map((l) => l.worker?.terminate()));
   }
   if (failure) throw failure;
+}
+
+/**
+ * Waits until no other batch measures for this project, then holds that until `release()`: ESLint's
+ * --concurrency lints in several threads, and a command-line lint may start while an editor measures.
+ * Whoever waits then finds most images cached.
+ */
+async function lock(folder) {
+  const path = join(folder, "measuring.lock");
+  for (;;) {
+    try {
+      mkdirSync(path);
+      return () => rmSync(path, { recursive: true, force: true });
+    } catch (error) {
+      // a folder where nothing can be locked: measure anyway
+      if (error.code !== "EEXIST") return () => {};
+    }
+    try {
+      if (Date.now() - statSync(path).mtimeMs > STALE_MS) rmSync(path, { recursive: true, force: true });
+    } catch {
+      // released meanwhile
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
 }
 
 /** An engine's expected peak memory for an image (by its header), for the pool's budget. */

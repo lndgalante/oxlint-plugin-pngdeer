@@ -65,3 +65,10 @@ test("arguments are checked, with help on a mistake", () => {
   assert.match(pngdeer(plugin, "a.png", "b.png", "-o", "c.png").stderr, /-o takes one image/);
   assert.match(pngdeer(plugin, "a.png", "--frobnicate").stderr, /unknown option --frobnicate/);
 });
+
+test("the same image named twice is shrunk once", () => {
+  const dir = project({ images: ["src/assets/crystal-ball.png"] });
+  const run = pngdeer(dir, "src/assets/crystal-ball.png", "./src/assets/crystal-ball.png");
+  assert.equal(run.status, 0, run.stderr);
+  assert.deepEqual(handled(run.stdout), ["src/assets/crystal-ball.png"]);
+});

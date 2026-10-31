@@ -2,8 +2,9 @@
 // `npx oxlint-plugin-pngdeer --flagged` shrinks, so nobody copies paths from warnings one by one.
 // The table also lists images the run measured that no linted JS or TS names, which no warning can
 // point at, each with where it is used instead (a stylesheet, a page, a template), if anywhere.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
+import { isMainThread, threadId } from "node:worker_threads";
 import { cacheDir, fileKey, read, reportable } from "./cache.js";
 import { projectFiles, projectImages } from "./scan.js";
 import { count, pathFrom, quote, size, smaller } from "./text.js";
@@ -20,13 +21,15 @@ const PAGES = [".css", ".scss", ".sass", ".less", ".styl", ".html", ".htm", ".vu
 const DOCS = [".md"];
 const PAGE_BYTES = 1e6; // bigger ones are build output or lockfiles, not where people name images
 
-const flagged = new Map(); // image path -> { original, compressed, score, target, warnings }
+const flagged = new Map(); // image path -> { original, compressed, score, target, files: the linted files warning about it }
 const named = new Set(); // every image linted code names, flagged or not
 const roots = new Map(); // project root -> the rule's options there
+const SHARE_HOURS = 1; // a thread's share older than this was left by a run that died
 
-/** Notes an image a warning was reported for (once per warning). */
-export function flag(file, entry) {
-  flagged.set(file, { ...entry, warnings: (flagged.get(file)?.warnings ?? 0) + 1 });
+/** Notes an image a warning in linted file `from` was reported for: one warning per file, however often it's linted. */
+export function flag(file, from, entry) {
+  const files = flagged.get(file)?.files ?? new Set();
+  flagged.set(file, { ...entry, files: files.add(from) });
 }
 
 /** Notes an image linted code names. */
@@ -53,8 +56,58 @@ export function readFlagged(cwd) {
   }
 }
 
-/** Prints the table on stderr and leaves the list in `cwd`; once, as the lint exits. */
+/**
+ * ESLint's --concurrency lints in worker threads, each with its own copy of this module: each leaves
+ * what it saw for the main thread, after every file it lints (a thread may be stopped without warning),
+ * and only the main thread prints. oxlint runs every rule on its main thread.
+ */
+export function share(cwd = process.cwd()) {
+  if (isMainThread || roots.size === 0) return;
+  try {
+    const dir = join(cacheDir(cwd), "threads");
+    mkdirSync(dir, { recursive: true });
+    const state = { flagged: [...flagged].map(([file, entry]) => [file, { ...entry, files: [...entry.files] }]), named: [...named], roots: [...roots] };
+    writeFileSync(join(dir, `${process.pid}-${threadId}.json`), JSON.stringify(state));
+  } catch {
+    // that thread's images go untold
+  }
+}
+
+/** Takes in what this process's lint threads left, and drops shares a dead run left behind. */
+function gather(cwd) {
+  const dir = join(cacheDir(cwd), "threads");
+  let names;
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    const path = join(dir, name);
+    try {
+      if (name.startsWith(`${process.pid}-`)) {
+        const state = JSON.parse(readFileSync(path, "utf8"));
+        for (const [file, entry] of state.flagged) {
+          const files = new Set([...(flagged.get(file)?.files ?? []), ...entry.files]);
+          flagged.set(file, { ...entry, files });
+        }
+        for (const file of state.named) named.add(file);
+        for (const [root, options] of state.roots) roots.set(root, options);
+      } else if (Date.now() - statSync(path).mtimeMs < SHARE_HOURS * 3600e3) continue;
+      rmSync(path, { force: true });
+    } catch {
+      // a share half written or already gone
+    }
+  }
+}
+
+/** Prints the table on stderr and leaves the list in `cwd`; once, as the lint exits, on the main thread. */
 export function summarize(cwd = process.cwd()) {
+  if (!isMainThread) return;
+  gather(cwd);
+  // a process that linted nothing (ESLint's main thread, when worker threads did the linting and
+  // left nothing) has nothing to say, and mustn't empty the list the last lint left
+  if (roots.size === 0) return;
   const list = flaggedList(cwd);
   const images = [...flagged].sort(([, a], [, b]) => b.original - b.compressed - (a.original - a.compressed));
   // a clean run replaces an older list, but doesn't create one
@@ -92,7 +145,7 @@ export function summarize(cwd = process.cwd()) {
   if (images.length) {
     const { saved, detail } = total(images);
     // an image named in many files warns in each: say so, or the counts look wrong
-    const warnings = images.reduce((sum, [, image]) => sum + image.warnings, 0);
+    const warnings = images.reduce((sum, [, image]) => sum + image.files.size, 0);
     const often = warnings > images.length ? ` (${count(warnings, "warning")})` : "";
     lines.push(`pngdeer: ${count(images.length, "flagged image")}${often} could be ${saved} smaller in all (${detail}):`, line(header, " "));
     lines.push(...rows.slice(1, 1 + Math.min(images.length, ROWS)).map((cells) => line(cells)));

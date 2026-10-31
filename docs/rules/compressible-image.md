@@ -71,8 +71,8 @@ Shared by every file. In `.oxlintrc.json`, `settings` sits next to `rules`; in E
 | Setting | Default | |
 |---|---|---|
 | `publicDirs` | `["public", "static"]` | Folders where root paths like `/logo.png` are looked up, before the project root. |
-| `aliases` | the project's tsconfig/jsconfig `paths`, else `{ "@/": "src/", "~/": "src/" }` | Path prefixes and the folders they stand for, relative to the project root, like `"$lib/": "src/lib/"` or `"#assets/": "src/assets/"`. Without this setting, the rule reads `compilerOptions.paths` from `tsconfig.json` or `jsconfig.json`, following `extends` and `references` (Vite keeps them in `tsconfig.app.json`). Setting it replaces those. |
-| `cacheDir` | `node_modules/.cache/pngdeer` | Where results are kept, relative to the project root. A folder you commit, like `.pngdeer`, keeps CI and fresh clones from measuring again. |
+| `aliases` | the project's tsconfig/jsconfig `paths`, else `{ "@/": "src/", "~/": "src/" }` | Path prefixes and the folders they stand for, relative to the project root, like `"$lib/": "src/lib/"` or `"#assets/": "src/assets/"`. Without this setting, the rule reads `compilerOptions.paths` from `tsconfig.json` (or `jsconfig.json`) the way TypeScript does: through `extends` (later entries win), with `baseUrl` from wherever the chain sets it and `${configDir}` as the project's folder, and through `references` when the config itself has no `paths` (Vite keeps them in `tsconfig.app.json`). It reads them again when a config changes. Setting it replaces those. |
+| `cacheDir` | `node_modules/.cache/pngdeer` | Where results are kept, relative to the project root. A folder you commit, like `.pngdeer`, keeps CI and fresh clones from measuring again; its entries are formatted for Prettier. Packages can share one. Images pngdeer fails on are remembered in `node_modules/.cache/pngdeer` only. |
 
 Paths starting with `./` or `../` resolve from the file. A path with none of these prefixes (`assets/logo.png`) isn't looked up, unless you add an alias for it, like `{ "assets/": "src/assets/" }`. The project root is the nearest folder above the file with a `package.json`.
 

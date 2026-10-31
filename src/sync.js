@@ -57,10 +57,10 @@ function drain() {
 }
 
 /** fill(request) in the background, for the editor: nothing waits, nothing is reported late. */
-export function fillInBackground({ dir, target, files }) {
+export function fillInBackground({ dir, failures, target, files }) {
   const group = `${dir}\0${target}`;
   if (Date.now() - (failedAt.get(group) ?? -Infinity) < RETRY_MS) return;
-  const batch = queued.get(group) ?? { dir, target, files: new Set() };
+  const batch = queued.get(group) ?? { dir, failures, target, files: new Set() };
   for (const file of files) {
     if (pending.has(`${group}\0${file}`)) continue;
     pending.add(`${group}\0${file}`);
