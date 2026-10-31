@@ -43,7 +43,8 @@
     "engine"
   ],
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "bench": "node bench/run.js"
   },
   "peerDependencies": {
     "eslint": ">=9.0.0",
