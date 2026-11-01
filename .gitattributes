@@ -1,0 +1,6 @@
+# Preserve the exact vendored bytes on every platform.
+engine/pngdeer_wasm.js -text
+engine/THIRD_PARTY_LICENSES.txt -text
+engine/pngdeer_wasm_bg.wasm binary
+
+scripts/engine/*.sh text eol=lf
