@@ -4,6 +4,12 @@
     "revision": "a8e88267ba02cbaf66e746db93ed04242dca8450",
     "cargoLockSha256": "ffd950e512f4e9ba2054afcb546e597e0a2fb6da3c3acdf51fad1252a071c652"
   },
+  "verification": {
+    "runUrl": "https://github.com/lndgalante/oxlint-plugin-pngdeer/actions/runs/41345502071",
+    "recipeRevision": "30604a565b3c1694351be5f97c6deeb070bbb248",
+    "cleanBuilds": 2,
+    "matchesVendored": true
+  },
   "observedProducers": {
     "rustc": "1.99.1 (58cf8f9c3 2026-10-13)",
     "clang": "15.0.7 (AWS 15.0.7-3.amzn2023.0.4)",
