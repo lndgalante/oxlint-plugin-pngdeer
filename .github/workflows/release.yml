@@ -7,7 +7,7 @@ name: Release
 # hasn't published within 2 days expires, and has to be deleted and added again.
 on:
   push:
-    tags: ["v*"]
+    tags: ["v*", "verify-v*"]
 
 permissions:
   contents: write # the GitHub Release
@@ -18,12 +18,18 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
+      # A verify-v* tag resumes validation and release notes for an already published v* tag.
+      - name: Select release tag
+        run: echo "RELEASE_TAG=${GITHUB_REF_NAME#verify-}" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
       - name: Require successful CI for this commit
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          passed=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&event=push&per_page=20" --jq '[.workflow_runs[] | select(.conclusion == "success")] | length')
+          sha=$(git rev-parse HEAD)
+          passed=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$sha&event=push&per_page=20" --jq '[.workflow_runs[] | select(.conclusion == "success")] | length')
           test "$passed" -gt 0 || { echo "CI must pass for this commit before publishing"; exit 1; }
       - uses: actions/setup-node@v4
         with:
@@ -33,7 +39,7 @@ jobs:
       - run: npm test
       - run: npm run check:package
       - name: Tag matches package.json
-        run: test "v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME"
+        run: test "v$(node -p 'require("./package.json").version')" = "$RELEASE_TAG"
       - name: Skip versions already on npm
         id: published
         run: |
@@ -42,24 +48,37 @@ jobs:
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
       # A prerelease (v1.2.3-rc.1) goes out as "next", so it isn't what `npm install` picks.
-      - if: steps.published.outputs.skip != 'true'
+      - if: ${{ !startsWith(github.ref_name, 'verify-') && steps.published.outputs.skip != 'true' }}
         run: |
           tag=latest
-          case "$GITHUB_REF_NAME" in *-*) tag=next ;; esac
+          case "$RELEASE_TAG" in *-*) tag=next ;; esac
           npm publish --provenance --access public --tag "$tag"
       - name: Verify the published package
-        run: npm run check:published
+        run: |
+          log="$RUNNER_TEMP/pngdeer-published-check.log"
+          for attempt in {1..12}; do
+            if npm run check:published >"$log" 2>&1; then
+              cat "$log"
+              exit 0
+            fi
+            cat "$log"
+            # Metadata and tarballs can become available at different times after publishing.
+            grep -Eq 'npm error code (E404|ETARGET)' "$log" || exit 1
+            sleep 10
+          done
+          echo "npm has not made the published package available yet" >&2
+          exit 1
       # A GitHub Release with the commits since the last tag. Say in its notes whether the engine
       # changed: a new engine measures every image again.
       - name: GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 && exit 0
-          case "$GITHUB_REF_NAME" in *-*) pre=--prerelease ;; *) pre= ;; esac
-          notes="docs/releases/${GITHUB_REF_NAME#v}.md"
+          gh release view "$RELEASE_TAG" >/dev/null 2>&1 && exit 0
+          case "$RELEASE_TAG" in *-*) pre=--prerelease ;; *) pre= ;; esac
+          notes="docs/releases/${RELEASE_TAG#v}.md"
           if test -f "$notes"; then
-            gh release create "$GITHUB_REF_NAME" --verify-tag --notes-file "$notes" $pre
+            gh release create "$RELEASE_TAG" --verify-tag --notes-file "$notes" $pre
           else
-            gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes $pre
+            gh release create "$RELEASE_TAG" --verify-tag --generate-notes $pre
           fi
