@@ -1,6 +1,6 @@
 // The command, npx oxlint-plugin-pngdeer.
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { lstatSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { marked } from "../src/marker.js";
@@ -71,4 +71,55 @@ test("the same image named twice is shrunk once", () => {
   const run = pngdeer(dir, "src/assets/crystal-ball.png", "./src/assets/crystal-ball.png");
   assert.equal(run.status, 0, run.stderr);
   assert.deepEqual(handled(run.stdout), ["src/assets/crystal-ball.png"]);
+});
+
+test("check options reject mistakes before changing an image", () => {
+  const dir = project({ images: ["src/assets/crystal-ball.png"] });
+  const file = "src/assets/crystal-ball.png";
+  const before = readFileSync(join(dir, file));
+  const cases = [
+    ["--check", file, "-o", "preview.png"],
+    ["--check", "--flagged"],
+    ["--check", "--min-saved-bytes", "-1"],
+    ["--check", "--min-saved-bytes", "0.5"],
+    ["--check", "--min-saved-percent", "101"],
+    ["--check", "--min-saved-percent", "NaN"],
+    ["--check", "--exclude", ""],
+    ["--check", "--cache-dir"],
+    [file, "--exclude", "public"],
+    [file, "--min-saved-bytes", "4096"],
+    [file, "--cache-dir", ".pngdeer"],
+    [file, "-o", "--check"],
+  ];
+  for (const args of cases) {
+    const run = pngdeer(dir, ...args);
+    assert.equal(run.status, 2, `${args.join(" ")}\n${run.stderr}`);
+    assert.match(run.stderr, /usage:/);
+  }
+  assert.deepEqual(readFileSync(join(dir, file)), before);
+});
+
+test("-- accepts image names starting with a hyphen", () => {
+  const dir = project({ images: ["src/assets/crystal-ball.png"] });
+  writeFileSync(join(dir, "-image.png"), readFileSync(join(dir, "src/assets/crystal-ball.png")));
+  const run = pngdeer(dir, "--", "-image.png");
+  assert.equal(run.status, 0, run.stderr);
+  assert.equal(marked(readFileSync(join(dir, "-image.png"))), true);
+});
+
+test("shrinking through a symlink preserves the link and updates its target once", (t) => {
+  const dir = project({ images: ["src/assets/crystal-ball.png"] });
+  const source = join(dir, "src/assets/crystal-ball.png");
+  const link = join(dir, "linked.png");
+  try {
+    symlinkSync(source, link);
+  } catch (error) {
+    if (process.platform === "win32" && error.code === "EPERM") return t.skip("symlinks require Windows Developer Mode");
+    throw error;
+  }
+  const run = pngdeer(dir, "linked.png", "src/assets/crystal-ball.png");
+  assert.equal(run.status, 0, run.stderr);
+  assert.deepEqual(handled(run.stdout), ["linked.png"]);
+  assert.equal(lstatSync(link).isSymbolicLink(), true);
+  assert.equal(marked(readFileSync(source)), true);
 });

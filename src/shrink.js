@@ -1,6 +1,6 @@
 // Making one image smaller on disk: what the command does to each image it's given, in its own
 // thread for one image or on the pool's engines for several (worker.js).
-import { chmodSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { compress } from "./engine.js";
 import { unsupported } from "./images.js";
@@ -12,6 +12,13 @@ import { looks, size, smaller } from "./text.js";
  * { original, written } sizes when it wrote a smaller file. Throws when it can't read or compress.
  */
 export function shrink(input, output, target) {
+  input = realpathSync(input);
+  try {
+    // Atomic replacement must update a symlink's target, preserving the link itself.
+    output = realpathSync(output);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
   const bytes = readFileSync(input);
   const unchanged = (note) => {
     if (output !== input) save(output, bytes);

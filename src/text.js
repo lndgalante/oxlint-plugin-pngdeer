@@ -1,4 +1,5 @@
 import { relative, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /** A file size as people read it: decimal kB and MB. */
 export function size(bytes) {
@@ -37,8 +38,19 @@ export function count(n, noun) {
 }
 
 /** A path as a shell argument, for the shell of the platform it's printed on. */
-export function quote(arg) {
-  if (/^[\w@+=:,./-]+$/.test(arg)) return arg;
-  // cmd.exe and PowerShell take double quotes but not single ones, and Windows names can't hold "
-  return process.platform === "win32" ? `"${arg}"` : `'${arg.replace(/'/g, `'\\''`)}'`;
+export function quote(arg, platform = process.platform) {
+  if (arg.startsWith("-")) arg = `./${arg}`;
+  const safe = platform === "win32" ? /^[\w+=:./-]+$/ : /^[\w@+=:,./-]+$/;
+  if (safe.test(arg)) return arg;
+  return platform === "win32" ? `'${arg.replace(/['\u2018-\u201b]/g, "$&$&")}'` : `'${arg.replace(/'/g, `'\\''`)}'`;
+}
+
+/** A runnable fix command; unusual Windows paths use PowerShell and bypass npm's batch shim. */
+export function shrinkCommand(files, target, platform = process.platform) {
+  const paths = files.map((file) => quote(file, platform));
+  const powershell = platform === "win32" && paths.some((path) => path.startsWith("'"));
+  // npx.cmd adds a cmd.exe parsing pass, which expands percent signs even inside quotes.
+  const binary = fileURLToPath(new URL("../bin/pngdeer.js", import.meta.url));
+  const runner = powershell ? `& ${quote(process.execPath, platform)} ${quote(binary, platform)}` : "npx oxlint-plugin-pngdeer";
+  return { text: `${runner} ${paths.join(" ")}${target === undefined ? "" : ` --target ${target}`}`, shell: powershell ? " in PowerShell" : "" };
 }

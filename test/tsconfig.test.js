@@ -70,3 +70,36 @@ test("a config edited since is read again", () => {
   utimesSync(join(dir, "tsconfig.json"), new Date(), new Date(Date.now() + 5000));
   assert.deepEqual(configAliases(dir), { "@/": "app/" });
 });
+
+test("a newly created tsconfig takes precedence over the cached jsconfig", () => {
+  const dir = mkdtempSync(join(tmpdir(), "pngdeer-tsconfig-"));
+  dirs.push(dir);
+  writeFileSync(join(dir, "jsconfig.json"), JSON.stringify({ compilerOptions: { paths: { "@/*": ["./old/*"] } } }));
+  assert.deepEqual(configAliases(dir), { "@/": "old/" });
+  writeFileSync(join(dir, "tsconfig.json"), JSON.stringify({ compilerOptions: { paths: { "@/*": ["./new/*"] } } }));
+  assert.deepEqual(configAliases(dir), { "@/": "new/" });
+});
+
+test("a missing extended config is read after a generator creates it", () => {
+  const dir = mkdtempSync(join(tmpdir(), "pngdeer-tsconfig-"));
+  dirs.push(dir);
+  writeFileSync(join(dir, "tsconfig.json"), JSON.stringify({ extends: "./generated" }));
+  assert.equal(configAliases(dir), null);
+  writeFileSync(join(dir, "generated.json"), JSON.stringify({ compilerOptions: { paths: { "@/*": ["./generated/*"] } } }));
+  assert.deepEqual(configAliases(dir), { "@/": "generated/" });
+});
+
+test("a shared ancestor is inherited by each branch of multiple extends", () => {
+  assert.deepEqual(aliases({
+    "base.json": { compilerOptions: { paths: { "@/*": ["./base/*"] } } },
+    "left.json": { extends: "./base.json", compilerOptions: { paths: { "@/*": ["./left/*"] } } },
+    "right.json": { extends: "./base.json" },
+    "tsconfig.json": { extends: ["./left.json", "./right.json"] },
+  }), { "@/": "base/" });
+});
+
+test("trailing commas are removed without changing commas in quoted paths", () => {
+  assert.deepEqual(aliases({
+    "tsconfig.json": '{ "compilerOptions": { "paths": { "@/*": ["./assets,}/*",], }, }, }',
+  }), { "@/": "assets,}/" });
+});

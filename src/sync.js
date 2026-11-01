@@ -2,7 +2,8 @@
 // finish before the rule reports runs in a worker while this thread blocks on Atomics.wait (the
 // pattern synckit uses for eslint-plugin-prettier). No child process: no fork of oxlint's large
 // address space.
-import { MessageChannel, Worker, receiveMessageOnPort } from "node:worker_threads";
+import { MessageChannel, receiveMessageOnPort } from "node:worker_threads";
+import { startWorker } from "./threads.js";
 
 // A worker that dies without answering (out of memory, say) must not hang the lint forever.
 const TIMEOUT_MS = 15 * 60 * 1000;
@@ -11,10 +12,13 @@ const TIMEOUT_MS = 15 * 60 * 1000;
 export function fillSync(request) {
   const signal = new Int32Array(new SharedArrayBuffer(4));
   const { port1, port2 } = new MessageChannel();
-  const worker = new Worker(new URL("./fill-worker.js", import.meta.url), {
+  const worker = startWorker(new URL("./fill-worker.js", import.meta.url), {
     workerData: { request, signal, port: port2 },
     transferList: [port2],
   });
+  // Errors cannot reach this thread while Atomics.wait blocks it. The timeout reports failure;
+  // consume the later event so an engine startup error cannot crash the linter afterward.
+  worker.on("error", () => {});
   const status = Atomics.wait(signal, 0, 0, TIMEOUT_MS);
   const reply = receiveMessageOnPort(port1)?.message;
   port1.close();
@@ -44,7 +48,7 @@ function drain() {
   queued.delete(group);
   running = true;
   const files = [...batch.files];
-  const worker = new Worker(new URL("./fill-worker.js", import.meta.url), { workerData: { request: { ...batch, files } } });
+  const worker = startWorker(new URL("./fill-worker.js", import.meta.url), { workerData: { request: { ...batch, files } } });
   // an error thrown here would take the whole language server down with it
   worker.on("error", () => {});
   worker.on("exit", (code) => {

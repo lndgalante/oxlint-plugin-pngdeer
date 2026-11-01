@@ -1,0 +1,436 @@
+{
+  "measuredAt": "2026-11-01T19:59:34.000Z",
+  "pluginVersion": "0.4.0",
+  "engine": "ad2351d25459d45c",
+  "environment": {
+    "node": "26.12.0",
+    "platform": "darwin",
+    "release": "25.6.0",
+    "cpu": "Apple M3 Max",
+    "cores": 16
+  },
+  "options": {
+    "minSavedBytes": 4096,
+    "minSavedPercent": 10,
+    "target": "auto"
+  },
+  "results": [
+    {
+      "repo": "facebook/docusaurus",
+      "commit": "653167747c8776546c0dd2c25620df1b7f6d7a59",
+      "selection": "examples/classic/",
+      "originalBytes": 210278,
+      "savedBytes": 110772,
+      "flagged": 4,
+      "errors": 0,
+      "cold": {
+        "ms": 1443,
+        "status": 1
+      },
+      "warm": {
+        "ms": 64,
+        "status": 1
+      },
+      "images": [
+        {
+          "path": "examples/classic/blog/2021-08-26-welcome/docusaurus-plushie-banner.jpeg",
+          "sha256": "5e20efd3f3f0f393fedf3e13da9371968b20994f36b41bd29a70079f48d8fd8f",
+          "original": 96122,
+          "compressed": 45839,
+          "score": 73.276,
+          "outcome": "hit",
+          "error": null,
+          "reported": true
+        },
+        {
+          "path": "examples/classic/docs/tutorial-extras/img/docsVersionDropdown.png",
+          "sha256": "5dac20d431c0881ed7be43114a5f768cc36c9a620d4359077f28c4287f8231b5",
+          "original": 25427,
+          "compressed": 8195,
+          "score": 90.664,
+          "outcome": "hit",
+          "error": null,
+          "reported": true
+        },
+        {
+          "path": "examples/classic/docs/tutorial-extras/img/localeDropdown.png",
+          "sha256": "584563b40baead8ec230dbf1f3a20ff9ec179d361420904034eab04d06d70397",
+          "original": 27841,
+          "compressed": 10368,
+          "score": 90.175,
+          "outcome": "hit",
+          "error": null,
+          "reported": true
+        },
+        {
+          "path": "examples/classic/static/img/docusaurus-social-card.jpg",
+          "sha256": "7e3f3833e6742ffcc323c56380b3d1faf185c175534ea5591686bf879a1f7cfb",
+          "original": 55746,
+          "compressed": 29962,
+          "score": 73.091,
+          "outcome": "hit",
+          "error": null,
+          "reported": true
+        },
+        {
+          "path": "examples/classic/static/img/docusaurus.png",
+          "sha256": "9204212d3905bc1b8d1d882825d1eceb5ad942329222277d7257831a7d47d827",
+          "original": 5142,
+          "compressed": 1816,
+          "score": 90.329,
+          "outcome": "hit",
+          "error": null,
+          "reported": false
+        }
+      ]
+    },
+    {
+      "repo": "withastro/starlight",
+      "commit": "6c9ca431629bbd37d969876f5f4281b5f5a34d38",
+      "selection": "docs/src/assets/testimonials/",
+      "originalBytes": 208935,
+      "savedBytes": 14310,
+      "flagged": 2,
+      "errors": 0,
+      "cold": {
+        "ms": 741,
+        "status": 1
+      },
+      "warm": {
+        "ms": 62,
+        "status": 1
+      },
+      "images": [
+        {
+          "path": "docs/src/assets/testimonials/BowTiedWebReapr.jpg",
+          "sha256": "4b7e782a6a8d97d2db7c62756645e73a9a37b79e35a93fcb285d462c3915d4d1",
+          "original": 16918,
+          "compressed": 13880,
+          "score": 78.477,
+          "outcome": "hit",
+          "error": null,
+          "reported": false
+        },
+        {
+          "path": "docs/src/assets/testimonials/J_Everhart383.jpg",
+          "sha256": "c5b327796b5a70014550154f5857810c9ec5970c100b1064d8d67183e72d04ae",
+          "original": 14642,
+          "compressed": 11613,
+          "score": 78.655,
+          "outcome": "hit",
+          "error": null,
+          "reported": false
+        },
+        {
+          "path": "docs/src/assets/testimonials/RmeetsH.jpg",
+          "sha256": "7f37cb7832ce8341f9e729af304db221714796e5f9a513d640d91ea7856bb604",
+          "original": 13016,
+          "compressed": 8838,
+          "score": 78.31,
+          "outcome": "hit",
+          "error": null,
+          "reported": true
+        },
+        {
+          "path": "docs/src/assets/testimonials/SylwiaVargas.jpg",
+          "sha256": "85acc9a5aff839a43294ad4cdab9bcedd91feff3db000ffb3855c1c717adebfd",
+          "original": 23756,
+          "compressed": 20174,
+          "score": 78.318,
+          "outcome": "hit",
+          "error": null,
+          "reported": false
+        },
+        {
+          "path": "docs/src/assets/testimonials/beaussan.jpg",
+          "sha256": "2139dd6a776fc5b26ce828fc18a509e1281c88502c4e6471784b7f7fadca04bd",
+          "original": 25772,
+          "compressed": 21679,
+          "score": 78.456,
+          "outcome": "hit",
+          "error": null,
+          "reported": false
+        },
+        {
+          "path": "docs/src/assets/testimonials/flaviocopes.jpg",
+          "sha256": "140eb4bf6e04d07ba8bc3c7e02527cc293d87a69ed913473fdcdf29b9a50aa77",
+          "original": 14872,
+          "compressed": 11339,
+          "score": 78.615,
+          "outcome": "hit",
+          "error": null,
+          "reported": false
+        },
+        {
+          "path": "docs/src/assets/testimonials/jhooks.jpg",
+          "sha256": "c5af50815ad031f2f55b13e9322b4225f17993836e86a5b2296b68b96d7f0a20",
+          "original": 24132,
+          "compressed": 14000,
+          "score": 78.184,
+          "outcome": "hit",
+          "error": null,
+          "reported": true
+        },
+        {
+          "path": "docs/src/assets/testimonials/loucyx.jpg",
+          "sha256": "10acaca438f78d11bb8fb32226a607483fd06a6bca684c969676b0e2f84299f5",
+          "original": 9672,
+          "compressed": 9672,
+          "score": 100,
+          "outcome": "original",
+          "error": null,
+          "reported": false
+        },
+        {
+          "path": "docs/src/assets/testimonials/rachelnabors.jpg",
+          "sha256": "e9afc9b985d0e3eff315835de6806acf00a360686302a3c71f2214a0809bc7f0",
+          "original": 12926,
+          "compressed": 10225,
+          "score": 78.369,
+          "outcome": "hit",
+          "error": null,
+          "reported": false
+        },
+        {
+          "path": "docs/src/assets/testimonials/rick_viscomi.jpg",
+          "sha256": "0a9e257b67ad494e05da308d7726e135432c2a33d305eb5c683a66f4076ae488",
+          "original": 20279,
+          "compressed": 16344,
+          "score": 78.551,
+          "outcome": "hit",
+          "error": null,
+          "reported": false
+        },
+        {
+          "path": "docs/src/assets/testimonials/solelychloe.jpg",
+          "sha256": "b5ce1402c01766dc279c54cfcec08fb56a9cc2fbdc5c98d527acaf2b7901ae80",
+          "original": 17476,
+          "compressed": 15173,
+          "score": 79.736,
+          "outcome": "hit",
+          "error": null,
+          "reported": false
+        },
+        {
+          "path": "docs/src/assets/testimonials/sulco.jpg",
+          "sha256": "83e3a9cd759f1c8fa2c6f24428cb01828afbcdc7a79d0a606027cb0069ceb8e6",
+          "original": 15474,
+          "compressed": 12326,
+          "score": 78.863,
+          "outcome": "hit",
+          "error": null,
+          "reported": false
+        }
+      ]
+    },
+    {
+      "repo": "vuejs/docs",
+      "commit": "40aa88af0094f7bab4aaf786e55c748a6a251d88",
+      "selection": "src/guide/",
+      "originalBytes": 1213949,
+      "savedBytes": 898356,
+      "flagged": 19,
+      "errors": 0,
+      "cold": {
+        "ms": 7113,
+        "status": 1
+      },
+      "warm": {
+        "ms": 67,
+        "status": 1
+      },
+      "images": [
+        {
+          "path": "src/guide/best-practices/images/AccessibilityChromeDeveloperTools.png",
+          "sha256": "b7834355f153aa4a7cb9eca39ad3ac9f82ebe033ab4a40cafa157d7ca19ac25d",
+          "original": 67360,
+          "compressed": 14275,
+          "score": 90.296,
+          "outcome": "hit",
+          "error": null,
+          "reported": true
+        },
+        {
+          "path": "src/guide/best-practices/images/AccessibleARIAdescribedby.png",
+          "sha256": "659c43afdb1083914d176caeb0f7da8612d4e3ae9cfc0d4eceed9dde78153aba",
+          "original": 62763,
+          "compressed": 13831,
+          "score": 90.064,
+          "outcome": "hit",
+          "error": null,
+          "reported": true
+        },
+        {
+          "path": "src/guide/best-practices/images/AccessibleARIAlabelDevTools.png",
+          "sha256": "2b376a039ed6da77345f56ef9edd5ed426bd0e0705c31afb6fa432b409481698",
+          "original": 49118,
+          "compressed": 11623,
+          "score": 90.27,
+          "outcome": "hit",
+          "error": null,
+          "reported": true
+        },
+        {
+          "path": "src/guide/best-practices/images/AccessibleARIAlabelledbyDevTools.png",
+          "sha256": "56ced2eddb1ca00bd83f59bc86734b20a276e23d541b8cc14e4b7ec780ab46dd",
+          "original": 52287,
+          "compressed": 11523,
+          "score": 90.034,
+          "outcome": "hit",
+          "error": null,
+          "reported": true
+        },
+        {
+          "path": "src/guide/best-practices/images/AccessibleLabelChromeDevTools.png",
+          "sha256": "8d40e8fac6f874c560614102b948106f504290d054f9293eb0e2ac5d5cf85c8f",
+          "original": 40186,
+          "compressed": 9198,
+          "score": 90.086,
+          "outcome": "hit",
+          "error": null,
+          "reported": true
+        },
+        {
+          "path": "src/guide/best-practices/images/AccessiblePlaceholder.png",
+          "sha256": "5dfc1226c6dff3187a89c1eab4620ccbea9c6c55140473fbfa34617b3a56344a",
+          "original": 43906,
+          "compressed": 9535,
+          "score": 90.798,
+          "outcome": "hit",
+          "error": null,
+          "reported": true
+        },
+        {
+          "path": "src/guide/built-ins/images/transition-classes.png",
+          "sha256": "f0f7b3c9017aefd0e891145aa732f5d6cf0ce4779db005aa82bdce3ab54481fb",
+          "original": 33143,
+          "compressed": 11131,
+          "score": 91.319,
+          "outcome": "hit",
+          "error": null,
+          "reported": true
+        },
+        {
+          "path": "src/guide/components/images/named-slots.png",
+          "sha256": "ebb7b207b505052875ec5079bd0b1685ef4676ea4a79fb7fbc1988f3030a11a8",
+          "original": 55608,
+          "compressed": 16140,
+          "score": 90.008,
+          "outcome": "hit",
+          "error": null,
+          "reported": true
+        },
+        {
+          "path": "src/guide/components/images/prop-drilling.png",
+          "sha256": "112012204fa909c53114a40dbf42451745a742107086ab848e1a7c6d7c00b86d",
+          "original": 18492,
+          "compressed": 5224,
+          "score": 91.254,
+          "outcome": "hit",
+          "error": null,
+          "reported": true
+        },
+        {
+          "path": "src/guide/components/images/provide-inject.png",
+          "sha256": "3e0505e4cf580aca9998c610a2be58ff53e143c5a3d3f50ad91c738285d82c9e",
+          "original": 21121,
+          "compressed": 6287,
+          "score": 91.663,
+          "outcome": "hit",
+          "error": null,
+          "reported": true
+        },
+        {
+          "path": "src/guide/components/images/slots.png",
+          "sha256": "dbdaf1e8e205a3d298754df09fbc5211553633499a407f69c62017cd0de36ca6",
+          "original": 34001,
+          "compressed": 10433,
+          "score": 90.618,
+          "outcome": "hit",
+          "error": null,
+          "reported": true
+        },
+        {
+          "path": "src/guide/essentials/images/components.png",
+          "sha256": "7fbb37714ea8f6eed7cb5d6924310fed391ec2ba4059972930b4a92c3f662a52",
+          "original": 17940,
+          "compressed": 5553,
+          "score": 91.943,
+          "outcome": "hit",
+          "error": null,
+          "reported": true
+        },
+        {
+          "path": "src/guide/essentials/images/directive.png",
+          "sha256": "69c371173860eae7689f01fafff755a24d16a098df3b46b7b45d9668a82ccbae",
+          "original": 45620,
+          "compressed": 13954,
+          "score": 92.554,
+          "outcome": "hit",
+          "error": null,
+          "reported": true
+        },
+        {
+          "path": "src/guide/essentials/images/lifecycle.png",
+          "sha256": "16e4c08e5f4ab7b99730ff8c46e4dcfdb9c3d5267d29767c0ba1674cbf510b63",
+          "original": 190608,
+          "compressed": 36248,
+          "score": 89.018,
+          "outcome": "hit",
+          "error": null,
+          "reported": true
+        },
+        {
+          "path": "src/guide/extras/images/composition-api-after.png",
+          "sha256": "e3f2c35097283485c54a8486431f81249ad75d38f330ffe567507622ef4e4db4",
+          "original": 206094,
+          "compressed": 52440,
+          "score": 89.57,
+          "outcome": "hit",
+          "error": null,
+          "reported": true
+        },
+        {
+          "path": "src/guide/extras/images/options-api.png",
+          "sha256": "4c42b5095b7e04898ae0f23bc83cc99a35fed6f5a376d88602cf913eb6f729d2",
+          "original": 118005,
+          "compressed": 29453,
+          "score": 89.425,
+          "outcome": "hit",
+          "error": null,
+          "reported": true
+        },
+        {
+          "path": "src/guide/extras/images/render-pipeline.png",
+          "sha256": "03805016b77acfd1a47e9247e0e0cc41f621e0fbe07e4284c195bbff751bfa3c",
+          "original": 41635,
+          "compressed": 12367,
+          "score": 90.556,
+          "outcome": "hit",
+          "error": null,
+          "reported": true
+        },
+        {
+          "path": "src/guide/scaling-up/images/devtools.png",
+          "sha256": "f076b654197487fee5e35fad7e7819ecf4c1317df8e9d90e726db0782b371f03",
+          "original": 97880,
+          "compressed": 41095,
+          "score": 90.372,
+          "outcome": "hit",
+          "error": null,
+          "reported": true
+        },
+        {
+          "path": "src/guide/scaling-up/images/state-flow.png",
+          "sha256": "a8bc738e1dd41940e644d8dda7ed15928b3ceeb72cb7412884ecdeae1b5a3703",
+          "original": 18182,
+          "compressed": 5283,
+          "score": 90.22,
+          "outcome": "hit",
+          "error": null,
+          "reported": true
+        }
+      ]
+    }
+  ]
+}

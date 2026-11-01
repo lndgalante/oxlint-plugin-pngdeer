@@ -1,6 +1,6 @@
 {
   "name": "oxlint-plugin-pngdeer",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Lint rule for oxlint and ESLint: flags PNGs and JPEGs your code uses that could be much smaller at about the same visual quality, with the command that shrinks them. Local WebAssembly, no upload.",
   "keywords": [
     "oxlint",
@@ -44,7 +44,9 @@
   ],
   "scripts": {
     "test": "node --test",
-    "bench": "node bench/run.js"
+    "check:package": "node scripts/check-package.js",
+    "bench": "node bench/run.js",
+    "check:published": "node scripts/check-package.js --published"
   },
   "peerDependencies": {
     "eslint": ">=9.0.0",

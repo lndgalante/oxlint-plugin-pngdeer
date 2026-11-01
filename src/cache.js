@@ -5,9 +5,8 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { marked } from "./marker.js";
-import { smaller } from "./text.js";
 
-const keys = new Map(); // image path -> { size, mtimeMs, target, key, marked }, so images aren't re-read on every keystroke
+const keys = new Map(); // image path -> file metadata and content key, so images aren't re-read on every keystroke
 
 // The engine's identity: the first 16 hex digits of the wasm's SHA-256 (a few ms for 2 MB). A new
 // engine invalidates every entry.
@@ -54,17 +53,18 @@ export function readFirst(k, ...dirs) {
 export function reportable(entry, { minSavedBytes, minSavedPercent }) {
   if (!entry || entry.skipped || !["hit", "exact", "lossless"].includes(entry.outcome)) return false;
   const saved = entry.original - entry.compressed;
-  return saved >= minSavedBytes && smaller(entry.original, entry.compressed) >= minSavedPercent;
+  return saved > 0 && saved >= minSavedBytes && (100 * saved) / entry.original >= minSavedPercent;
 }
 
 /** An image's size, the cache key of its current bytes and whether pngdeer wrote it; null if it can't be read. */
 export function fileKey(file, target) {
   try {
-    const { size, mtimeMs } = statSync(file);
+    const { size, mtimeMs, ctimeMs, dev, ino } = statSync(file);
     const memo = keys.get(file);
-    if (memo && memo.size === size && memo.mtimeMs === mtimeMs && memo.target === target) return memo;
+    // Copy tools can preserve mtime; an atomic replacement can also keep the same size.
+    if (memo && memo.size === size && memo.mtimeMs === mtimeMs && memo.ctimeMs === ctimeMs && memo.dev === dev && memo.ino === ino && memo.target === target) return memo;
     const bytes = readFileSync(file);
-    const image = { size, mtimeMs, target, key: key(bytes, target), marked: marked(bytes) };
+    const image = { size, mtimeMs, ctimeMs, dev, ino, target, key: key(bytes, target), marked: marked(bytes) };
     keys.set(file, image);
     return image;
   } catch {

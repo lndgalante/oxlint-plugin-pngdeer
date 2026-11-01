@@ -12,18 +12,26 @@ on:
 permissions:
   contents: write # the GitHub Release
   id-token: write
+  actions: read
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Require successful CI for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          passed=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&event=push&per_page=20" --jq '[.workflow_runs[] | select(.conclusion == "success")] | length')
+          test "$passed" -gt 0 || { echo "CI must pass for this commit before publishing"; exit 1; }
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
       - run: npm ci
       - run: npm test
+      - run: npm run check:package
       - name: Tag matches package.json
         run: test "v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME"
       - name: Skip versions already on npm
@@ -39,6 +47,8 @@ jobs:
           tag=latest
           case "$GITHUB_REF_NAME" in *-*) tag=next ;; esac
           npm publish --provenance --access public --tag "$tag"
+      - name: Verify the published package
+        run: npm run check:published
       # A GitHub Release with the commits since the last tag. Say in its notes whether the engine
       # changed: a new engine measures every image again.
       - name: GitHub Release
@@ -47,4 +57,9 @@ jobs:
         run: |
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 && exit 0
           case "$GITHUB_REF_NAME" in *-*) pre=--prerelease ;; *) pre= ;; esac
-          gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes $pre
+          notes="docs/releases/${GITHUB_REF_NAME#v}.md"
+          if test -f "$notes"; then
+            gh release create "$GITHUB_REF_NAME" --verify-tag --notes-file "$notes" $pre
+          else
+            gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes $pre
+          fi

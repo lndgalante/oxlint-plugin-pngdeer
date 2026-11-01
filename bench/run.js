@@ -8,7 +8,7 @@
 // - an editor's first lint (which mustn't wait)
 // - shrinking everything flagged
 //
-//   node bench/run.js [--size small|medium|large] [--json results.json]
+//   node bench/run.js [--size small|medium|large] [--scope-comparison] [--json results.json]
 import { spawnSync } from "node:child_process";
 import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { cpus, platform, release, tmpdir, totalmem } from "node:os";
@@ -37,7 +37,8 @@ if (!SIZES[size]) throw new Error(`--size is small, medium or large, not ${size}
 
 const images = await fetchImages();
 // outside this repo, whose .gitignore oxlint would follow
-const work = join(tmpdir(), "oxlint-plugin-pngdeer-bench", size);
+const compareScopes = args.includes("--scope-comparison");
+const work = join(tmpdir(), "oxlint-plugin-pngdeer-bench", `${size}${compareScopes ? "-scopes" : ""}`);
 const app = build(work, images, SIZES[size]);
 const results = [];
 
@@ -45,30 +46,51 @@ console.log(`oxlint-plugin-pngdeer ${version(plugin)} benchmark, ${size}: ${app.
 console.log(`${cpus()[0]?.model ?? "?"}, ${cpus().length} cores, ${Math.round(totalmem() / 1e9)} GB, ${platform()} ${release()}, Node ${process.versions.node}, oxlint ${version(join(plugin, "node_modules", "oxlint"))}, ESLint ${version(join(plugin, "node_modules", "eslint"))}`);
 
 record("oxlint, without the plugin", run(OXLINT, ["-c", ".oxlintrc.base.json", "-f", "unix"]));
-uncache();
-record("oxlint + pngdeer, first run", run(OXLINT, ["-f", "unix"]));
-record("oxlint + pngdeer, later runs (median of 3)", median([1, 2, 3].map(() => run(OXLINT, ["-f", "unix"]))));
-copyFileSync(app.replacement, app.changed);
-record("oxlint + pngdeer, after one image changed", run(OXLINT, ["-f", "unix"]));
-const eslint = run(ESLINT, ["src"]);
-record("ESLint + pngdeer, later run (.jsx files)", eslint);
-uncache();
-editor(warnings(eslint));
-// --flagged writes over the images, so it runs on a copy, linted there first: the list it reads
-// holds absolute paths
-const copy = `${work}-flagged`;
-rmSync(copy, { recursive: true, force: true });
-cpSync(work, copy, { recursive: true });
-run(OXLINT, ["-f", "unix"], copy);
-record("npx oxlint-plugin-pngdeer --flagged", run(COMMAND, ["--flagged"], copy));
-rmSync(copy, { recursive: true, force: true });
+if (compareScopes) scopes();
+else standard();
 
 console.log("");
 console.log("| What | Time | Peak memory | |");
 console.log("|---|---:|---:|---|");
 for (const { what, ms, rss, about } of results) console.log(`| ${what} | ${seconds(ms)} | ${rss ? mb(rss) : "n/a"} | ${about} |`);
 const json = option("--json");
-if (json) writeFileSync(json, `${JSON.stringify({ size, app, results }, null, 2)}\n`);
+if (json) writeFileSync(json, `${JSON.stringify({ size, scopeComparison: compareScopes, app, results }, null, 2)}\n`);
+
+/** Exercise the usual lint, editor and compression workflows. */
+function standard() {
+  uncache();
+  record("oxlint + pngdeer, first run", run(OXLINT, ["-f", "unix"]));
+  record("oxlint + pngdeer, later runs (median of 3)", median([1, 2, 3].map(() => run(OXLINT, ["-f", "unix"]))));
+  copyFileSync(app.replacement, app.changed);
+  record("oxlint + pngdeer, after one image changed", run(OXLINT, ["-f", "unix"]));
+  const eslint = run(ESLINT, ["src"]);
+  record("ESLint + pngdeer, later run (.jsx files)", eslint);
+  uncache();
+  editor(warnings(eslint));
+  // --flagged holds absolute paths, so lint the copy before compressing its images.
+  const copy = `${work}-flagged`;
+  rmSync(copy, { recursive: true, force: true });
+  cpSync(work, copy, { recursive: true });
+  run(OXLINT, ["-f", "unix"], copy);
+  record("npx oxlint-plugin-pngdeer --flagged", run(COMMAND, ["--flagged"], copy));
+  rmSync(copy, { recursive: true, force: true });
+}
+
+/** Compare scopes on the same corpus, with a fresh cache before each full or single-file lint. */
+function scopes() {
+  const config = JSON.parse(readFileSync(join(work, ".oxlintrc.json"), "utf8"));
+  for (const scan of ["project", "referenced"]) {
+    config.rules["pngdeer/compressible-image"] = ["warn", { scan }];
+    const path = `.oxlintrc.${scan}.json`;
+    writeFileSync(join(work, path), JSON.stringify(config));
+    for (const [label, files] of [["full lint", []], ["one file", ["src/components/Card0.jsx"]]]) {
+      const args = ["-c", path, "-f", "unix", ...files];
+      uncache();
+      record(`${scan}, ${label}, cold`, run(OXLINT, args));
+      record(`${scan}, ${label}, cached (median of 3)`, median([1, 2, 3].map(() => run(OXLINT, args))));
+    }
+  }
+}
 
 /** Runs `script` with Node in the app (or `cwd`): { ms, rss, stdout, stderr }, rss null where it can't be read. */
 function run(script, scriptArgs, cwd = work) {
@@ -77,7 +99,7 @@ function run(script, scriptArgs, cwd = work) {
   const timed = timer && existsSync("/usr/bin/time");
   const [command, commandArgs] = timed ? ["/usr/bin/time", [...timer, process.execPath, script, ...scriptArgs]] : [process.execPath, [script, ...scriptArgs]];
   const start = performance.now();
-  const result = spawnSync(command, commandArgs, { cwd, encoding: "utf8", maxBuffer: 256e6 });
+  const result = spawnSync(command, commandArgs, { cwd, encoding: "utf8", maxBuffer: 256e6, timeout: 15 * 60 * 1000 });
   const ms = performance.now() - start;
   if (result.status !== 0 && result.status !== 1) throw new Error(`bench: ${basename(script)} exited ${result.status}\n${result.stderr}`);
   let rss = null;
@@ -103,10 +125,10 @@ function editor(expected) {
 }
 
 function said(result) {
-  const measured = /measured (\d+) images? in/.exec(result.stderr)?.[1];
+  const measured = [...result.stderr.matchAll(/measured (\d+) images? in/g)].reduce((sum, match) => sum + Number(match[1]), 0);
   const found = warnings(result);
   const shrunk = /pngdeer: (\d+) images?, .* smaller\)/.exec(result.stderr)?.[1];
-  return [measured && `measured ${count(Number(measured), "image")}`, found && count(found, "warning"), shrunk && `shrank ${count(Number(shrunk), "image")}`].filter(Boolean).join(", ");
+  return [measured && `measured ${count(measured, "image")}`, found && count(found, "warning"), shrunk && `shrank ${count(Number(shrunk), "image")}`].filter(Boolean).join(", ");
 }
 
 function warnings({ stdout, stderr }) {

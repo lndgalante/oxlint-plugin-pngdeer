@@ -7,6 +7,7 @@ npm run bench                      # medium: 200 components, 39 images
 npm run bench -- --size small      # 20 components, 16 images
 npm run bench -- --size large      # 1,000 components, 41 images, two of them 16–24 MP camera originals
 npm run bench -- --json out.json   # the results as JSON too
+npm run bench -- --scope-comparison # project vs referenced, full lint and one file
 ```
 
 The first run downloads the images (20 MB) into `bench/.images`, once. Each run builds the app in your temporary folder, outside this repo, whose `.gitignore` oxlint would follow. The app has:
@@ -29,7 +30,7 @@ Each row is one command run in the app:
 | ESLint's language server | an editor's first lint with no cache: it must return at once, then the warnings arrive as the background measuring fills the cache |
 | `--flagged` | shrinking everything the last lint flagged, on a copy of the app |
 
-Peak memory is the whole process's, read from `/usr/bin/time` on macOS and Linux. It includes the plugin's worker threads, which compress images within a quarter of the machine's memory (1–4 GB).
+Peak memory is the whole process's, read from `/usr/bin/time` on macOS and Linux. It includes the plugin's worker threads. The current worker budget estimates a quarter of the machine's memory, up to 4 GB; one image can exceed that estimate. These historical results used version 0.3.0, whose budget had a 1 GB minimum.
 
 ## Results
 
@@ -46,6 +47,27 @@ Peak memory is the whole process's, read from `/usr/bin/time` on macOS and Linux
 | npx oxlint-plugin-pngdeer --flagged | 11.5 s | 3.0 GB | shrank 30 images |
 
 `large` on the same machine has 1,000 components and the same images, plus the two camera originals. Its first run takes 79.8 s at 3.9 GB: the camera originals add about 65 s on their own. Later runs take 256 ms, against 87 ms for oxlint alone, and an editor's first lint returns in 465 ms.
+
+## Comparing scan scopes
+
+```bash
+npm run bench -- --scope-comparison --size medium --json /tmp/pngdeer-scopes.json
+```
+
+This runs both `"scan": "project"` and `"scan": "referenced"` over the same generated app. Each scope gets a full lint and a lint of `Card0.jsx`, which references two images. Each cold scenario starts with an empty cache; cached times are the median of three runs. The command reports time, peak memory, images measured and warning count. It does not compress files in place.
+
+The comparison matters because referenced mode does less work for a targeted lint, but discovers images one source file at a time during a full lint. Project mode can measure more images faster by batching them in parallel. Use the result for the workflow you run most often; cached timings matter after the first measurement too.
+
+Measured on November 1, 2026, with the development build adding scan controls: `small`, 20 components and 16 images (3 MB), Apple M3 Max (16 cores, 52 GB), Darwin 25.6.0, Node 26.12.0, oxlint 1.90.0 and ESLint 10.14.0:
+
+| Scope and lint | Cold | Peak memory, cold | Cached (median of 3) | Images measured cold | Warnings |
+|---|---:|---:|---:|---:|---:|
+| Project, full lint | 5.6 s | 1.7 GB | 138 ms | 12 | 18 |
+| Referenced, full lint | 16.8 s | 492 MB | 139 ms | 9 | 18 |
+| Project, one file | 5.7 s | 1.6 GB | 110 ms | 12 | 2 |
+| Referenced, one file | 922 ms | 167 MB | 108 ms | 2 | 2 |
+
+The full lint without the plugin took 63 ms and peaked at 80 MB. These are one cold run per scenario on this corpus and machine, measured outside the execution sandbox so macOS could report peak memory. They support keeping project scanning as the default while offering referenced mode for targeted lints and lower memory use.
 
 ## Images
 

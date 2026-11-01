@@ -2,12 +2,12 @@
 // `npx oxlint-plugin-pngdeer --flagged` shrinks, so nobody copies paths from warnings one by one.
 // The table also lists images the run measured that no linted JS or TS names, which no warning can
 // point at, each with where it is used instead (a stylesheet, a page, a template), if anywhere.
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { basename, dirname, isAbsolute, join } from "node:path";
 import { isMainThread, threadId } from "node:worker_threads";
 import { cacheDir, fileKey, read, reportable } from "./cache.js";
 import { projectFiles, projectImages } from "./scan.js";
-import { count, pathFrom, quote, size, smaller } from "./text.js";
+import { count, pathFrom, shrinkCommand, size, smaller } from "./text.js";
 
 // Rows shown per table; the rest are counted, and --flagged still takes them all.
 const ROWS = 10;
@@ -23,13 +23,17 @@ const PAGE_BYTES = 1e6; // bigger ones are build output or lockfiles, not where 
 
 const flagged = new Map(); // image path -> { original, compressed, score, target, files: the linted files warning about it }
 const named = new Set(); // every image linted code names, flagged or not
-const roots = new Map(); // project root -> the rule's options there
+const targets = new Map(); // physical image path -> targets required by every enabled reference
+const roots = new Map(); // each distinct project/configuration pair, including scoped overrides
 const SHARE_HOURS = 1; // a thread's share older than this was left by a run that died
 
 /** Notes an image a warning in linted file `from` was reported for: one warning per file, however often it's linted. */
 export function flag(file, from, entry) {
-  const files = flagged.get(file)?.files ?? new Set();
-  flagged.set(file, { ...entry, files: files.add(from) });
+  const previous = flagged.get(file);
+  const files = previous?.files ?? new Set();
+  // A shared image must keep the strictest quality requested by its reported references.
+  const keep = previous && (previous.target ?? previous.score) > (entry.target ?? entry.score) ? previous : entry;
+  flagged.set(file, { ...keep, files: files.add(from) });
 }
 
 /** Notes an image linted code names. */
@@ -37,9 +41,17 @@ export function name(file) {
   named.add(file);
 }
 
+/** A target constrains bulk compression even when its reference produces no warning. */
+export function requireTarget(file, target) {
+  const path = physical(file);
+  const required = targets.get(path) ?? new Set();
+  required.add(target ?? "auto");
+  targets.set(path, required);
+}
+
 /** Notes a project the lint ran in, and the options it ran with, to find images nothing names. */
 export function watch(root, options) {
-  roots.set(root, options);
+  roots.set(JSON.stringify([root, options]), { root, options });
 }
 
 /** The list a lint run from `cwd` leaves for --flagged. */
@@ -50,7 +62,12 @@ export function flaggedList(cwd) {
 /** The images the last lint run from `cwd` flagged, as [{ file, target }]; null if no lint left a list. */
 export function readFlagged(cwd) {
   try {
-    return JSON.parse(readFileSync(flaggedList(cwd), "utf8"));
+    const list = JSON.parse(readFileSync(flaggedList(cwd), "utf8"));
+    if (!Array.isArray(list) || !list.every((entry) =>
+      entry && typeof entry.file === "string" && isAbsolute(entry.file) && !entry.file.includes("\0") &&
+      (entry.target === undefined || (typeof entry.target === "number" && Number.isFinite(entry.target) && entry.target >= 0 && entry.target <= 100)),
+    )) return null;
+    return list;
   } catch {
     return null;
   }
@@ -66,7 +83,7 @@ export function share(cwd = process.cwd()) {
   try {
     const dir = join(cacheDir(cwd), "threads");
     mkdirSync(dir, { recursive: true });
-    const state = { flagged: [...flagged].map(([file, entry]) => [file, { ...entry, files: [...entry.files] }]), named: [...named], roots: [...roots] };
+    const state = { flagged: [...flagged].map(([file, entry]) => [file, { ...entry, files: [...entry.files] }]), named: [...named], roots: [...roots], targets: [...targets].map(([file, required]) => [file, [...required]]) };
     writeFileSync(join(dir, `${process.pid}-${threadId}.json`), JSON.stringify(state));
   } catch {
     // that thread's images go untold
@@ -88,11 +105,13 @@ function gather(cwd) {
       if (name.startsWith(`${process.pid}-`)) {
         const state = JSON.parse(readFileSync(path, "utf8"));
         for (const [file, entry] of state.flagged) {
-          const files = new Set([...(flagged.get(file)?.files ?? []), ...entry.files]);
-          flagged.set(file, { ...entry, files });
+          for (const from of entry.files) flag(file, from, entry);
         }
         for (const file of state.named) named.add(file);
-        for (const [root, options] of state.roots) roots.set(root, options);
+        for (const [key, scope] of state.roots) roots.set(key, scope);
+        for (const [file, required] of state.targets) {
+          for (const target of required) requireTarget(file, target === "auto" ? undefined : target);
+        }
       } else if (Date.now() - statSync(path).mtimeMs < SHARE_HOURS * 3600e3) continue;
       rmSync(path, { force: true });
     } catch {
@@ -109,9 +128,10 @@ export function summarize(cwd = process.cwd()) {
   // left nothing) has nothing to say, and mustn't empty the list the last lint left
   if (roots.size === 0) return;
   const list = flaggedList(cwd);
-  const images = [...flagged].sort(([, a], [, b]) => b.original - b.compressed - (a.original - a.compressed));
+  const images = [...flagged].filter(([file, entry]) => meetsTargets(file, entry.target)).sort(([, a], [, b]) => b.original - b.compressed - (a.original - a.compressed));
+  const held = [...flagged.keys()].filter((file) => !meetsTargets(file, flagged.get(file).target));
   // a clean run replaces an older list, but doesn't create one
-  if (images.length || existsSync(list)) {
+  if (flagged.size || existsSync(list)) {
     try {
       mkdirSync(dirname(list), { recursive: true });
       writeFileSync(list, JSON.stringify(images.map(([file, { target }]) => ({ file, target }))));
@@ -122,7 +142,7 @@ export function summarize(cwd = process.cwd()) {
   if (process.argv.includes("--quiet") || MACHINE.has(format())) return;
 
   const unnamed = unnamedImages();
-  if (images.length === 0 && unnamed.length === 0) return;
+  if (images.length === 0 && unnamed.length === 0 && held.length === 0) return;
   const shownUnnamed = unnamed.slice(0, UNNAMED_ROWS);
   const row = ([file, { original, compressed, score }]) => [pathFrom(cwd, file), size(original), size(compressed), size(original - compressed), String(Math.round(score))];
   const header = ["image", "now", "after", "saves", "quality"];
@@ -154,25 +174,55 @@ export function summarize(cwd = process.cwd()) {
   if (unnamed.length) {
     // no warning can point at these: their only mention is in CSS, HTML and the like, or nowhere
     const { saved } = total(unnamed);
-    const lead = images.length ? "also" : "no warnings, but";
+    const lead = flagged.size ? "also" : "no warnings, but";
     lines.push(`pngdeer: ${lead} ${count(unnamed.length, "image")} that no linted JS or TS names could be ${saved} smaller:`);
     if (!images.length) lines.push(line(header, " "));
     lines.push(...rows.slice(1 + Math.min(images.length, ROWS)).map((cells) => line(cells)));
     if (unnamed.length > UNNAMED_ROWS) lines.push(`  …and ${count(unnamed.length - UNNAMED_ROWS, "more image")}`);
   }
-  lines.push("pngdeer: quality is SSIMULACRA2, out of 100: 90+ looks identical, 80+ the same side by side, 70+ close, with differences you might spot side by side");
+  if (images.length || unnamed.length) lines.push("pngdeer: quality is SSIMULACRA2, out of 100: 90+ looks identical, 80+ the same side by side, 70+ close, with differences you might spot side by side");
   if (images.length) {
     lines.push(`pngdeer: to shrink the ${images.length === 1 ? "flagged image" : `${images.length} flagged images`} in place (lossy, so commit first), run: npx oxlint-plugin-pngdeer --flagged`);
   }
   if (unnamed.length) {
-    const paths = shownUnnamed.map(([file]) => quote(pathFrom(cwd, file))).join(" ");
     const which = unnamed.length === 1 ? "it" : "them";
-    lines.push(`pngdeer: to shrink ${images.length ? `${which} too` : `${which} in place (lossy, so commit first)`}, run: npx oxlint-plugin-pngdeer ${paths}`);
+    const commands = new Map();
+    for (const [file, { target }] of shownUnnamed) {
+      const paths = commands.get(target) ?? [];
+      paths.push(pathFrom(cwd, file));
+      commands.set(target, paths);
+    }
+    for (const [target, paths] of commands) {
+      const command = shrinkCommand(paths, target);
+      lines.push(`pngdeer: to shrink ${images.length ? `${which} too` : `${which} in place (lossy, so commit first)`}, run${command.shell}: ${command.text}`);
+    }
     if (shownUnnamed.some((image) => !namedIn(image[2], image[0]))) {
       lines.push("pngdeer: an image nothing names may be unused (or its path is built at runtime): deleting it saves it all");
     }
   }
+  if (held.length) {
+    lines.push(`pngdeer: left ${count(held.length, "shared image")} out of --flagged because another reference requires a different quality target:`);
+    lines.push(...held.slice(0, ROWS).map((file) => `  ${pathFrom(cwd, file)}`));
+    if (held.length > ROWS) lines.push(`  …and ${count(held.length - ROWS, "more image")}`);
+    lines.push("pngdeer: use one target for each shared image before compressing it in bulk.");
+  }
   process.stderr.write(`${lines.join("\n")}\n`);
+}
+
+function meetsTargets(file, target) {
+  const required = targets.get(physical(file));
+  if (!required) return true;
+  // An automatic target is image-dependent, so it cannot safely be ordered against a fixed one.
+  if (required.has("auto")) return required.size === 1 && target === undefined;
+  return target !== undefined && target >= Math.max(...required);
+}
+
+function physical(file) {
+  try {
+    return realpathSync(file);
+  } catch {
+    return file;
+  }
 }
 
 /**
@@ -180,16 +230,20 @@ export function summarize(cwd = process.cwd()) {
  * thresholds: [[path, entry, root]], biggest saving first. Reads only results already cached.
  */
 function unnamedImages() {
-  const found = [];
-  for (const [root, options] of roots) {
-    for (const file of projectImages(root, options.minSavedBytes)) {
+  const found = new Map();
+  for (const { root, options } of roots.values()) {
+    if (options.scan === "referenced") continue;
+    for (const file of projectImages(root, options.minSavedBytes, options.exclude)) {
       if (named.has(file) || flagged.has(file)) continue;
       const image = fileKey(file, options.target);
       const entry = image && read(options.dir, image.key);
-      if (reportable(entry, options)) found.push([file, entry, root]);
+      if (!reportable(entry, options)) continue;
+      const previous = found.get(file)?.[1];
+      if (previous && (previous.target ?? previous.score) > (options.target ?? entry.score)) continue;
+      found.set(file, [file, { ...entry, target: options.target }, root]);
     }
   }
-  return found.sort(([, a], [, b]) => b.original - b.compressed - (a.original - a.compressed));
+  return [...found.values()].sort(([, a], [, b]) => b.original - b.compressed - (a.original - a.compressed));
 }
 
 const pages = new Map(); // project root -> [{ path, text }] of its PAGES, then its DOCS, read once

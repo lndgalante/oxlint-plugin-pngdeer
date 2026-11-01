@@ -4,16 +4,16 @@
 import { statSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { cacheDir, fileKey, readFirst, reportable } from "./cache.js";
-import { projectImages } from "./scan.js";
-import { flag, name, share, summarize, watch } from "./summary.js";
+import { excluded, projectImages, projectRoot } from "./scan.js";
+import { flag, name, requireTarget, share, summarize, watch } from "./summary.js";
 import { configAliases } from "./tsconfig.js";
 import { fillInBackground, fillSync } from "./sync.js";
-import { count, looks, pathFrom, quote, size, smaller } from "./text.js";
+import { count, looks, pathFrom, shrinkCommand, size, smaller } from "./text.js";
 
 const RULE = "pngdeer/compressible-image";
 const IMAGE = /\.(png|apng|jpe?g)$/i;
 const REMOTE = /^[a-z][a-z0-9+.-]*:|^\/\//i;
-const DEFAULTS = { minSavedBytes: 4096, minSavedPercent: 10, target: "auto", measure: "auto" };
+const DEFAULTS = { minSavedBytes: 4096, minSavedPercent: 10, target: "auto", measure: "auto", scan: "project", exclude: [] };
 // when neither the settings nor the project's tsconfig/jsconfig define aliases
 const ALIASES = { "@/": "src/", "~/": "src/" };
 
@@ -28,8 +28,7 @@ const EDITOR =
   process.env.ELECTRON_RUN_AS_NODE === "1";
 
 // Per process (the language server's lasts the whole editor session):
-const roots = new Map(); // directory -> its project root
-const scanned = new Set(); // `${root}\0${dir}\0${target}` whose project images were all measured, or queued, once
+const scanned = new Set(); // project scans already measured or queued, keyed by scope and settings
 const failed = new Set(); // outside editors: roots whose batch failed, not tried again this run
 const told = new Set(); // outside editors: images already named on stderr
 // outside editors: `${image}\0${target}` -> the linted file that got the image's full warning; other
@@ -45,10 +44,10 @@ export default {
       url: "https://github.com/lndgalante/oxlint-plugin-pngdeer/blob/main/docs/rules/compressible-image.md",
     },
     messages: {
-      compressible: "{{name}} could be {{percent}}% smaller ({{before}} → {{after}}) and look {{looks}} (quality {{quality}}/100). Run: {{command}}",
+      compressible: "{{name}} could be {{percent}}% smaller ({{before}} → {{after}}) and look {{looks}} (quality {{quality}}/100). Run{{shell}}: {{command}}",
       // the same image again, in another file of the same run: its first warning said the rest
-      again: "{{name}} could be {{percent}}% smaller ({{before}} → {{after}}), as warned where it's first used. Run: {{command}}",
-      lossless: "{{name}} could be {{percent}}% smaller ({{before}} → {{after}}), losslessly. Run: {{command}}",
+      again: "{{name}} could be {{percent}}% smaller ({{before}} → {{after}}), as warned where it's first used. Run{{shell}}: {{command}}",
+      lossless: "{{name}} could be {{percent}}% smaller ({{before}} → {{after}}), losslessly. Run{{shell}}: {{command}}",
     },
     schema: [
       {
@@ -58,6 +57,8 @@ export default {
           minSavedPercent: { type: "number", minimum: 0, maximum: 100 },
           target: { anyOf: [{ const: "auto" }, { type: "number", minimum: 0, maximum: 100 }] },
           measure: { enum: ["auto", "always", "never"] },
+          scan: { enum: ["project", "referenced"] },
+          exclude: { type: "array", items: { type: "string", minLength: 1 } },
         },
         additionalProperties: false,
       },
@@ -68,10 +69,10 @@ export default {
   },
 
   create(context) {
-    const { minSavedBytes, minSavedPercent, target: option, measure } = { ...DEFAULTS, ...context.options[0] };
+    const { minSavedBytes, minSavedPercent, target: option, measure, scan, exclude } = { ...DEFAULTS, ...context.options[0] };
     const target = option === "auto" ? undefined : option;
     const settings = context.settings.pngdeer ?? {};
-    const from = context.physicalFilename ?? context.filename;
+    const from = resolve(context.cwd, context.physicalFilename ?? context.filename);
     // public dirs, aliases and the cache belong to the package, wherever the linter was started
     const root = projectRoot(dirname(from), context.cwd);
     const { publicDirs = ["public", "static"] } = settings;
@@ -90,14 +91,20 @@ export default {
 
     const reported = new Set(); // images warned about in this file: once each, at their first mention
     let disabled; // (line) => whether a comment turns this rule off there, read on first use
-    if (!EDITOR) watch(root, { minSavedBytes, minSavedPercent, target, dir });
+    if (!EDITOR) watch(root, { minSavedBytes, minSavedPercent, target, dir, scan, exclude });
 
     function check(node, text) {
       for (const { file, part } of imagesIn(text, find)) {
+        if (excluded(root, file, exclude)) continue;
         const image = fileKey(file, target);
+        const loc = part && within(node, part);
+        if (!EDITOR) {
+          name(file);
+          disabled ??= disabledLines(context.sourceCode, context.id ?? RULE);
+          if (!disabled((loc?.start ?? node.loc.start).line)) requireTarget(file, target);
+        }
         // a file smaller than minSavedBytes can't save that much: not worth measuring
-        if (!EDITOR) name(file);
-        if (image && image.size >= minSavedBytes) found.push({ node, file, k: image.key, loc: part && within(node, part) });
+        if (image && image.size >= minSavedBytes) found.push({ node, file, k: image.key, loc });
       }
     }
 
@@ -116,15 +123,18 @@ export default {
       // The linter hides a warning a comment turns off by itself, but the image mustn't count as
       // flagged either, or --flagged would rewrite an image someone chose to keep.
       disabled ??= disabledLines(context.sourceCode, context.id ?? RULE);
-      if (disabled((loc?.start ?? node.loc.start).line)) return;
-      reported.add(file);
-      if (!EDITOR) flag(file, from, { original: result.original, compressed: result.compressed, score: result.score, target });
+      const suppressed = disabled((loc?.start ?? node.loc.start).line);
+      // The linter needs the report even when disabled, to recognize a used directive.
+      if (!suppressed) {
+        reported.add(file);
+        if (!EDITOR) flag(file, from, { original: result.original, compressed: result.compressed, score: result.score, target });
+      }
       // this package's own command (bin/pngdeer.js), at the target measured, so it writes exactly the
       // file this promises; named by the package, so npx can't fetch someone else's
-      const command = `npx oxlint-plugin-pngdeer ${quote(shown(file))}${target === undefined ? "" : ` --target ${target}`}`;
+      const command = shrinkCommand([shown(file)], target);
       const seen = `${file}\0${target}`;
-      if (!EDITOR && !warned.has(seen)) warned.set(seen, from);
-      const repeat = !EDITOR && warned.get(seen) !== from;
+      if (!EDITOR && !suppressed && !warned.has(seen)) warned.set(seen, from);
+      const repeat = !EDITOR && warned.has(seen) && warned.get(seen) !== from;
       context.report({
         node,
         loc: loc ?? undefined,
@@ -136,7 +146,8 @@ export default {
           after: size(result.compressed),
           looks: looks(result.score),
           quality: Math.round(result.score),
-          command,
+          command: command.text,
+          shell: command.shell,
         },
       });
     }
@@ -155,17 +166,16 @@ export default {
       TemplateLiteral(node) {
         if (node.expressions.length === 0) check(node, node.quasis[0].value.cooked ?? "");
       },
-      // What this file names is measured, then reported. The first file of a project in a run also
-      // takes every image in it, named or not, in the same parallel batch: the files linted next find
-      // theirs cached, and the summary can tell about images only CSS or HTML use.
+      // In project mode, the first file also measures unnamed images in the same parallel batch.
+      // Later files find theirs cached, and the summary can list images only CSS or HTML uses.
       "Program:exit"() {
-        const group = `${root}\0${dir}\0${target}`;
-        const first = measure !== "never" && !scanned.has(group);
+        const group = JSON.stringify([root, dir, target, minSavedBytes, scan, exclude]);
+        const first = scan === "project" && measure !== "never" && !scanned.has(group);
         if (found.length === 0 && !first) {
           if (!EDITOR) share();
           return;
         }
-        scanned.add(group);
+        if (first) scanned.add(group);
         // what the engine has yet to measure: pngdeer's own output (marked) needs none, and gets no entry,
         // so the editor and the command line leave the same files in a cache folder someone commits
         const unmeasured = (file) => {
@@ -173,7 +183,7 @@ export default {
           return image && !image.marked && !lookup(image.key);
         };
         const named = measure === "never" ? [] : found.map(({ file }) => file);
-        const files = [...new Set(first ? [...named, ...projectImages(root, minSavedBytes)] : named)].filter(unmeasured);
+        const files = [...new Set(first ? [...named, ...projectImages(root, minSavedBytes, exclude)] : named)].filter(unmeasured);
         if (files.length) {
           if (!wait) fillInBackground({ dir, failures: local, target, files });
           else if (!failed.has(root)) measureNow(files);
@@ -261,20 +271,12 @@ function locate(path, from, root, publicDirs, aliases) {
   if (path.startsWith("./") || path.startsWith("../")) tries.push(resolve(dirname(from), path));
   else if (path.startsWith("/")) tries.push(...publicDirs.map((dir) => join(root, dir, path)), join(root, path));
   else {
-    for (const [prefix, target] of Object.entries(aliases)) {
-      if (path.startsWith(prefix)) tries.push(join(root, target, path.slice(prefix.length)));
+    const prefix = Object.keys(aliases).filter((prefix) => path.startsWith(prefix)).sort((a, b) => b.length - a.length)[0];
+    if (prefix !== undefined) {
+      for (const target of [].concat(aliases[prefix])) tries.push(join(root, target, path.slice(prefix.length)));
     }
   }
   return tries.find(isFile) ?? null;
-}
-
-/** The nearest directory with a package.json, from `dir` up; `fallback` if none has one. */
-function projectRoot(dir, fallback) {
-  if (!roots.has(dir)) {
-    const parent = dirname(dir);
-    roots.set(dir, isFile(join(dir, "package.json")) ? dir : parent === dir ? fallback : projectRoot(parent, fallback));
-  }
-  return roots.get(dir);
 }
 
 function isFile(path) {

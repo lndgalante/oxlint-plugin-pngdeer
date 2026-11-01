@@ -18,6 +18,24 @@ A lint rule for [oxlint](https://oxc.rs/docs/guide/usage/linter) and ESLint. It 
 
 Compressing your images once fixes today's. The rule also catches next month's 2 MB screenshot, in your editor and in the pull request that adds it.
 
+## Try it on your images
+
+```bash
+npx oxlint-plugin-pngdeer --check public src/assets
+```
+
+Checks PNGs and JPEGs without changing them, including images used only from CSS or HTML. It reports savings of at least 4 KiB and 10%, and warms the cache for later lints. No linter configuration is needed. With no paths, `--check` scans the current directory. Exit codes are `0` for no qualifying savings, `1` for savings found, and `2` if the check could not finish.
+
+Use `--target 90`, `--min-saved-bytes 8192`, or `--exclude "public/originals/**"` to adjust the check. It does not read your linter's options or change the list used by `--flagged`. [Check command details](https://github.com/lndgalante/oxlint-plugin-pngdeer/blob/main/docs/rules/compressible-image.md#check-images-without-changing-them)
+
+Automatic, lossy compression of the included crystal-ball image saved **24,296 bytes (68.5%)**:
+
+| Original · 35,475 bytes | Compressed · 11,179 bytes |
+|---|---|
+| ![Original purple crystal ball with yellow stars](https://raw.githubusercontent.com/lndgalante/oxlint-plugin-pngdeer/main/example/src/assets/crystal-ball.png) | ![Compressed purple crystal ball with yellow stars](https://raw.githubusercontent.com/lndgalante/oxlint-plugin-pngdeer/main/docs/images/crystal-ball.optimized.png) |
+
+The compressed gradients show added texture. Compare previews at full size before replacing your own images; savings and visible differences vary by image.
+
 ## Quick start
 
 ```bash
@@ -36,6 +54,8 @@ In `.oxlintrc.json`:
 
 ```bash
 npx oxlint                            # warns on each heavy image, then sums them up
+npx oxlint-plugin-pngdeer public/hero.png -o hero.preview.png
+# Compare the preview with your original before replacing images.
 npx oxlint-plugin-pngdeer --flagged   # shrinks them in place (lossy: commit first)
 ```
 
@@ -44,8 +64,8 @@ Needs Node 20.19+ or 22.12+ and oxlint 1.90+. oxlint's JS plugins are alpha, so 
 ## How it works
 
 - **Local.** pngdeer, a lossy compressor like TinyPNG, ships in the package as 2 MB of WebAssembly: no upload, no API key, no native binaries, no install scripts.
-- **About TinyPNG's quality.** pngdeer keeps the smallest file that scores about what TinyPNG would give the image on [SSIMULACRA2](https://github.com/cloudinary/ssimulacra2), never above 90. Its PNGs come out 8–12% smaller than TinyPNG's at the same quality ([leaderboard](https://github.com/heydeer/pngdeer#leaderboard)). For photos and screenshots with small text, set `"target": 90`.
-- **Slow once, then cached.** The first run compresses every PNG and JPEG in the project, in memory, on all cores. Later lints read the cache, and editors never wait: they measure new images in the background.
+- **About TinyPNG's quality.** pngdeer keeps the smallest file that scores about what TinyPNG would give the image on [SSIMULACRA2](https://github.com/cloudinary/ssimulacra2). Its automatic quality target is capped at 90; output scores can be higher. Upstream reports 8–12% smaller files for the median PNG in its benchmark at comparable quality ([leaderboard](https://github.com/heydeer/pngdeer#leaderboard)). Scores estimate perceptual similarity; they do not guarantee identical appearance. For photos and screenshots with small text, try `"target": 90` and compare the output.
+- **Slow once, then cached.** By default, the first run compresses every PNG and JPEG in the project, in memory, with up to eight workers. Later lints read the cache, and editors never wait: they measure new images in the background. Use `"scan": "referenced"` to measure only images named in the files being linted.
 - **It sees** images named in JS and TS: imports, `require`, `new URL(…, import.meta.url)`, JSX `src` and `srcSet`, and strings that start with `./`, `../`, `/` or an alias like `@/`. Images used only from CSS, HTML or Markdown get no warning, but the summary lists them.
 - **Your images change only when you run the command,** which marks what it writes so it isn't flagged again.
 
@@ -61,7 +81,7 @@ From `npm run bench`: an app with 200 components and 39 images (12 MB), on a 16-
 | After one image changed | 0.96 s |
 | Editor's first lint, nothing cached | 171 ms |
 
-A median image takes about 3 s of one core. On a 4-core CI runner, budget a few minutes per hundred images, or commit the cache (below). [Every scenario](https://github.com/lndgalante/oxlint-plugin-pngdeer/blob/main/bench/README.md)
+The first run peaked at 3.0 GB of memory; the editor's background work peaked at 3.1 GB. These measurements come from the benchmark above, not a fixed limit. A median image takes about 3 s of one core. On a 4-core CI runner, budget a few minutes per hundred images, or commit the cache (below). [Every scenario](https://github.com/lndgalante/oxlint-plugin-pngdeer/blob/main/bench/README.md)
 
 ## ESLint
 
@@ -69,17 +89,16 @@ ESLint 9 and 10 run the same rule and share oxlint's cache:
 
 ```js
 // eslint.config.js
-import { defineConfig } from "eslint/config";
 import pngdeer from "oxlint-plugin-pngdeer";
 
-export default defineConfig([
+export default [
   // ...your config
   {
     files: ["**/*.{js,jsx,ts,tsx}"],
     plugins: { pngdeer },
     rules: { "pngdeer/compressible-image": "warn" },
   },
-]);
+];
 ```
 
 Your config must also parse JSX and TypeScript. Don't run this rule with `--cache`: ESLint's cache can't see images change.
@@ -102,6 +121,17 @@ After adding or changing images, run `npx oxlint` and commit `.pngdeer`. Set the
 
 `minSavedBytes` and `minSavedPercent` set the smallest saving worth a warning. `target` is the quality to keep: `"auto"`, or a SSIMULACRA2 score, where 90 looks identical and 80 the same side by side. [The rule's docs](https://github.com/lndgalante/oxlint-plugin-pngdeer/blob/main/docs/rules/compressible-image.md) cover the rest: paths and aliases, public folders, the cache, and turning the rule off for test fixtures.
 
+For a targeted lint, limit work to images that its source files reference and exclude originals or fixtures:
+
+```json
+"pngdeer/compressible-image": ["warn", {
+  "scan": "referenced",
+  "exclude": ["public/originals", "**/fixtures/**"]
+}]
+```
+
+Exclusions also suppress warnings on direct references. The default `"scan": "project"` batches images in parallel and can be faster for a full cold lint; referenced mode is useful when linting a few files. [Compare both scopes](https://github.com/lndgalante/oxlint-plugin-pngdeer/blob/main/bench/README.md#comparing-scan-scopes)
+
 ## Limits
 
 - **Less useful behind `next/image`, Astro's `<Image>` or an image CDN,** which re-encode images anyway.
@@ -116,11 +146,14 @@ git clone https://github.com/lndgalante/oxlint-plugin-pngdeer
 cd oxlint-plugin-pngdeer
 npm ci
 npm test
+npm run check:package
 npm run bench
 cd example && npx oxlint
 ```
 
 CI runs on Linux, macOS and Windows with Node 20, 22 and 24, oxlint 1.90 (and the newest, weekly), and ESLint 9.0 and 10. [FINDINGS.md](https://github.com/lndgalante/oxlint-plugin-pngdeer/blob/main/FINDINGS.md) has the design notes.
+
+[Public-project trials](https://github.com/lndgalante/oxlint-plugin-pngdeer/blob/main/bench/TRIALS.md) record checks of pinned Docusaurus, Starlight and Vue documentation assets, including savings, cold and cached timings, and the limits of those measurements.
 
 ## License
 

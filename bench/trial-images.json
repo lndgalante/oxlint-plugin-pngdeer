@@ -1,0 +1,206 @@
+[
+  {
+    "id": "docusaurus",
+    "repo": "facebook/docusaurus",
+    "commit": "653167747c8776546c0dd2c25620df1b7f6d7a59",
+    "selection": "examples/classic/",
+    "files": [
+      {
+        "path": "examples/classic/blog/2021-08-26-welcome/docusaurus-plushie-banner.jpeg",
+        "sha": "11bda0928456b12f8e53d0ba5709212a4058d449",
+        "size": 96122
+      },
+      {
+        "path": "examples/classic/docs/tutorial-extras/img/docsVersionDropdown.png",
+        "sha": "97e4164618b5f8beda34cfa699720aba0ad2e342",
+        "size": 25427
+      },
+      {
+        "path": "examples/classic/docs/tutorial-extras/img/localeDropdown.png",
+        "sha": "e257edc1f932985396bf59584c7ccfaddf955779",
+        "size": 27841
+      },
+      {
+        "path": "examples/classic/static/img/docusaurus-social-card.jpg",
+        "sha": "ffcb448210e1a456cb3588ae8b396a597501f187",
+        "size": 55746
+      },
+      {
+        "path": "examples/classic/static/img/docusaurus.png",
+        "sha": "f458149e3c8f53335f28fbc162ae67f55575c881",
+        "size": 5142
+      }
+    ]
+  },
+  {
+    "id": "starlight",
+    "repo": "withastro/starlight",
+    "commit": "6c9ca431629bbd37d969876f5f4281b5f5a34d38",
+    "selection": "docs/src/assets/testimonials/",
+    "files": [
+      {
+        "path": "docs/src/assets/testimonials/BowTiedWebReapr.jpg",
+        "sha": "1280ca5d72300585245edd039200dabbab008614",
+        "size": 16918
+      },
+      {
+        "path": "docs/src/assets/testimonials/J_Everhart383.jpg",
+        "sha": "165a032e38bfb6c835f47ab5732362d701812334",
+        "size": 14642
+      },
+      {
+        "path": "docs/src/assets/testimonials/RmeetsH.jpg",
+        "sha": "fc2e0e17ffd2113823c877a6752fb874dff13496",
+        "size": 13016
+      },
+      {
+        "path": "docs/src/assets/testimonials/SylwiaVargas.jpg",
+        "sha": "860d2f4e3ca246c641b79fc505941bd4244ce3a7",
+        "size": 23756
+      },
+      {
+        "path": "docs/src/assets/testimonials/beaussan.jpg",
+        "sha": "9eeb270ddcdc769217b93abb6f442fb1e5e31158",
+        "size": 25772
+      },
+      {
+        "path": "docs/src/assets/testimonials/flaviocopes.jpg",
+        "sha": "fed48386838120bc91672e81bdd6ae0777cd535f",
+        "size": 14872
+      },
+      {
+        "path": "docs/src/assets/testimonials/jhooks.jpg",
+        "sha": "ab5c7e3266553ea09f463b8ea50c9b33c96b0460",
+        "size": 24132
+      },
+      {
+        "path": "docs/src/assets/testimonials/loucyx.jpg",
+        "sha": "ea89003744d68da24e575a63e4e29a9a2be0c8db",
+        "size": 9672
+      },
+      {
+        "path": "docs/src/assets/testimonials/rachelnabors.jpg",
+        "sha": "14a1563930d4c779820560604f7b4393579586e6",
+        "size": 12926
+      },
+      {
+        "path": "docs/src/assets/testimonials/rick_viscomi.jpg",
+        "sha": "685b997c0b0d8cced9fbf9befcb9d0139b80625a",
+        "size": 20279
+      },
+      {
+        "path": "docs/src/assets/testimonials/solelychloe.jpg",
+        "sha": "79e83c2eed3399e2cea587e2418347e44788f497",
+        "size": 17476
+      },
+      {
+        "path": "docs/src/assets/testimonials/sulco.jpg",
+        "sha": "c346a086a0c4b286066599c73fa56fcfc8da3209",
+        "size": 15474
+      }
+    ]
+  },
+  {
+    "id": "vue",
+    "repo": "vuejs/docs",
+    "commit": "40aa88af0094f7bab4aaf786e55c748a6a251d88",
+    "selection": "src/guide/",
+    "files": [
+      {
+        "path": "src/guide/best-practices/images/AccessibilityChromeDeveloperTools.png",
+        "sha": "97c8e544f539eb1feef38d5e428e7b5cb119e801",
+        "size": 67360
+      },
+      {
+        "path": "src/guide/best-practices/images/AccessibleARIAdescribedby.png",
+        "sha": "664dd838d32bbc43a21d00b706efb40accbbf0ff",
+        "size": 62763
+      },
+      {
+        "path": "src/guide/best-practices/images/AccessibleARIAlabelDevTools.png",
+        "sha": "93df6abfc8d2fe8b15fca495eb5bd0983d33fe85",
+        "size": 49118
+      },
+      {
+        "path": "src/guide/best-practices/images/AccessibleARIAlabelledbyDevTools.png",
+        "sha": "2b0df1661f258f9d06d1299f72f4675ff74a2c82",
+        "size": 52287
+      },
+      {
+        "path": "src/guide/best-practices/images/AccessibleLabelChromeDevTools.png",
+        "sha": "c0bd6284f33475ab91e367d77f8f05c283970ff0",
+        "size": 40186
+      },
+      {
+        "path": "src/guide/best-practices/images/AccessiblePlaceholder.png",
+        "sha": "5136c2937ba5edeabdc110d6bfd3953551a81cdc",
+        "size": 43906
+      },
+      {
+        "path": "src/guide/built-ins/images/transition-classes.png",
+        "sha": "986d67002174d72e9b5dc98c6ce3c0942c0c66d3",
+        "size": 33143
+      },
+      {
+        "path": "src/guide/components/images/named-slots.png",
+        "sha": "8cf6b18524412271b006ce80864dcb8b81fc38bc",
+        "size": 55608
+      },
+      {
+        "path": "src/guide/components/images/prop-drilling.png",
+        "sha": "47ff6dd10ec0eb9c05734c7500d5af035801d954",
+        "size": 18492
+      },
+      {
+        "path": "src/guide/components/images/provide-inject.png",
+        "sha": "92201eb73fbb62f23dd3ed1aebc3809653d384cb",
+        "size": 21121
+      },
+      {
+        "path": "src/guide/components/images/slots.png",
+        "sha": "994ff0c0e12c9110b967519eb96f0b706eca7abe",
+        "size": 34001
+      },
+      {
+        "path": "src/guide/essentials/images/components.png",
+        "sha": "532df812e61938b3e9501226aeed860662dedeec",
+        "size": 17940
+      },
+      {
+        "path": "src/guide/essentials/images/directive.png",
+        "sha": "6dea67f7596278f690c2b9f8bdcbfb61e336e978",
+        "size": 45620
+      },
+      {
+        "path": "src/guide/essentials/images/lifecycle.png",
+        "sha": "6c3ce1d0aac72aae224316236a61188eb5942b6d",
+        "size": 190608
+      },
+      {
+        "path": "src/guide/extras/images/composition-api-after.png",
+        "sha": "d44b2778f2fa692a754e96ecffd814fd76a38e31",
+        "size": 206094
+      },
+      {
+        "path": "src/guide/extras/images/options-api.png",
+        "sha": "b8d75fe9b03d11c2480b793546d262d682a938ec",
+        "size": 118005
+      },
+      {
+        "path": "src/guide/extras/images/render-pipeline.png",
+        "sha": "371d131758466bb5987af4d68eee868f4fefa102",
+        "size": 41635
+      },
+      {
+        "path": "src/guide/scaling-up/images/devtools.png",
+        "sha": "a35505697b7b28e2685a996fc994a06912e85d06",
+        "size": 97880
+      },
+      {
+        "path": "src/guide/scaling-up/images/state-flow.png",
+        "sha": "53e2b9f3f2cec48f837272e47ed012e9fe4b9488",
+        "size": 18182
+      }
+    ]
+  }
+]

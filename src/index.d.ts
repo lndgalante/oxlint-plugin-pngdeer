@@ -8,6 +8,10 @@ export interface CompressibleImageOptions {
   target?: "auto" | number;
   /** When to measure images not in the cache. Default "auto". */
   measure?: "auto" | "always" | "never";
+  /** Measure all project images or only images named by linted files. Default "project". */
+  scan?: "project" | "referenced";
+  /** Excluded image files or directories, relative to the project root; supports *, ** and ?. Default []. */
+  exclude?: string[];
 }
 
 /** `settings.pngdeer`, shared by every file. */

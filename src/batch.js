@@ -5,10 +5,11 @@ import { readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { availableParallelism, totalmem } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { Worker, threadId } from "node:worker_threads";
+import { threadId } from "node:worker_threads";
 import { key, read, readFirst, write } from "./cache.js";
 import { dimensions, kind, unsupported } from "./images.js";
 import { marked } from "./marker.js";
+import { startWorker } from "./threads.js";
 
 const MAX_WORKERS = 8;
 // Wasm memory never shrinks, so a worker that measured an image expected to peak above this is
@@ -133,7 +134,7 @@ export async function pool(jobs, { done, skip = () => false }) {
       if (skip(job)) continue;
       self.busy = true;
       self.held = Math.max(self.held, job.peak);
-      self.worker ??= new Worker(new URL("./worker.js", import.meta.url));
+      self.worker ??= startWorker(new URL("./worker.js", import.meta.url));
       try {
         done(job, await ask(self.worker, job.message));
         if (job.peak > BIG) {
@@ -209,11 +210,11 @@ function peak(pixels) {
   return 50e6 + pixels * (pixels < 8e6 ? 125 : 85);
 }
 
-// A quarter of the memory there is (a container's limit if any), between 1 and 4 GB. One image
-// always runs, however big.
+// A quarter of the memory there is (a container's limit if any), capped at 4 GB.
+// One image always runs, however big.
 function budget() {
   const total = process.constrainedMemory?.() || totalmem();
-  return Math.min(Math.max(total / 4, 1e9), 4e9);
+  return Math.min(total / 4, 4e9);
 }
 
 // The worker's answer to one message, or a rejection if it fails or exits first.

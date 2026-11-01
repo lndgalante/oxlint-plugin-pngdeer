@@ -1,0 +1,18 @@
+{
+  "source": {
+    "repository": "https://github.com/heydeer/pngdeer.git",
+    "revision": "a8e88267ba02cbaf66e746db93ed04242dca8450",
+    "cargoLockSha256": "ffd950e512f4e9ba2054afcb546e597e0a2fb6da3c3acdf51fad1252a071c652"
+  },
+  "observedProducers": {
+    "rustc": "1.99.1 (58cf8f9c3 2026-10-13)",
+    "clang": "15.0.7 (AWS 15.0.7-3.amzn2023.0.4)",
+    "walrus": "0.27.2",
+    "wasm-bindgen": "0.2.129 (165586f85)"
+  },
+  "files": {
+    "pngdeer_wasm_bg.wasm": "ad2351d25459d45c84a22b847c932b01dfa31cfea1f9ca4b89d5139bff72cd8e",
+    "pngdeer_wasm.js": "9e990aa28b18e2ea58dcaf31a4d091db8dd5ce4a2ba13c579c31a127dc4aa21f",
+    "THIRD_PARTY_LICENSES.txt": "cd98a6db03e5fc16035627dccc4e1c916faf3b09958f423bc75899476f198116"
+  }
+}

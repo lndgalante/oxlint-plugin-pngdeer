@@ -87,7 +87,7 @@ test("--flagged shrinks what the last lint flagged, at the target it measured", 
   assert.match(run.stderr, /^pngdeer: shrinking 4 images in place \(lossy; commit first so you can undo\)$/m);
   assert.match(run.stderr, /^pngdeer: 4 images, 1\.0 MB → \d+ kB \(\d+ kB smaller\)\. Lint again to check\.$/m);
   assert.deepEqual(oxlint(dir).found, []);
-  assert.equal(pngdeer(dir, "--flagged").stdout.trim(), "the last lint here flagged nothing");
+  assert.equal(pngdeer(dir, "--flagged").stdout.trim(), "the last lint here left no images to shrink with --flagged");
 });
 
 test("files fixed with the command aren't flagged again, even on a fresh clone", () => {
@@ -115,8 +115,12 @@ test("paths with spaces are found and quoted for the platform's shell", () => {
   const dir = project({ files: { "src/App.jsx": 'import shot from "./assets/My Shot, final.png";\n' }, images: ["src/assets/crystal-ball.png"] });
   cpSync(join(dir, "src/assets/crystal-ball.png"), join(dir, "src/assets/My Shot, final.png"));
   const [found] = oxlint(dir).found;
-  const quoted = process.platform === "win32" ? '"src/assets/My Shot, final.png"' : "'src/assets/My Shot, final.png'";
-  assert.ok(found.message.endsWith(`Run: npx oxlint-plugin-pngdeer ${quoted}`), found.message);
+  if (process.platform === "win32") {
+    assert.match(found.message, /Run in PowerShell: & /);
+    assert.ok(found.message.endsWith(" 'src/assets/My Shot, final.png'"), found.message);
+  } else {
+    assert.ok(found.message.endsWith("Run: npx oxlint-plugin-pngdeer 'src/assets/My Shot, final.png'"), found.message);
+  }
 });
 
 test("srcSet lists, public and static paths resolve, each image underlined on its own", () => {
@@ -186,6 +190,34 @@ test("aliases come from the project's tsconfig paths, through references and com
   config.settings = { pngdeer: { aliases: { "@/": "src/" } } };
   writeFileSync(join(dir, ".oxlintrc.json"), JSON.stringify(config));
   assert.deepEqual(oxlint(dir).found, []);
+});
+
+test("the most specific tsconfig alias wins, with fallbacks only inside that mapping", () => {
+  const dir = project({
+    files: {
+      "src/App.jsx": 'import photo from "@/assets/photo.jpg";\nimport hero from "@fallback/hero.png";\n',
+      "tsconfig.json": JSON.stringify({ compilerOptions: { paths: {
+        "@/*": ["./src/*"],
+        "@/assets/*": ["./public/*"],
+        "@fallback/*": ["./missing/*", "./public/*"],
+      } } }),
+    },
+    images: ["public/photo.jpg", "public/hero.png"],
+  });
+  mkdirSync(join(dir, "src/assets"), { recursive: true });
+  cpSync(join(dir, "public/photo.jpg"), join(dir, "src/assets/photo.jpg"));
+  const { found } = oxlint(dir);
+  assert.equal(found.length, 2);
+  assert.ok(found.some(({ message }) => message.endsWith("Run: npx oxlint-plugin-pngdeer public/photo.jpg")));
+  assert.ok(found.some(({ message }) => message.endsWith("Run: npx oxlint-plugin-pngdeer public/hero.png")));
+  rmSync(join(dir, "public/photo.jpg"));
+  assert.deepEqual(names(oxlint(dir)), ["hero.png"], "a missing specific mapping must not use the broader alias");
+});
+
+test("commands for leading-hyphen filenames use an explicit relative path", () => {
+  const dir = project({ files: { "src/App.jsx": 'import hero from "../-hero.png";\n' }, images: ["public/hero.png"] });
+  cpSync(join(dir, "public/hero.png"), join(dir, "-hero.png"));
+  assert.match(oxlint(dir).found[0].message, /Run: npx oxlint-plugin-pngdeer \.\/-hero\.png$/);
 });
 
 test("a committed cache folder keeps a fresh clone from measuring again", () => {

@@ -22,6 +22,32 @@ test("ESLint takes the rule's options", () => {
   assert.match(found.message, / \(quality 7\d\/100\)\. Run: npx oxlint-plugin-pngdeer src\/assets\/crystal-ball\.png --target 70$/);
 });
 
+test("ESLint owns suppression so used disable comments are not reported as unused", () => {
+  const dir = project({
+    files: { "src/App.jsx": '// eslint-disable-next-line pngdeer/compressible-image\nexport const hero = "/hero.png";\n' },
+    images: ["public/hero.png"],
+  });
+  const run = spawnSync(process.execPath, [join(plugin, "node_modules/eslint/bin/eslint.js"), "--format", "json", "--report-unused-disable-directives", "src"], { cwd: dir, encoding: "utf8" });
+  assert.equal(run.status, 0, run.stdout || run.stderr);
+  assert.deepEqual(JSON.parse(run.stdout).flatMap(({ messages }) => messages), []);
+  const unsuppressed = eslint(dir, "--no-inline-config", "src");
+  assert.deepEqual(names(unsuppressed), ["hero.png"]);
+  assert.match(unsuppressed.found[0].message, /quality \d+\/100/);
+});
+
+test("lintText without a filename resolves images from ESLint's cwd", () => {
+  const dir = project({ images: ["public/hero.png"] });
+  const script = `import { ESLint } from ${JSON.stringify(pathToFileURL(join(plugin, "node_modules", "eslint", "lib", "api.js")).href)};
+const results = await new ESLint({ cwd: ${JSON.stringify(dir)} }).lintText('export const hero = "/hero.png";');
+console.log(JSON.stringify(results.flatMap((result) => result.messages)));
+`;
+  const scriptFile = join(dir, "lint.mjs");
+  writeFileSync(scriptFile, script);
+  const run = spawnSync(process.execPath, [scriptFile], { cwd: plugin, encoding: "utf8", timeout: 60_000 });
+  assert.equal(run.status, 0, run.stderr);
+  assert.ok(JSON.parse(run.stdout).some(({ message }) => message.startsWith("hero.png could be")), run.stdout);
+});
+
 test("a tool calling ESLint's Node API waits, and an editor's language server doesn't", () => {
   const dir = project();
   // the same few lines, as a one-off script and as ESLint's language server would run them

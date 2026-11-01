@@ -1,6 +1,6 @@
 # engine
 
-pngdeer's single-threaded WebAssembly build and its wasm-bindgen glue (`web/build.sh`'s `web/pkg`), as deployed at heydeer.ai/open-source/pngdeer on October 30, 2026. It matches [heydeer/pngdeer](https://github.com/heydeer/pngdeer) at `a8e8826` (0.2.1, plus JPEG input and output), the last commit to touch its code before that deploy. It was not built from source here.
+pngdeer's single-threaded WebAssembly build and its wasm-bindgen glue (`web/build.sh`'s `web/pkg`), as deployed at heydeer.ai/open-source/pngdeer on October 30, 2026. Its presumed source revision is [heydeer/pngdeer at a8e88267ba02cbaf66e746db93ed04242dca8450](https://github.com/heydeer/pngdeer/tree/a8e88267ba02cbaf66e746db93ed04242dca8450) (0.2.1, plus JPEG input and output), the last commit to touch its code before that deploy. The shipped files were downloaded, not built here. Their correspondence to that source remains unverified until the build comparison below reports a match.
 
 | File | SHA-256 |
 |---|---|
@@ -10,3 +10,33 @@ pngdeer's single-threaded WebAssembly build and its wasm-bindgen glue (`web/buil
 The cache keys results by the wasm's hash (`src/cache.js`), so a new engine measures everything again.
 
 [THIRD_PARTY_LICENSES.txt](THIRD_PARTY_LICENSES.txt) is pngdeer's notice file for the same browser build, from `web/THIRD_PARTY_LICENSES.txt` at that commit. JPEG output is encoded with mozjpeg: this software is based in part on the work of the Independent JPEG Group.
+
+## Verify the shipped files
+
+```bash
+node scripts/check-engine.js
+```
+
+[provenance.json](provenance.json) records the full source revision, the source's Cargo.lock hash, the three shipped file hashes, and the compiler versions read directly from the WASM `producers` section:
+
+- Rust 1.99.1 (`58cf8f9c3`, October 13, 2026)
+- Clang 15.0.7, Amazon Linux package `15.0.7-3.amzn2023.0.4`
+- wasm-bindgen 0.2.129 (`165586f85`) and its walrus 0.27.2
+
+The source license notice matches the shipped notice byte for byte. These checks establish file integrity and observed build metadata, not source correspondence.
+
+## Build and compare
+
+Requires Node and Docker with `linux/amd64` support; an ARM host can use Docker's emulation. Run from the repository root:
+
+```bash
+node scripts/build-engine.js --output /tmp/pngdeer-engine-build
+```
+
+The output directory must not exist. Omitting `--output` creates a temporary one. The command never replaces `engine/`.
+
+The recipe in [scripts/engine](../scripts/engine) pins the source commit, Cargo.lock checksum, Amazon Linux image digest and repository release, exact Clang/LLVM packages, and SHA-256 hashes for the Rust components and wasm-bindgen executable. Cargo downloads dependencies using the checked-in lockfile. It then builds the single-threaded `pngdeer-wasm` package twice in separate clean containers with networking disabled, different source directories, fixed timestamps and remapped source paths. It runs wasm-bindgen directly; neither wasm-pack nor wasm-opt is part of the upstream single-threaded build.
+
+The output includes `first/`, `second/`, and `results.json`. The command fails if the two clean builds differ. It separately reports whether each generated file matches the shipped version. A repeatable build that differs from the shipped engine is a candidate for review, not proof of the shipped engine's source. This distinction is also reported as annotations by the [Engine build workflow](../.github/workflows/engine.yml), which runs on relevant pushes and pull requests and saves both outputs as an artifact.
+
+To update the engine, review the upstream changes and licenses, update the pinned inputs, and obtain passing clean-build comparisons. Compare PNG and JPEG output against the fixtures and benchmark corpus before replacing the WASM, glue and notice together. Update `provenance.json`, run `node scripts/check-engine.js`, `npm test` and `npm run check:package`, and document the engine change in release notes. A change to the WASM invalidates users' measurement caches.
