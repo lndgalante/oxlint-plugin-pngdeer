@@ -155,10 +155,6 @@ CI runs on Linux, macOS and Windows with Node 20, 22 and 24, oxlint 1.90 (and th
 
 [Public-project trials](https://github.com/lndgalante/oxlint-plugin-pngdeer/blob/main/bench/TRIALS.md) record checks of pinned Docusaurus, Starlight and Vue documentation assets, including savings, cold and cached timings, and the limits of those measurements.
 
-## License
-
-[MIT](https://github.com/lndgalante/oxlint-plugin-pngdeer/blob/main/LICENSE). The engine's dependencies keep their own licenses ([engine/THIRD_PARTY_LICENSES.txt](https://github.com/lndgalante/oxlint-plugin-pngdeer/blob/main/engine/THIRD_PARTY_LICENSES.txt)), and [engine/README.md](https://github.com/lndgalante/oxlint-plugin-pngdeer/blob/main/engine/README.md) says where the engine comes from. The example images keep theirs ([example/SOURCES.md](https://github.com/lndgalante/oxlint-plugin-pngdeer/blob/main/example/SOURCES.md)). JPEG output is encoded with mozjpeg: this software is based in part on the work of the Independent JPEG Group.
-
 ## Showcase
 
 Using pngdeer in a real project? We'd like to feature a few examples here: what it caught, how much smaller the images became, and whether the result looked good enough to ship. [Share your case in an issue](https://github.com/lndgalante/oxlint-plugin-pngdeer/issues/new?title=Showcase%3A%20your%20project).
@@ -198,3 +194,7 @@ whether I use or plan to keep the lint rule enabled for me to answer.
 Ask how I want to be credited and which material may be featured publicly.
 Return the report for my review without posting it or sending messages.
 ```
+
+## License
+
+[MIT](https://github.com/lndgalante/oxlint-plugin-pngdeer/blob/main/LICENSE). The engine's dependencies keep their own licenses ([engine/THIRD_PARTY_LICENSES.txt](https://github.com/lndgalante/oxlint-plugin-pngdeer/blob/main/engine/THIRD_PARTY_LICENSES.txt)), and [engine/README.md](https://github.com/lndgalante/oxlint-plugin-pngdeer/blob/main/engine/README.md) says where the engine comes from. The example images keep theirs ([example/SOURCES.md](https://github.com/lndgalante/oxlint-plugin-pngdeer/blob/main/example/SOURCES.md)). JPEG output is encoded with mozjpeg: this software is based in part on the work of the Independent JPEG Group.
