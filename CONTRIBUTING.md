@@ -20,6 +20,8 @@ npm ci
 
 Those times are from a 16-core M3 Max. The tests compress real images with up to eight workers. CI takes 1 to 5 minutes per job.
 
+CI runs the tests on Linux, macOS and Windows with Node 20, 22, 24 and 26, and on Linux with Node 20.19.0, the oldest supported. It tests oxlint 1.60 (the oldest supported), 1.89 (which Vite+ 1.4 brings), 1.90 and the newest, and ESLint 9.0 and 10. It also runs weekly, for new oxlint releases.
+
 To run your clone's command, use node: `node bin/pngdeer.js --check example` from the root, or `node ../bin/pngdeer.js` inside `example/`. There, `npx oxlint-plugin-pngdeer` runs the published version instead, because `example/` has its own package.json.
 
 When behavior or options change, update README.md, docs/rules/compressible-image.md, src/index.d.ts and the `--help` text in bin/pngdeer.js.

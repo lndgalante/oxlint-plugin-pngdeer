@@ -4,7 +4,7 @@ Flags PNGs and JPEGs that [pngdeer](https://github.com/heydeer/pngdeer) would ma
 
 ## What it flags
 
-Any string in JS or TS (and the script blocks of Vue, Svelte and Astro files) that names a local `.png`, `.apng`, `.jpg` or `.jpeg` file, when pngdeer can save at least 4 KiB (4096 bytes) and 10% of it:
+Any string in JS or TS (and the script blocks of Vue, Svelte and Astro files, Astro's frontmatter included) that names a local `.png`, `.apng`, `.jpg` or `.jpeg` file, when pngdeer can save at least 4 KiB (4096 bytes) and 10% of it:
 
 ```jsx
 import hero from "./hero.png"; // ⚠ hero.png could be 70% smaller (509 kB → 151 kB) …
@@ -29,7 +29,7 @@ Each image warns once per file, at its first mention, and only its own path is u
 On the command line, the run ends with a table of everything it flagged, each image counted once, biggest saving first, with each one's quality. Below it are images the run measured that no linted JS or TS names, like a CSS background. No warning can point at them, so each row says where the image is named instead:
 
 - `used in src/App.css`: a stylesheet, HTML page, template, MDX, data file, web manifest or XML file.
-- `named in src/App.jsx`: JS or TS this run didn't lint (a one-file lint, lint-staged, a parse error, an ignore pattern), or a path the rule doesn't look up, like `"images/hero.png"` with no prefix, or another package's path. When the run linted no file of that kind at all, like an ESLint config that leaves out `.tsx` files, the summary says so.
+- `named in src/App.jsx`: JS or TS this run didn't lint (a one-file lint, lint-staged, a parse error, an ignore pattern), or a path the rule doesn't look up, like `"images/hero.png"` with no prefix, or another package's path. When the run linted no file of that kind at all, like an ESLint config that leaves out `.tsx` files, the summary says so (see [ESLint setup](#eslint-setup)).
 - `a Next.js metadata file`: an image Next.js serves by its file name alone, like `app/opengraph-image.png` or `src/app/icon.png`, in a project whose `package.json` depends on `next`.
 - `mentioned in README.md`: only Markdown names it.
 - `nothing names it`: maybe an unused image, or one whose path is built at runtime. Only these rows bring the note that deleting the image saves it all.
@@ -136,12 +136,12 @@ On Windows, commands for unusual file or folder names, including `--check`'s for
 |---|---|---|
 | `minSavedBytes` | `4096` | Report only savings of at least this many bytes. 4 KiB is Lighthouse's threshold. Images smaller than this are never measured. |
 | `minSavedPercent` | `10` | …and of at least this percent of the file. |
-| `target` | `"auto"` | The quality to keep. `"auto"` is about the quality TinyPNG would give the image, never above 90. A number is a [SSIMULACRA2](https://github.com/cloudinary/ssimulacra2) score from 0 to 100: 90 can't be told apart from the original even flipping between them, 80 not side by side, and 70 shows artifacts that aren't annoying. Images that can't reach the target aren't flagged. The warning's command repeats it as `--target`. |
+| `target` | `"auto"` | The quality to keep. `"auto"` is about the quality TinyPNG would give the image, never above 90, though the smaller file can score higher. A number is a [SSIMULACRA2](https://github.com/cloudinary/ssimulacra2) score from 0 to 100: 90 can't be told apart from the original even flipping between them, 80 not side by side, and 70 shows artifacts that aren't annoying. Images that can't reach the target aren't flagged. The warning's command repeats it as `--target`. |
 | `measure` | `"auto"` | When to measure images that aren't in the cache. `"auto"`: in the background in editors (oxlint's language server, and ESLint's in VS Code, Zed or Neovim), where the warnings appear on a later lint; everywhere else (the `oxlint` and `eslint` commands, tools that call ESLint's Node API), while linting. `"always"`: while linting, editors included. `"never"`: never, so only cached results are reported. |
 | `scan` | `"project"` | `"project"` measures the project's images in a parallel batch. `"referenced"` measures only images named by the source files being linted, and omits unreferenced images from the summary even if they are cached. |
 | `exclude` | `[]` | Image paths or patterns relative to the project root. Excluded images are not measured, reported, or listed in the summary, even when code references them directly. |
 
-In ESLint, the rule and its options go in a config object's `rules`, the same way. `pngdeer.configs.recommended` turns the rule on at `"warn"`, with these defaults, for the files the rest of your config lints. It sets no `files`, so it never adds JSX or TypeScript your config doesn't parse. To change an option, set the rule again in a config object after it:
+In ESLint, the rule and its options go in a config object's `rules`, the same way. `pngdeer.configs.recommended` turns the rule on at `"warn"`, with these defaults, for the files the rest of your config lints. It sets no `files`, so it never adds JSX or TypeScript your config doesn't parse (for those, see [ESLint setup](#eslint-setup)). To change an option, set the rule again in a config object after it:
 
 ```js
 // eslint.config.js
@@ -167,6 +167,45 @@ Use `"scan": "referenced"` for targeted runs such as lint-staged, or to avoid me
 
 Patterns use `/` separators on every platform. A literal path excludes that file or directory and its descendants. `*` matches within one path segment, `?` matches one character within a segment, and `**` matches across directories. Patterns are rooted at the project folder: `*.png` matches root images, while `**/*.png` matches PNG paths at any depth. Braces, character classes and negated patterns are not supported. Quote CLI patterns so your shell does not expand them first.
 
+## ESLint setup
+
+`pngdeer.configs.recommended` needs a config that already lints and parses your JSX or TypeScript files, and ESLint's default parser reads plain JavaScript only. Otherwise, give the rule a config object for the files it should lint. For JavaScript with JSX:
+
+```js
+// eslint.config.js
+import pngdeer from "oxlint-plugin-pngdeer";
+
+export default [
+  // ...your config
+  {
+    files: ["**/*.{js,jsx}"],
+    languageOptions: { parserOptions: { ecmaFeatures: { jsx: true } } },
+    plugins: { pngdeer },
+    rules: { "pngdeer/compressible-image": "warn" },
+  },
+];
+```
+
+For TypeScript, with [typescript-eslint](https://typescript-eslint.io/getting-started/) installed. It needs TypeScript 6.0 or older, and most of Vite's TypeScript templates (all but Vue's and Svelte's) now come with TypeScript 7: there, install both with `npm install --save-dev typescript@~6.0 typescript-eslint`, or use oxlint.
+
+```js
+// eslint.config.js
+import tseslint from "typescript-eslint";
+import pngdeer from "oxlint-plugin-pngdeer";
+
+export default [
+  // ...your config
+  {
+    files: ["**/*.{ts,tsx}"],
+    languageOptions: { parser: tseslint.parser },
+    plugins: { pngdeer },
+    rules: { "pngdeer/compressible-image": "warn" },
+  },
+];
+```
+
+A project with both kinds of file uses both objects. A `Parsing error: Unexpected token` on JSX or on a type means the rule runs on a file your config doesn't parse. In `eslint.config.ts`, the plugin's types work with `defineConfig`.
+
 ## Settings
 
 Shared by every file. In `.oxlintrc.json`, `settings` sits next to `rules`; in ESLint, put it in a config object; with Vite+, in the `lint` block of `vite.config.ts`.
@@ -191,7 +230,7 @@ Automatic aliases support prefix patterns ending in `*`, choose the longest matc
 
 With the default `"scan": "project"`, the first run measures every eligible PNG and JPEG in the project (the folder with your `package.json`), not only the ones your code names, so the files linted after it find theirs cached. It skips excluded images, images too small to save `minSavedBytes`, and folders nobody ships: dependencies, build output, dot folders, and test output like Playwright and Cypress snapshots. In an editor this happens in the background, and the open file's own images go first, in a batch of their own, so its warnings don't wait for the whole project's.
 
-- **It uses one engine per core, minus one (8 at most),** with an estimated worker-memory budget of a quarter of the machine's memory, up to 4 GB. One image always runs even if its estimate exceeds the budget, and the linter itself also uses memory. A median image takes 1 to 3 s of one core.
+- **It uses one engine per core, minus one (8 at most),** with an estimated worker-memory budget of a quarter of the machine's memory (or of a container's limit), up to 4 GB. One image always runs even if its estimate exceeds the budget, and the linter itself also uses memory. A median image takes 1 to 3 s of one core.
 - **It shows its progress on stderr.** On a terminal, a first run counts the images as it measures them. Elsewhere, like a CI log, it prints `pngdeer: measured N of M images...` every 30 s, so a long run doesn't look stuck.
 - **Results are kept by the image's bytes and the target,** so a moved or renamed image stays cached, and copies of one image are measured once. A plugin version with a new engine or a new cache format, like 0.5.0, measures everything again.
 - **One lint measures at a time per project.** Another one waits, then finds the results cached. When the one measuring is another process, like your editor, the waiting lint says so: `pngdeer: waiting for another lint measuring this project (if none is running, delete …/measuring.lock)`. ESLint's `--concurrency` threads take turns the same way, without that line, and print one summary.
@@ -251,4 +290,4 @@ With ESLint's `--no-inline-config`, those references produce diagnostics again, 
 
 ## When not to use it
 
-When every image goes through an optimizer that re-encodes it for users anyway (`next/image`, Astro's `<Image>`, an image CDN), the rule mostly saves repository and build size. The summary adds up file sizes, which may not be what users download. When images must stay byte for byte, like visual-regression baselines, exclude them.
+When every image goes through an optimizer that re-encodes it for users anyway (`next/image`, Astro's `<Image>`, an image CDN), the rule mostly saves repository and build size. It still flags those images like any other, and `--flagged` shrinks them too, which adds a second lossy pass, so leave their folders out with `exclude`. Images served as they are still count: plain `<img>`, CSS backgrounds, Next's `opengraph-image` and `icon` files, and every image when `images.unoptimized` is set. The summary adds up file sizes, which may not be what users download. When images must stay byte for byte, like visual-regression baselines, exclude them.
