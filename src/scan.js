@@ -43,13 +43,16 @@ export function excluded(root, file, exclude = []) {
   });
 }
 
-/** Project images above `minSize`; options.base anchors exclusions and options.onError reports failures. */
+/**
+ * Project images above `minSize`; options.base anchors exclusions, options.onError reports failures
+ * and options.onPackage hears of each nested package left out.
+ */
 export function projectImages(root, minSize = 0, exclude = [], options = {}) {
   return projectFiles(root, EXTENSIONS, minSize, Infinity, exclude, options);
 }
 
 /** The project's files with one of `extensions`, from `minSize` to `maxSize` bytes. */
-export function projectFiles(root, extensions, minSize = 0, maxSize = Infinity, exclude = [], { base = root, onError = () => {} } = {}) {
+export function projectFiles(root, extensions, minSize = 0, maxSize = Infinity, exclude = [], { base = root, onError = () => {}, onPackage = () => {} } = {}) {
   const found = [];
   const walk = (dir) => {
     if (excluded(base, dir, exclude)) return;
@@ -60,7 +63,10 @@ export function projectFiles(root, extensions, minSize = 0, maxSize = Infinity, 
       onError(dir, error);
       return;
     }
-    if (dir !== root && entries.some((entry) => entry.name === "package.json" && entry.isFile())) return;
+    if (dir !== root && entries.some((entry) => entry.name === "package.json" && entry.isFile())) {
+      onPackage(dir);
+      return;
+    }
     for (const entry of entries) {
       if (entry.name.startsWith(".")) continue;
       const path = join(dir, entry.name);

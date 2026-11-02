@@ -1,7 +1,7 @@
 // Fills the cache for a list of images, on a pool of worker threads (one wasm engine each, so all
 // cores work even though the engine itself is single-threaded), within a memory budget. The command
 // shrinks several images on the same pool.
-import { readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { readFileSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import { availableParallelism, totalmem } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -19,13 +19,13 @@ const BIG = 300e6;
 const STALE_MS = 15 * 60 * 1000;
 
 /**
- * Computes every file not cached yet; { computed, cached, skipped, failed, ms }. `progress(done,
- * total)` hears about each image the engine finishes.
+ * Computes every file not cached yet; { computed, cached, skipped, failed, ms }. Once the batch holds
+ * the lock, `onStart(total)` hears how many images go to the engine, if any, and `progress(done,
+ * total)` then hears about each one finished; copies of one image count as cached.
  */
-export async function fill({ dir, failures = dir, target, files }, progress = () => {}) {
+export async function fill({ dir, failures = dir, target, files }, progress = () => {}, onStart = () => {}) {
   // a result in either folder counts: `failures` keeps what pngdeer failed on, on this machine only
   const cached = (k) => readFirst(k, dir, failures);
-  const start = performance.now();
   // a cache that can't be written fails here, before any image is compressed for nothing; each
   // thread probes with its own file, as ESLint's --concurrency threads probe at once
   const probe = `probe-${process.pid}-${threadId}`;
@@ -34,16 +34,19 @@ export async function fill({ dir, failures = dir, target, files }, progress = ()
     rmSync(join(folder, `${probe}.json`), { force: true });
   }
   const release = await lock(failures);
+  // `ms` is the measuring alone, not the wait for another batch
+  const start = performance.now();
   try {
-    return await measure({ dir, failures, target, files, cached }, progress, start);
+    return await measure({ dir, failures, target, files, cached }, progress, onStart, start);
   } finally {
     release();
   }
 }
 
 /** fill() once it holds the lock: what's cached by then is skipped, the rest goes to the pool. */
-async function measure({ dir, failures, target, files, cached }, progress, start) {
+async function measure({ dir, failures, target, files, cached }, progress, onStart, start) {
   const todo = [];
+  const queued = new Set(); // the keys in `todo`: copies of one image are measured once
   const counts = { computed: 0, cached: 0, skipped: 0, failed: 0 };
   for (const file of new Set(files)) {
     let bytes;
@@ -53,7 +56,7 @@ async function measure({ dir, failures, target, files, cached }, progress, start
       continue;
     }
     const k = key(bytes, target);
-    if (cached(k)) {
+    if (cached(k) || queued.has(k)) {
       counts.cached++;
       continue;
     }
@@ -68,8 +71,10 @@ async function measure({ dir, failures, target, files, cached }, progress, start
       counts.skipped++;
       continue;
     }
+    queued.add(k);
     todo.push({ file, k, peak: peakOf(bytes), message: { file, target } });
   }
+  if (todo.length) onStart(todo.length);
 
   const record = (job, result) => {
     // the file changed or went away after it was queued: cache nothing, the next lint measures it again
@@ -91,16 +96,18 @@ async function measure({ dir, failures, target, files, cached }, progress, start
   };
 
   const total = todo.length;
+  let finished = 0;
   await pool(todo, {
     // the same bytes may have been marked as pngdeer's output since the batch started
     skip: (job) => {
       if (!cached(job.k)) return false;
       counts.cached++;
+      progress(++finished, total);
       return true;
     },
     done: (job, result) => {
       record(job, result);
-      progress(counts.computed + counts.failed, total);
+      progress(++finished, total);
     },
   });
   return { ...counts, ms: Math.round(performance.now() - start) };
@@ -167,17 +174,25 @@ export async function pool(jobs, { done, skip = () => false }) {
  */
 async function lock(folder) {
   const path = join(folder, "measuring.lock");
+  let told = false;
   for (;;) {
     try {
-      // the holder's pid, so a lint stopped while it measured (Ctrl-C, an editor closing) holds nothing
-      writeFileSync(path, `${process.pid}`, { flag: "wx" });
-      return () => rmSync(path, { force: true });
+      // the holder's pid, so a lint stopped while it measured (Ctrl-C, an editor closing) holds
+      // nothing, and its thread, so the process can remove the lock of a thread it stopped
+      writeFileSync(path, `${process.pid} ${threadId}`, { flag: "wx" });
+      return () => unlock(folder);
     } catch (error) {
       // a folder where nothing can be locked: measure anyway
       if (error.code !== "EEXIST") return () => {};
     }
     // recursive: 0.3.0 locked with a folder
     if (abandoned(path)) rmSync(path, { recursive: true, force: true });
+    else if (!told && ![0, process.pid].includes(holder(path))) {
+      // another process (an editor, an earlier lint, or a lock one left): say why nothing happens.
+      // This process's other threads (ESLint's --concurrency) are waited for without a word.
+      told = true;
+      writeSync(2, `pngdeer: waiting for another lint measuring this project (if none is running, delete ${path})\n`);
+    }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
 }
@@ -187,12 +202,35 @@ function abandoned(path) {
   try {
     if (Date.now() - statSync(path).mtimeMs > STALE_MS) return true;
     // empty while its holder writes it
-    const pid = Number(readFileSync(path, "utf8"));
+    const pid = holder(path);
     if (pid) process.kill(pid, 0);
     return false;
   } catch (error) {
     // released meanwhile (ENOENT), or held by another user's process (EPERM)
     return error.code === "ESRCH";
+  }
+}
+
+/** The pid in the lock at `path`: 0 while its holder writes it, or once it's gone. */
+function holder(path) {
+  try {
+    return Number(readFileSync(path, "utf8").split(" ")[0]);
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Removes the lock in `folder` if this process's thread `thread` holds it: a batch's own when it
+ * ends, or one a stopped thread left (sync.js), which this process would otherwise wait on for 15
+ * minutes. Another batch's lock stays.
+ */
+export function unlock(folder, thread = threadId) {
+  const path = join(folder, "measuring.lock");
+  try {
+    if (readFileSync(path, "utf8") === `${process.pid} ${thread}`) rmSync(path, { force: true });
+  } catch {
+    // released already
   }
 }
 

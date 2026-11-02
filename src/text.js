@@ -39,7 +39,11 @@ export function count(n, noun) {
 
 /** A path as a shell argument, for the shell of the platform it's printed on. */
 export function quote(arg, platform = process.platform) {
-  if (arg.startsWith("-")) arg = `./${arg}`;
+  return literal(arg.startsWith("-") ? `./${arg}` : arg, platform);
+}
+
+/** Any text as a shell argument, as quote() writes it. */
+function literal(arg, platform) {
   const safe = platform === "win32" ? /^[\w+=:./-]+$/ : /^[\w@+=:,./-]+$/;
   if (safe.test(arg)) return arg;
   return platform === "win32" ? `'${arg.replace(/['\u2018-\u201b]/g, "$&$&")}'` : `'${arg.replace(/'/g, `'\\''`)}'`;
@@ -47,10 +51,28 @@ export function quote(arg, platform = process.platform) {
 
 /** A runnable fix command; unusual Windows paths use PowerShell and bypass npm's batch shim. */
 export function shrinkCommand(files, target, platform = process.platform) {
-  const paths = files.map((file) => quote(file, platform));
-  const powershell = platform === "win32" && paths.some((path) => path.startsWith("'"));
+  return command([], files, target, platform);
+}
+
+/**
+ * The command that checks `dirs`, run the same way, with the check's options: the ones that differ
+ * from the defaults, as given (exclude patterns and the cache folder are relative to each package).
+ */
+export function checkCommand(dirs, { target, exclude = [], cacheDir, minSavedBytes = 4096, minSavedPercent = 10 } = {}, platform = process.platform) {
+  const options = [
+    ...exclude.map((pattern) => ["--exclude", pattern]),
+    ...(cacheDir === undefined ? [] : [["--cache-dir", cacheDir]]),
+    ...(minSavedBytes === 4096 ? [] : [["--min-saved-bytes", String(minSavedBytes)]]),
+    ...(minSavedPercent === 10 ? [] : [["--min-saved-percent", String(minSavedPercent)]]),
+  ];
+  return command(["--check"], dirs, target, platform, options);
+}
+
+function command(flags, files, target, platform, options = []) {
+  const args = [...files.map((file) => quote(file, platform)), ...options.flatMap(([option, value]) => [option, literal(value, platform)])];
+  const powershell = platform === "win32" && args.some((arg) => arg.startsWith("'"));
   // npx.cmd adds a cmd.exe parsing pass, which expands percent signs even inside quotes.
   const binary = fileURLToPath(new URL("../bin/pngdeer.js", import.meta.url));
   const runner = powershell ? `& ${quote(process.execPath, platform)} ${quote(binary, platform)}` : "npx oxlint-plugin-pngdeer";
-  return { text: `${runner} ${paths.join(" ")}${target === undefined ? "" : ` --target ${target}`}`, shell: powershell ? " in PowerShell" : "" };
+  return { text: `${[runner, ...flags, ...args].join(" ")}${target === undefined ? "" : ` --target ${target}`}`, shell: powershell ? " in PowerShell" : "" };
 }

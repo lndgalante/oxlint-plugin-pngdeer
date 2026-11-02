@@ -1,0 +1,31 @@
+name: Showcase
+description: Share what pngdeer caught in a real project
+title: "Showcase: "
+labels: ["showcase"]
+body:
+  - type: input
+    id: project
+    attributes:
+      label: Project
+      description: A link, and where the images appear.
+    validations:
+      required: true
+  - type: textarea
+    id: examples
+    attributes:
+      label: Before and after
+      description: One to three examples, each with original and compressed byte counts and the quality target.
+    validations:
+      required: true
+  - type: textarea
+    id: tradeoffs
+    attributes:
+      label: Tradeoffs and use
+      description: Any visible differences, and whether you use the rule in your editor, pull requests or CI, or are trying it out.
+  - type: textarea
+    id: credit
+    attributes:
+      label: Credit and permission
+      description: How you'd like to be credited, and which images, links and quotes we may feature in the README.
+    validations:
+      required: true

@@ -3,15 +3,18 @@
 // oxlint never lints image files themselves, so the reference is where the warning goes.
 import { statSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
-import { cacheDir, fileKey, readFirst, reportable } from "./cache.js";
+import { isatty } from "node:tty";
+import { cacheDir, fileKey, read, reportable, write } from "./cache.js";
 import { excluded, projectImages, projectRoot } from "./scan.js";
-import { flag, name, requireTarget, share, summarize, watch } from "./summary.js";
+import { flag, name, owe, owing, physical, requireTarget, settle, share, summarize, watch } from "./summary.js";
 import { configAliases } from "./tsconfig.js";
 import { fillInBackground, fillSync } from "./sync.js";
 import { count, looks, pathFrom, shrinkCommand, size, smaller } from "./text.js";
 
 const RULE = "pngdeer/compressible-image";
 const IMAGE = /\.(png|apng|jpe?g)$/i;
+// ESLint's --no-inline-config ignores disable comments, so they turn nothing off
+const NO_INLINE_CONFIG = process.argv.includes("--no-inline-config");
 const REMOTE = /^[a-z][a-z0-9+.-]*:|^\/\//i;
 const DEFAULTS = { minSavedBytes: 4096, minSavedPercent: 10, target: "auto", measure: "auto", scan: "project", exclude: [] };
 // when neither the settings nor the project's tsconfig/jsconfig define aliases
@@ -22,10 +25,7 @@ const ALIASES = { "@/": "src/", "~/": "src/" };
 // ESLint's Node API, like Nx or xo) would exit before a background batch finished. Neither linter
 // has an API for this: it's how oxlint's language server (--lsp), ESLint's (the one VS Code, Zed
 // and Neovim use, an Electron child in VS Code) and the eslint_d daemon that editors call start.
-const EDITOR =
-  process.argv.includes("--lsp") ||
-  /eslintServer|language-?server|languageService|eslint_d/i.test(process.argv[1] ?? "") ||
-  process.env.ELECTRON_RUN_AS_NODE === "1";
+const EDITOR = editor(process.argv, process.env);
 
 // Per process (the language server's lasts the whole editor session):
 const scanned = new Set(); // project scans already measured or queued, keyed by scope and settings
@@ -48,6 +48,7 @@ export default {
       // the same image again, in another file of the same run: its first warning said the rest
       again: "{{name}} could be {{percent}}% smaller ({{before}} → {{after}}), as warned where it's first used. Run{{shell}}: {{command}}",
       lossless: "{{name}} could be {{percent}}% smaller ({{before}} → {{after}}), losslessly. Run{{shell}}: {{command}}",
+      incomplete: "pngdeer stopped measuring after {{after}} with {{left}} not measured yet, so this lint is incomplete. Run it again to carry on; in CI, keep the cache between runs (settings.pngdeer.cacheDir).",
     },
     schema: [
       {
@@ -82,8 +83,22 @@ export default {
     const dir = settings.cacheDir ? resolve(root, settings.cacheDir) : local;
     // pngdeer failing on an image is kept in `local` only: the failure may be this machine's alone
     // (out of memory), and in a committed folder it would stick for the whole team
-    const lookup = (k) => readFirst(k, dir, local);
-    const find = (path) => locate(path, from, root, publicDirs, aliases);
+    const lookup = (k) => {
+      const shared = read(dir, k);
+      if (shared || dir === local) return shared;
+      const entry = read(local, k);
+      // measured before cacheDir was set: copy it there, as measuring it now would have
+      if (entry && !entry.failed) {
+        try {
+          write(dir, k, entry);
+        } catch {
+          // a folder that can't be written: the local result still counts
+        }
+      }
+      return entry;
+    };
+    // as written, or else as a browser reads it ("/my%20photo.png")
+    const find = (path) => locate(path, from, root, publicDirs, aliases) ?? (path.includes("%") ? locate(decoded(path), from, root, publicDirs, aliases) : null);
     // a path as the person running the linter would type it
     const shown = (file) => pathFrom(context.cwd, file);
     const wait = measure === "always" || (measure === "auto" && !EDITOR);
@@ -91,7 +106,7 @@ export default {
 
     const reported = new Set(); // images warned about in this file: once each, at their first mention
     let disabled; // (line) => whether a comment turns this rule off there, read on first use
-    if (!EDITOR) watch(root, { minSavedBytes, minSavedPercent, target, dir, scan, exclude });
+    if (!EDITOR) watch(root, { minSavedBytes, minSavedPercent, target, dir, scan, exclude, publicDirs }, from);
 
     function check(node, text) {
       for (const { file, part } of imagesIn(text, find)) {
@@ -119,20 +134,23 @@ export default {
     }
 
     function report({ node, file, loc }, result) {
-      if (!reportable(result, { minSavedBytes, minSavedPercent }) || reported.has(file)) return;
+      if (!reportable(result, { minSavedBytes, minSavedPercent })) return;
+      // one image, however this file and others spell it (logo.png for Logo.png)
+      const path = physical(file);
+      if (reported.has(path)) return;
       // The linter hides a warning a comment turns off by itself, but the image mustn't count as
       // flagged either, or --flagged would rewrite an image someone chose to keep.
       disabled ??= disabledLines(context.sourceCode, context.id ?? RULE);
       const suppressed = disabled((loc?.start ?? node.loc.start).line);
       // The linter needs the report even when disabled, to recognize a used directive.
       if (!suppressed) {
-        reported.add(file);
+        reported.add(path);
         if (!EDITOR) flag(file, from, { original: result.original, compressed: result.compressed, score: result.score, target });
       }
       // this package's own command (bin/pngdeer.js), at the target measured, so it writes exactly the
       // file this promises; named by the package, so npx can't fetch someone else's
       const command = shrinkCommand([shown(file)], target);
-      const seen = `${file}\0${target}`;
+      const seen = `${path}\0${target}`;
       if (!EDITOR && !suppressed && !warned.has(seen)) warned.set(seen, from);
       const repeat = !EDITOR && warned.has(seen) && warned.get(seen) !== from;
       context.report({
@@ -154,8 +172,10 @@ export default {
 
     // When the lint waits for measuring, says once per image what the warnings can't: why one is missing.
     function tell(file, result) {
-      if (!wait || !result?.skipped || told.has(file)) return;
-      told.add(file);
+      if (!wait || !result?.skipped) return;
+      const path = physical(file);
+      if (told.has(path)) return;
+      told.add(path);
       process.stderr.write(`pngdeer: ${result.failed ? "" : "skipped "}${shown(file)}: ${result.skipped}\n`);
     }
 
@@ -169,6 +189,12 @@ export default {
       // In project mode, the first file also measures unnamed images in the same parallel batch.
       // Later files find theirs cached, and the summary can list images only CSS or HTML uses.
       "Program:exit"() {
+        // the problem of a run that ran out of time, which the file that measured turned off (measureNow)
+        const owed = EDITOR ? null : owing();
+        if (owed) {
+          disabled ??= disabledLines(context.sourceCode, context.id ?? RULE);
+          if (!disabled(1)) incomplete(owed);
+        }
         const group = JSON.stringify([root, dir, target, minSavedBytes, scan, exclude]);
         const first = scan === "project" && measure !== "never" && !scanned.has(group);
         if (found.length === 0 && !first) {
@@ -183,10 +209,15 @@ export default {
           return image && !image.marked && !lookup(image.key);
         };
         const named = measure === "never" ? [] : found.map(({ file }) => file);
-        const files = [...new Set(first ? [...named, ...projectImages(root, minSavedBytes, exclude)] : named)].filter(unmeasured);
+        const files = distinct([...new Set(first ? [...named, ...projectImages(root, minSavedBytes, exclude)] : named)].filter(unmeasured));
         if (files.length) {
-          if (!wait) fillInBackground({ dir, failures: local, target, files });
-          else if (!failed.has(root)) measureNow(files);
+          if (!wait) {
+            // this file's own images first, in a batch of their own, so its warnings don't wait for
+            // the whole project's (a batch measures the biggest images first)
+            const own = files.filter((file) => named.includes(file));
+            if (own.length && own.length < files.length) fillInBackground({ dir, failures: local, target, files: own });
+            fillInBackground({ dir, failures: local, target, files });
+          } else if (!failed.has(root)) measureNow(files, unmeasured);
         }
         for (const ref of found) {
           const result = lookup(ref.k);
@@ -197,27 +228,62 @@ export default {
       },
     };
 
-    /** Measures `files` (none cached yet) while the lint waits, saying what the wait is for. */
-    function measureNow(files) {
-      // on a terminal the batch rewrites this line as a count (fill-worker.js), and it's cleared after
-      const tty = Boolean(process.stderr.isTTY);
-      process.stderr.write(`pngdeer: measuring ${count(files.length, "image")} not in the cache yet...${tty ? "" : "\n"}`);
+    /**
+     * Measures `files` (none cached yet) while the lint waits. The batch says what the wait is for
+     * (fill-worker.js); `unmeasured` tells what's left if it runs out of time.
+     */
+    function measureNow(files, unmeasured) {
+      // on a terminal the batch's line is a count it rewrites, cleared after. Asked of the file
+      // descriptor, as the batch does: in ESLint's --concurrency threads, process.stderr isn't a TTY.
+      const clear = isatty(2) ? "\r\x1b[K" : "";
       try {
-        const { computed, ms } = fillSync({ dir, failures: local, target, files, progress: tty });
-        if (tty) process.stderr.write("\r\x1b[K");
+        const { computed, ms } = fillSync({ dir, failures: local, target, files, progress: true });
+        if (clear) process.stderr.write(clear);
         if (computed) process.stderr.write(`pngdeer: measured ${count(computed, "image")} in ${(ms / 1000).toFixed(1)} s; later runs read the cache\n`);
       } catch (error) {
         // the images stay unmeasured (and unreported) rather than failing the lint, and the rest
         // of this run doesn't try again
         failed.add(root);
-        process.stderr.write(`${tty ? "\n" : ""}${error.message}\n`);
+        process.stderr.write(`${clear}${error.message}\n`);
+        // but a first run that ran out of time is reported, at the rule's severity, so "error" and
+        // --deny-warnings don't pass a lint that checked only part of the images
+        if (error.after) {
+          const data = { after: error.after, left: count(files.filter(unmeasured).length, "image") };
+          // ESLint drops a problem where a comment turns the rule off: the next file in this thread
+          // that doesn't reports it, or else, if no thread reported one, the summary fails the lint
+          disabled ??= disabledLines(context.sourceCode, context.id ?? RULE);
+          if (!EDITOR && disabled(1)) owe(data);
+          else incomplete(data);
+        }
       }
+    }
+
+    function incomplete(data) {
+      context.report({
+        node: context.sourceCode.ast,
+        loc: { start: { line: 1, column: 0 }, end: { line: 1, column: 0 } },
+        messageId: "incomplete",
+        data,
+      });
+      if (!EDITOR) settle();
     }
   },
 };
 
 // A run's last word, outside editors: what all the warnings add up to (summary.js).
 if (!EDITOR) process.once("exit", () => summarize());
+
+/**
+ * Whether an editor started this linter, from the process's arguments and environment. Only the
+ * script's path inside the package that ships it (after the last node_modules) counts, or else its
+ * file name: a project at ~/code/yaml-language-server, or CI's checkout of it, still lints as a
+ * command. JetBrains IDEs run ESLint in their js-language-service.js.
+ */
+export function editor(argv, env) {
+  const script = (argv[1] ?? "").split(/[\\/]node_modules[\\/]/);
+  const path = script.length > 1 ? script.at(-1) : script[0].split(/[\\/]/).at(-1);
+  return argv.includes("--lsp") || /eslintServer|language-?serv(?:er|ice)|eslint_d/i.test(path) || env.ELECTRON_RUN_AS_NODE === "1";
+}
 
 /**
  * The image files a string in the code names, as [{ file, part }]: the string itself (part null), or
@@ -244,6 +310,7 @@ function imagesIn(text, find) {
  * the plugin) or for all rules.
  */
 function disabledLines(source, id) {
+  if (NO_INLINE_CONFIG) return () => false;
   const lines = new Set();
   const blocks = [];
   let open = null;
@@ -277,6 +344,27 @@ function locate(path, from, root, publicDirs, aliases) {
     }
   }
   return tries.find(isFile) ?? null;
+}
+
+/** `path` with its %-escapes decoded, as a browser or server reads a URL; as it is if one is malformed. */
+function decoded(path) {
+  try {
+    // not decodeURIComponent: "%2F" stays in the name rather than becoming a folder
+    return decodeURI(path);
+  } catch {
+    return path;
+  }
+}
+
+/** `files` with each file once, where code spells it in another case or Unicode form than the disk (macOS, Windows). */
+function distinct(files) {
+  const seen = new Set();
+  return files.filter((file) => {
+    const path = physical(file);
+    if (seen.has(path)) return false;
+    seen.add(path);
+    return true;
+  });
 }
 
 function isFile(path) {

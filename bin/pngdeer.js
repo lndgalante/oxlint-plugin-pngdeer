@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // Checks or shrinks images with the same engine and targets as the lint rule.
-import { readFileSync, realpathSync } from "node:fs";
+import { readFileSync, realpathSync, statSync } from "node:fs";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { peakOf, pool } from "../src/batch.js";
 import { plain, shrink } from "../src/shrink.js";
-import { readFlagged } from "../src/summary.js";
-import { count, pathFrom, size } from "../src/text.js";
+import { physical, readFlagged } from "../src/summary.js";
+import { count, pathFrom, quote, size } from "../src/text.js";
 
 const HELP = `usage: oxlint-plugin-pngdeer IMAGE... [--target auto|T]
        oxlint-plugin-pngdeer --flagged [--target auto|T]
@@ -15,7 +16,8 @@ Makes PNGs and JPEGs smaller with pngdeer, in place, at about the same visual qu
 pngdeer is lossy: the picture looks the same, the bytes don't, so commit first.
 Use --check to measure savings without changing images.
 
-  --check       check files or directories (default: this directory); warms the cache
+  --check       check files or directories (default: this directory); warms the cache;
+                skips nested packages (folders with a package.json) unless named
   --flagged     images from the last lint run here, at their measured targets;
                 shared images with conflicting quality targets are left out
   -o OUT        write to OUT instead of in place (one image only)
@@ -30,7 +32,8 @@ Use --check to measure savings without changing images.
   -v, --version
   -h, --help
 
---check exits 0 when clean, 1 when savings meet both thresholds, and 2 on errors.
+--check exits 0 when clean, 1 when savings meet both thresholds, and 2 on errors
+or when it found no images outside the nested packages it skipped.
 It uses explicit options, without reading linter configuration.
 Files it writes are marked as pngdeer's, so the lint rule doesn't flag them again.`;
 
@@ -101,10 +104,16 @@ async function main(args) {
   if (fromLint && (inputs.length || output !== undefined)) return fail("--flagged takes no images and no -o");
   if (!fromLint && inputs.length === 0) return fail("no image given");
   if (output !== undefined && inputs.length > 1) return fail("-o takes one image; without it, each image is written in place");
+  if (output !== undefined && folder(output)) {
+    // the same name in the image's own folder (however it's spelled or linked) would write over it
+    const example = join(output, basename(inputs[0])).split(sep).join("/");
+    return fail(`-o ${output} is a folder: give the file to write${physical(output) === physical(dirname(resolve(inputs[0]))) ? "" : `, like -o ${quote(example)}`}`);
+  }
 
   const flagged = fromLint ? readFlagged(process.cwd()) : null;
   if (fromLint && !flagged) {
-    console.error("oxlint-plugin-pngdeer: no lint has run in this folder yet: run npx oxlint (or eslint) here first");
+    // eslint --cache leaves no list (summary.js)
+    console.error("oxlint-plugin-pngdeer: no list of flagged images here yet: run npx oxlint, or eslint without --cache, in this folder first");
     return 1;
   }
   if (fromLint && flagged.length === 0) {
@@ -122,7 +131,8 @@ async function main(args) {
   if (jobs.length === 1) {
     const [{ input, target }] = jobs;
     try {
-      console.log(`${input}: ${shrink(input, output ?? input, target).text}`);
+      // with -o, say where it wrote, so a preview doesn't read like an in-place write
+      console.log(`${output === undefined ? input : `${input} → ${output}`}: ${shrink(input, output ?? input, target).text}`);
       return 0;
     } catch (error) {
       console.error(`${input}: ${plain(error)}`);
@@ -186,6 +196,15 @@ function once(jobs) {
     seen.add(path);
     return true;
   });
+}
+
+function folder(path) {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    // a new file
+    return false;
+  }
 }
 
 function fail(message) {

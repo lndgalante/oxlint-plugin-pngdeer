@@ -24,9 +24,10 @@ export interface PngdeerSettings {
   cacheDir?: string;
 }
 
-// Shaped like an ESLint plugin, so `plugins: { pngdeer }` type-checks in eslint.config.ts and
-// typescript-eslint configs, without depending on eslint's own types (ESLint is optional).
-declare const plugin: {
+// Shaped like an ESLint plugin, so `plugins: { pngdeer }` and `pngdeer.configs.recommended`
+// type-check in eslint.config.ts and typescript-eslint configs, without depending on eslint's own
+// types (ESLint is optional).
+export interface PngdeerPlugin {
   meta: { name: "pngdeer"; version: string };
   rules: {
     "compressible-image": {
@@ -41,6 +42,15 @@ declare const plugin: {
       create(context: any): Record<string, (node: any) => void>;
     };
   };
-};
+  /** For ESLint: turns the rule on for the files the rest of the config lints. */
+  configs: {
+    recommended: {
+      name: "pngdeer/recommended";
+      plugins: { pngdeer: PngdeerPlugin };
+      rules: { "pngdeer/compressible-image": "warn" };
+    };
+  };
+}
 
+declare const plugin: PngdeerPlugin;
 export default plugin;

@@ -1,6 +1,6 @@
 // The command, npx oxlint-plugin-pngdeer.
 import assert from "node:assert/strict";
-import { lstatSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { marked } from "../src/marker.js";
@@ -21,9 +21,40 @@ test("makes several images smaller in place, and marks them", () => {
 test("-o writes elsewhere and leaves the image alone", () => {
   const dir = project({ images: ["src/assets/crystal-ball.png"] });
   const before = readFileSync(join(dir, "src/assets/crystal-ball.png"));
-  assert.equal(pngdeer(dir, "src/assets/crystal-ball.png", "-o", "smaller.png").status, 0);
+  const run = pngdeer(dir, "src/assets/crystal-ball.png", "-o", "smaller.png");
+  assert.equal(run.status, 0, run.stderr);
+  assert.match(run.stdout, /^src\/assets\/crystal-ball\.png → smaller\.png: 35 kB → 11 kB /m);
   assert.deepEqual(readFileSync(join(dir, "src/assets/crystal-ball.png")), before);
   assert.equal(marked(readFileSync(join(dir, "smaller.png"))), true);
+});
+
+test("-o naming a folder asks for a file before compressing anything", () => {
+  const dir = project({ images: ["src/assets/crystal-ball.png"] });
+  const before = readFileSync(join(dir, "src/assets/crystal-ball.png"));
+  mkdirSync(join(dir, "out"));
+  const run = pngdeer(dir, "src/assets/crystal-ball.png", "-o", "out");
+  assert.equal(run.status, 2);
+  assert.match(run.stderr, /^oxlint-plugin-pngdeer: -o out is a folder: give the file to write, like -o out[\\/]crystal-ball\.png$/m);
+  assert.deepEqual(readdirSync(join(dir, "out")), []);
+  // the image's own folder: the same name would write over it, so no example
+  const own = pngdeer(dir, "src/assets/crystal-ball.png", "-o", "src/assets/");
+  assert.equal(own.status, 2);
+  assert.match(own.stderr, /^oxlint-plugin-pngdeer: -o src\/assets\/ is a folder: give the file to write$/m);
+  // the same folder spelled in another case, or through a link, is still the image's own
+  const spellings = [existsSync(join(dir, "SRC/Assets")) ? "SRC/Assets" : null];
+  try {
+    symlinkSync(join(dir, "src/assets"), join(dir, "assets-link"), "junction");
+    spellings.push("assets-link");
+  } catch (error) {
+    if (process.platform !== "win32") throw error;
+  }
+  for (const folder of spellings.filter(Boolean)) {
+    assert.match(pngdeer(dir, "src/assets/crystal-ball.png", "-o", folder).stderr, new RegExp(`^oxlint-plugin-pngdeer: -o ${folder} is a folder: give the file to write$`, "m"));
+  }
+  assert.deepEqual(readFileSync(join(dir, "src/assets/crystal-ball.png")), before);
+  // an example to paste, quoted
+  mkdirSync(join(dir, "my out"));
+  assert.match(pngdeer(dir, "src/assets/crystal-ball.png", "-o", "my out").stderr, /^oxlint-plugin-pngdeer: -o my out is a folder: give the file to write, like -o 'my out\/crystal-ball\.png'$/m);
 });
 
 test("a target it can't reach leaves the file as it was", () => {
@@ -49,7 +80,7 @@ test("errors name the file, say why, and the others still get done", () => {
   const dir = project({ files: { "fade.png": fade() }, images: ["src/assets/crystal-ball.png"] });
   const run = pngdeer(dir, "missing.png", "fade.png", "src/assets/crystal-ball.png", "--target", "90");
   assert.equal(run.status, 1);
-  assert.match(run.stderr, /^\[1\/3\] missing\.png: no such file$/m);
+  assert.match(run.stderr, /^\[1\/3\] missing\.png: no such file or folder$/m);
   assert.match(run.stderr, /^\[[23]\/3\] fade\.png: pngdeer couldn't compress this image: unreachable/m);
   assert.deepEqual(handled(run.stdout), ["src/assets/crystal-ball.png"]);
 });

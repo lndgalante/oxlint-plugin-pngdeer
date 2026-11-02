@@ -4,7 +4,7 @@ import { chmodSync, readFileSync, realpathSync, renameSync, rmSync, statSync, wr
 import { basename, dirname, join } from "node:path";
 import { compress } from "./engine.js";
 import { unsupported } from "./images.js";
-import { mark, marked } from "./marker.js";
+import { keepOrientation, mark, marked } from "./marker.js";
 import { looks, size, smaller } from "./text.js";
 
 /**
@@ -34,7 +34,7 @@ export function shrink(input, output, target) {
     return unchanged(`no smaller file reaches ${wanted} (the best reaches quality ${Math.round(score)}/100)`);
   }
   // the mark costs a few dozen bytes, more than pngdeer saves on some tiny files
-  const result = outcome === "original" ? null : mark(compressed);
+  const result = outcome === "original" ? null : mark(keepOrientation(bytes, compressed));
   if (!result || result.length >= bytes.length) return unchanged("pngdeer can't make it smaller");
   save(output, result);
   const quality = outcome === "hit" ? `quality ${Math.round(score)}/100: looks ${looks(score)}` : "lossless: looks identical";
@@ -44,7 +44,7 @@ export function shrink(input, output, target) {
 
 /** An error as one line a person can act on. */
 export function plain(error) {
-  if (error?.code === "ENOENT") return "no such file";
+  if (error?.code === "ENOENT") return "no such file or folder";
   if (error?.code === "EACCES" || error?.code === "EPERM") return "permission denied";
   if (error?.code === "EISDIR") return "a folder, not an image";
   return String(error?.message ?? error);

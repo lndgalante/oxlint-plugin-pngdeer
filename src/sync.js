@@ -3,10 +3,14 @@
 // pattern synckit uses for eslint-plugin-prettier). No child process: no fork of oxlint's large
 // address space.
 import { MessageChannel, receiveMessageOnPort } from "node:worker_threads";
+import { unlock } from "./batch.js";
+import { count } from "./text.js";
 import { startWorker } from "./threads.js";
 
-// A worker that dies without answering (out of memory, say) must not hang the lint forever.
-const TIMEOUT_MS = 15 * 60 * 1000;
+// A worker that dies without answering (out of memory, say) must not hang the lint forever. The
+// tests shorten it with PNGDEER_TIMEOUT_MS.
+const TIMEOUT_MS = Number(process.env.PNGDEER_TIMEOUT_MS) || 15 * 60 * 1000;
+const LIMIT = TIMEOUT_MS < 60000 ? `${TIMEOUT_MS / 1000} s` : count(TIMEOUT_MS / 60000, "minute");
 
 /** fill(request) from batch.js, waited for synchronously. */
 export function fillSync(request) {
@@ -16,6 +20,7 @@ export function fillSync(request) {
     workerData: { request, signal, port: port2 },
     transferList: [port2],
   });
+  const thread = worker.threadId;
   // Errors cannot reach this thread while Atomics.wait blocks it. The timeout reports failure;
   // consume the later event so an engine startup error cannot crash the linter afterward.
   worker.on("error", () => {});
@@ -23,10 +28,14 @@ export function fillSync(request) {
   const reply = receiveMessageOnPort(port1)?.message;
   port1.close();
   if (status === "timed-out" || !reply) {
-    // its engines would go on computing next to whatever runs after
+    // its engines would go on computing next to whatever runs after; stopped, it can't release the lock
     worker.terminate();
-    const why = status === "timed-out" ? `stopped measuring after ${TIMEOUT_MS / 60000} minutes` : "measuring stopped without an answer (out of memory?)";
-    throw new Error(`pngdeer: ${why}; what it measured is cached, and the next run carries on`);
+    unlock(request.failures ?? request.dir, thread);
+    const why = status === "timed-out" ? `stopped measuring after ${LIMIT}` : "measuring stopped without an answer (out of memory?)";
+    const error = new Error(`pngdeer: ${why}; what it measured is cached, so the next run here carries on (in CI, only if the cache is kept between runs)`);
+    // the lint reports a run that ran out of time as incomplete (rule.js)
+    if (status === "timed-out") error.after = LIMIT;
+    throw error;
   }
   worker.unref();
   if (reply.error) throw new Error(`pngdeer: ${reply.error}`);
@@ -49,10 +58,16 @@ function drain() {
   running = true;
   const files = [...batch.files];
   const worker = startWorker(new URL("./fill-worker.js", import.meta.url), { workerData: { request: { ...batch, files } } });
+  // read now: by its exit, a worker's threadId is -1
+  const thread = worker.threadId;
   // an error thrown here would take the whole language server down with it
   worker.on("error", () => {});
   worker.on("exit", (code) => {
-    if (code !== 0) failedAt.set(group, Date.now());
+    if (code !== 0) {
+      failedAt.set(group, Date.now());
+      // a batch that died (out of memory) left its lock, which every later batch would wait on
+      unlock(batch.failures ?? batch.dir, thread);
+    }
     for (const file of files) pending.delete(`${group}\0${file}`);
     running = false;
     drain();

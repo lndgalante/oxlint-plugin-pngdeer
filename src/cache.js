@@ -19,8 +19,9 @@ export function cacheDir(cwd) {
   return join(cwd, "node_modules", ".cache", "pngdeer");
 }
 
-// What an entry holds: a new shape (2 added the score) measures everything again.
-const FORMAT = 2;
+// What an entry holds: a change measures everything again. 2 added the score; 3 skips grayscale
+// PNGs with a color profile, and counts the eXIf a turned PNG now keeps.
+const FORMAT = 3;
 
 /** The cache key of an image's bytes for a given target (undefined: automatic quality). */
 export function key(bytes, target) {

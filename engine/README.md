@@ -6,6 +6,7 @@ pngdeer's single-threaded WebAssembly build and its wasm-bindgen glue (`web/buil
 |---|---|
 | `pngdeer_wasm_bg.wasm` | `ad2351d25459d45c84a22b847c932b01dfa31cfea1f9ca4b89d5139bff72cd8e` |
 | `pngdeer_wasm.js` | `9e990aa28b18e2ea58dcaf31a4d091db8dd5ce4a2ba13c579c31a127dc4aa21f` |
+| `THIRD_PARTY_LICENSES.txt` | `cd98a6db03e5fc16035627dccc4e1c916faf3b09958f423bc75899476f198116` |
 
 The cache keys results by the wasm's hash (`src/cache.js`), so a new engine measures everything again.
 

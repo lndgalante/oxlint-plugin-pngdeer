@@ -36,12 +36,26 @@ export function dimensions(bytes, type) {
   return [0, 0, 1];
 }
 
+/** The data of a PNG's first chunk of this type before its image data, or null. */
+export function pngChunk(bytes, type) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  for (let pos = 8; pos + 12 <= bytes.length; pos += 12 + view.getUint32(pos)) {
+    const chunk = String.fromCharCode(...bytes.subarray(pos + 4, pos + 8));
+    if (chunk === "IDAT" || chunk === "IEND") break;
+    if (chunk === type) return bytes.subarray(pos + 8, pos + 8 + view.getUint32(pos));
+  }
+  return null;
+}
+
 /** Why pngdeer would not take this file, or null if it would. */
 export function unsupported(bytes) {
   const type = kind(bytes);
   if (!type) return "not a PNG or JPEG";
   const [width, height, frames] = dimensions(bytes, type);
   if (!width || !height) return "unreadable header";
+  // pngdeer writes these as palette PNGs and keeps the gray profile, which a palette PNG can't use,
+  // so browsers can show them darker. Until pngdeer keeps them gray, they're left alone.
+  if (type === "png" && (bytes[25] === 0 || bytes[25] === 4) && pngChunk(bytes, "iCCP")) return "a grayscale PNG with a color profile (pngdeer's output can look darker)";
   const pixels = width * height;
   if (pixels > MAX_PIXELS) return `too large (${(pixels / 1e6).toFixed(1)} MP, at most ${MAX_PIXELS / 1e6})`;
   if (frames > 1 && pixels * frames > MAX_ANIMATION_PIXELS) return `animation too large (${frames} frames, ${((pixels * frames) / 1e6).toFixed(1)} MP)`;

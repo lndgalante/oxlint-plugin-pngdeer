@@ -8,7 +8,8 @@ import { fileURLToPath } from "node:url";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const { name, version } = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 const npm = process.env.npm_execpath;
-assert.ok(npm, "Run this check with npm run check:package");
+// pnpm and bun set npm_execpath to their own binary, which this script can't run with node.
+assert.ok(npm && /npm-cli\.[cm]?js$/.test(npm), "Run this check with npm: npm run check:package");
 const published = process.argv.includes("--published");
 
 const work = mkdtempSync(join(tmpdir(), "pngdeer-package-"));

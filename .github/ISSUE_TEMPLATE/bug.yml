@@ -1,5 +1,6 @@
 name: Bug report
 description: The rule or the command did something wrong
+labels: ["bug"]
 body:
   - type: textarea
     id: what

@@ -233,9 +233,11 @@ function component(i, refs, logo, ts) {
     const local = `image${n}`;
     const relative = `../${ref.path.replace(/^src\//, "")}`;
     const url = `/${ref.path.replace(/^public\//, "")}`;
-    if (ref.how === "import") imports.push(`import ${local} from "${relative}";`), tags.push(`<img src={${local}} alt="" />`);
-    else if (ref.how === "alias") imports.push(`import ${local} from "@/${ref.path.replace(/^src\//, "")}";`), tags.push(`<img src={${local}} alt="" />`);
-    else if (ref.how === "url") tags.push(`<img src={new URL("${relative}", import.meta.url).href} alt="" />`);
+    if (ref.how === "import" || ref.how === "alias") {
+      const from = ref.how === "import" ? relative : `@/${ref.path.replace(/^src\//, "")}`;
+      imports.push(`import ${local} from "${from}";`);
+      tags.push(`<img src={${local}} alt="" />`);
+    } else if (ref.how === "url") tags.push(`<img src={new URL("${relative}", import.meta.url).href} alt="" />`);
     else if (ref.how === "public") tags.push(`<img src="${url}" alt="" loading="lazy" />`);
     else if (ref.how === "srcset") tags.push(`<img src="${url}" srcSet="${url} 1x, /${ref.other.replace(/^public\//, "")} 2x" alt="" />`);
     else if (ref.how === "data") data.push(`"${url}"`);

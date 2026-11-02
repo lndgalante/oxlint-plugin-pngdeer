@@ -51,14 +51,14 @@ export default [{
 
 /** oxlint's run in `dir`: the rule's diagnostics, and what it printed on stderr. */
 export function oxlint(dir, ...args) {
-  const run = spawnSync(process.execPath, [join(plugin, "node_modules", "oxlint", "bin", "oxlint"), "--format", "json", ...args], { cwd: dir, encoding: "utf8" });
+  const run = spawnSync(process.execPath, [join(plugin, "node_modules", "oxlint", "bin", "oxlint"), "--format", "json", ...args], { cwd: dir, encoding: "utf8", timeout: 300_000 });
   assert.equal(run.status, 0, run.stderr || run.stdout);
   return { found: JSON.parse(run.stdout).diagnostics.filter((d) => d.code.includes("compressible-image")), stderr: run.stderr };
 }
 
 /** oxlint's run in `dir` in a format people read (the summary is left out of machine formats): its stderr. */
 export function oxlintSummary(dir, ...args) {
-  const run = spawnSync(process.execPath, [join(plugin, "node_modules", "oxlint", "bin", "oxlint"), "--format", "unix", ...args], { cwd: dir, encoding: "utf8" });
+  const run = spawnSync(process.execPath, [join(plugin, "node_modules", "oxlint", "bin", "oxlint"), "--format", "unix", ...args], { cwd: dir, encoding: "utf8", timeout: 300_000 });
   assert.equal(run.status, 0, run.stderr || run.stdout);
   return run.stderr;
 }
@@ -68,7 +68,7 @@ export const handled = (stdout) => stdout.trim().split("\n").map((line) => line.
 
 /** ESLint's run in `dir`, in the same shape as oxlint(). */
 export function eslint(dir, ...args) {
-  const run = spawnSync(process.execPath, [join(plugin, "node_modules", "eslint", "bin", "eslint.js"), "--format", "json", ...args], { cwd: dir, encoding: "utf8" });
+  const run = spawnSync(process.execPath, [join(plugin, "node_modules", "eslint", "bin", "eslint.js"), "--format", "json", ...args], { cwd: dir, encoding: "utf8", timeout: 300_000 });
   assert.equal(run.status, 0, run.stderr || run.stdout);
   const found = JSON.parse(run.stdout).flatMap((file) => file.messages).filter((m) => m.ruleId === "pngdeer/compressible-image");
   return { found, stderr: run.stderr };
@@ -76,30 +76,46 @@ export function eslint(dir, ...args) {
 
 /** ESLint's run in `dir` in a format people read (the summary is left out of machine formats): its stderr. */
 export function eslintSummary(dir, ...args) {
-  const run = spawnSync(process.execPath, [join(plugin, "node_modules", "eslint", "bin", "eslint.js"), ...args], { cwd: dir, encoding: "utf8" });
+  const run = spawnSync(process.execPath, [join(plugin, "node_modules", "eslint", "bin", "eslint.js"), ...args], { cwd: dir, encoding: "utf8", timeout: 300_000 });
   assert.ok(run.status === 0 || run.status === 1, run.stderr || run.stdout);
   return run.stderr;
 }
 
 /** The command's run in `cwd`. */
 export function pngdeer(cwd, ...args) {
-  return spawnSync(process.execPath, [join(plugin, "bin", "pngdeer.js"), ...args], { cwd, encoding: "utf8" });
+  return spawnSync(process.execPath, [join(plugin, "bin", "pngdeer.js"), ...args], { cwd, encoding: "utf8", timeout: 300_000 });
 }
 
 /** The image names the warnings start with, sorted. */
 export const names = ({ found }) => found.map((d) => d.message.split(" ")[0]).sort();
 
+/** A PNG chunk of `type` holding `data`. */
+export function chunk(type, data) {
+  const out = Buffer.alloc(12 + data.length);
+  out.writeUInt32BE(data.length, 0);
+  out.write(type, 4, "latin1");
+  data.copy(out, 8);
+  out.writeUInt32BE(crc32(out.subarray(4, 8 + data.length)), 8 + data.length);
+  return out;
+}
+
+const SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+/** A square 8-bit grayscale PNG of random pixels with a gray color profile, `side` pixels wide. */
+export function grayWithProfile(side) {
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(side, 0);
+  header.writeUInt32BE(side, 4);
+  header.set([8, 0], 8);
+  const raw = Buffer.alloc((side + 1) * side);
+  for (let i = 0; i < raw.length; i++) raw[i] = i % (side + 1) === 0 ? 0 : Math.floor(Math.random() * 256);
+  const profile = chunk("iCCP", Buffer.concat([Buffer.from("Gray Gamma 2.2\0\0", "latin1"), deflateSync(Buffer.alloc(128))]));
+  return Buffer.concat([SIGNATURE, chunk("IHDR", header), profile, chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
+}
+
 /** A 320 × 240 RGBA gradient fading to transparent, as a PNG. */
 export function fade() {
   const [width, height] = [320, 240];
-  const chunk = (type, data) => {
-    const out = Buffer.alloc(12 + data.length);
-    out.writeUInt32BE(data.length, 0);
-    out.write(type, 4, "latin1");
-    data.copy(out, 8);
-    out.writeUInt32BE(crc32(out.subarray(4, 8 + data.length)), 8 + data.length);
-    return out;
-  };
   const raw = Buffer.alloc((width * 4 + 1) * height);
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
@@ -111,6 +127,5 @@ export function fade() {
   header.writeUInt32BE(width, 0);
   header.writeUInt32BE(height, 4);
   header.set([8, 6], 8);
-  const signature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-  return Buffer.concat([signature, chunk("IHDR", header), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
+  return Buffer.concat([SIGNATURE, chunk("IHDR", header), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
 }

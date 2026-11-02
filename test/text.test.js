@@ -4,7 +4,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { marked } from "../src/marker.js";
-import { quote, shrinkCommand } from "../src/text.js";
+import { checkCommand, quote, shrinkCommand } from "../src/text.js";
 import { project } from "./helpers.js";
 
 test("Windows fix commands use literal PowerShell arguments when a path needs quoting", () => {
@@ -19,6 +19,20 @@ test("Windows fix commands use literal PowerShell arguments when a path needs qu
   assert.match(command.text, /^& /);
   assert.match(command.text, / 'public\/\$name''s %PATH%\.png' --target 90$/);
   assert.doesNotMatch(command.text, /npx/);
+});
+
+test("the command that checks skipped packages picks its shell the same way", () => {
+  assert.deepEqual(checkCommand(["packages/docs", "packages/web"], {}, "win32"), { text: "npx oxlint-plugin-pngdeer --check packages/docs packages/web", shell: "" });
+  const command = checkCommand(["packages/my app"], { target: 90 }, "win32");
+  assert.equal(command.shell, " in PowerShell");
+  assert.match(command.text, /^& .+ --check 'packages\/my app' --target 90$/);
+  assert.doesNotMatch(command.text, /npx/);
+  assert.equal(checkCommand(["packages/my app"], {}, "linux").text, "npx oxlint-plugin-pngdeer --check 'packages/my app'");
+  // options at their defaults are left out; values are quoted as values, not as paths
+  const options = { exclude: ["**/fixtures/**", "-old.png"], cacheDir: ".pngdeer", minSavedBytes: 4096, minSavedPercent: 30 };
+  assert.equal(checkCommand(["packages/web"], options, "linux").text, "npx oxlint-plugin-pngdeer --check packages/web --exclude '**/fixtures/**' --exclude -old.png --cache-dir .pngdeer --min-saved-percent 30");
+  // cmd.exe would keep the quotes, so a quoted pattern needs PowerShell
+  assert.equal(checkCommand(["packages/web"], options, "win32").shell, " in PowerShell");
 });
 
 for (const shell of ["powershell.exe", "pwsh.exe"]) {
