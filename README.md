@@ -166,6 +166,10 @@ jobs:
       - run: npx oxlint --format github
 ```
 
+A pull request that adds a heavy image then gets a warning on the line that uses it ([see it live](https://github.com/lndgalante/pngdeer-demo/pull/1/files)):
+
+![A GitHub pull request's Files changed tab: under the added line that uses /hero.png, a check warning from pngdeer(compressible-image) says hero.png could be 70% smaller (509 kB → 151 kB) and gives the command that shrinks it](https://raw.githubusercontent.com/lndgalante/oxlint-plugin-pngdeer/main/docs/images/pull-request.png)
+
 With ESLint, run `npx eslint .`: `actions/setup-node` turns its output into annotations. With Vite+, run `npx vp lint --format github`. GitHub annotates at most 10 warnings and 10 errors per step, your other lint warnings included; pngdeer's summary in the job log has the total.
 
 Without a cache, CI measures every image on every run, one at a time on a 2-core runner (GitHub's default for private repositories). Commit the cache instead. In `.oxlintrc.json`, set the cache folder in `settings`, next to `rules`; in ESLint, in a config object; with Vite+, in the `lint` block of `vite.config.ts`:
