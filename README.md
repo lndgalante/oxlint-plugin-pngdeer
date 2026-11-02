@@ -21,6 +21,8 @@ A lint rule for [oxlint](https://oxc.rs/docs/guide/usage/linter) and ESLint. It 
     ╰────
 ```
 
+![VS Code with the Oxc extension: "/hero.png" in App.jsx is underlined, and the hover says hero.png could be 70% smaller (509 kB → 151 kB) and gives the command that shrinks it](https://raw.githubusercontent.com/lndgalante/oxlint-plugin-pngdeer/main/docs/images/editor.png)
+
 Compressing your images once fixes today's. The rule also catches next month's 2 MB screenshot, in your editor and in the pull request that adds it.
 
 ## Try it on your images
