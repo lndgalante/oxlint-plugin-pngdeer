@@ -9,7 +9,7 @@ These projects ran pngdeer on their own images. Using pngdeer in a real project?
 | Image | Where it appears | Original | Compressed | Saved |
 |---|---|---:|---:|---:|
 | `public/opengraph.png`, 1200×630 PNG | The social preview of every page without its own | 370,801 bytes | 66,520 bytes | 82% |
-| `public/images/tres-de-febrero-resultado-infracciones-watermarked.png`, 1280×720 PNG | An annotated screenshot of a municipal fine-lookup portal, on [a guide page](https://multabot.com.ar/multas-tres-de-febrero) | 485,329 bytes | 190,091 bytes | 61% |
+| An annotated screenshot in `public/images/`, 1280×720 PNG | A guide page. It shows a partner's site, so it isn't shown here | 485,329 bytes | 190,091 bytes | 61% |
 | `public/images/blog/multabot-flotas.jpg`, 1024×576 JPEG | The featured image of [a blog post](https://multabot.com.ar/blog/multabot-para-flotas) | 108,899 bytes | 60,161 bytes | 45% |
 | **Total** | | **965,029 bytes** | **316,772 bytes** | **67%** |
 
@@ -18,7 +18,7 @@ The originals come from the commit before the project compressed its images. png
 ```bash
 npx oxlint-plugin-pngdeer@0.5.0 --check --target 90 \
   originals/opengraph.png \
-  originals/tres-de-febrero-resultado-infracciones-watermarked.png \
+  originals/<the screenshot>.png \
   originals/multabot-flotas.jpg
 # exit 1 (savings found): 3 checked, 3 measured, 0 skipped, 0 errors
 
