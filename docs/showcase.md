@@ -1,6 +1,36 @@
 # Showcase
 
-Using pngdeer in a real project? We'd like to feature a few cases in the README: what it caught, how much smaller the images became, and whether the result looked good enough to ship. [Share yours in an issue](https://github.com/lndgalante/oxlint-plugin-pngdeer/issues/new?template=showcase.yml).
+These projects ran pngdeer on their own images. Using pngdeer in a real project? We'd like to feature more cases in the README: what it caught, how much smaller the images became, and whether the result looked good enough to ship. [Share yours in an issue](https://github.com/lndgalante/oxlint-plugin-pngdeer/issues/new?template=showcase.yml); [the prompt below](#a-prompt-to-share) helps a coding assistant draft one.
+
+## Multabot
+
+[Multabot](https://multabot.com.ar) tracks traffic fines in Argentina. Its marketing site is built with Astro and deployed on Cloudflare Pages, and its repository is private. Multabot picked these three images, all served from `public/`:
+
+| Image | Where it appears | Original | Compressed | Saved |
+|---|---|---:|---:|---:|
+| `public/opengraph.png`, 1200×630 PNG | The social preview of every page without its own | 370,801 bytes | 66,520 bytes | 82% |
+| `public/images/tres-de-febrero-resultado-infracciones-watermarked.png`, 1280×720 PNG | An annotated screenshot of a municipal fine-lookup portal, on [a guide page](https://multabot.com.ar/multas-tres-de-febrero) | 485,329 bytes | 190,091 bytes | 61% |
+| `public/images/blog/multabot-flotas.jpg`, 1024×576 JPEG | The featured image of [a blog post](https://multabot.com.ar/blog/multabot-para-flotas) | 108,899 bytes | 60,161 bytes | 45% |
+| **Total** | | **965,029 bytes** | **316,772 bytes** | **67%** |
+
+The originals come from the commit before the project compressed its images. pngdeer 0.5.0 measured them at quality 90 and wrote each compressed file:
+
+```bash
+npx oxlint-plugin-pngdeer@0.5.0 --check --target 90 \
+  originals/opengraph.png \
+  originals/tres-de-febrero-resultado-infracciones-watermarked.png \
+  originals/multabot-flotas.jpg
+# exit 1 (savings found): 3 checked, 3 measured, 0 skipped, 0 errors
+
+npx oxlint-plugin-pngdeer@0.5.0 originals/opengraph.png --target 90 -o previews/opengraph.preview.png
+# and the same for the other two
+```
+
+Multabot shipped compressed files made with 0.4.0 at quality 90, and 0.5.0 makes the same bytes. The site doesn't use `astro:assets` or `<Image>`, and Cloudflare doesn't re-encode the files: on November 2, 2026, each URL returned the compressed PNG or JPEG byte for byte (same size and SHA-1), with no `content-encoding` or `cf-polished` header, even to a request that accepted AVIF and WebP. The originals weren't measured on the live site before the change, so the before-and-after transfer is not a measured result.
+
+So far, Multabot has used the command line, not the lint rule.
+
+Compare the originals and compressed files at full size in [docs/images/showcase/multabot](images/showcase/multabot), where `.optimized` marks each compressed one.
 
 ## A prompt to share
 

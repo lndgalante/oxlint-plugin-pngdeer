@@ -5,7 +5,7 @@ labels: ["showcase"]
 body:
   - type: markdown
     attributes:
-      value: A coding assistant can draft this with [the showcase prompt](https://github.com/lndgalante/oxlint-plugin-pngdeer/blob/main/docs/showcase.md). Review what it writes before you post.
+      value: A coding assistant can draft this with [the showcase prompt](https://github.com/lndgalante/oxlint-plugin-pngdeer/blob/main/docs/showcase.md#a-prompt-to-share). Review what it writes before you post.
   - type: input
     id: project
     attributes:

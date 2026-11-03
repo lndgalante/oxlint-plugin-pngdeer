@@ -45,6 +45,8 @@ The gradients gained some texture. Compare previews at full size before replacin
 
 Savings vary by image. On pinned copies of three public projects' images, `--check` flagged all 19 of the Vue docs' guide images (74% smaller in all, 1.2 MB → 316 kB) and 4 of the Docusaurus starter's 5 (53% smaller in all), but only 2 of Starlight's 12 small portraits (7% smaller in all). These are repository bytes: an image pipeline or CDN may already re-encode what users download. [The trials](https://github.com/lndgalante/oxlint-plugin-pngdeer/blob/main/bench/TRIALS.md)
 
+On Multabot's live site, which serves images as they are, three images shipped 67% smaller in all. [The showcase](https://github.com/lndgalante/oxlint-plugin-pngdeer#showcase)
+
 ## Why a lint rule
 
 Vite copies `public/` to the build as is, and compresses imported images only with a plugin. The usual fixes run at other moments:
@@ -234,8 +236,16 @@ With ESLint's recommended config, set the rule again in a config object after it
 
 ## Showcase
 
-Using pngdeer in a real project? We'd like to feature a few cases here. [Share yours in an issue](https://github.com/lndgalante/oxlint-plugin-pngdeer/issues/new?template=showcase.yml): what it caught, how much smaller the images became, and whether the result looked good enough to ship. [A prompt](https://github.com/lndgalante/oxlint-plugin-pngdeer/blob/main/docs/showcase.md) helps a coding assistant draft one.
+[Multabot](https://multabot.com.ar) tracks traffic fines in Argentina. It ran pngdeer's command line on three images that its Astro site, on Cloudflare Pages, serves from `public/` as they are. At `--target 90`, the quality suggested above for photos and screenshots with small text, they became 67% smaller in all (965 kB → 317 kB). Multabot shipped the compressed files: on November 2, 2026, the site served each one byte for byte. [The full report](https://github.com/lndgalante/oxlint-plugin-pngdeer/blob/main/docs/showcase.md#multabot)
+
+| Original | Compressed at quality 90 |
+|---|---|
+| ![Multabot's social preview: the headline "Las multas de tu flota, en un solo tablero." beside a glowing dotted map of Argentina and a list of speeding fines](https://raw.githubusercontent.com/lndgalante/oxlint-plugin-pngdeer/main/docs/images/showcase/multabot/opengraph.png)<br>Social preview · 370,801 bytes | ![Compressed social preview with the same headline, map and list of fines](https://raw.githubusercontent.com/lndgalante/oxlint-plugin-pngdeer/main/docs/images/showcase/multabot/opengraph.optimized.png)<br>66,520 bytes · 82% smaller |
+| ![Screenshot of the Tres de Febrero fine-lookup portal, watermarked, with red numbered arrows pointing at the pay button and the appeal instructions](https://raw.githubusercontent.com/lndgalante/oxlint-plugin-pngdeer/main/docs/images/showcase/multabot/tres-de-febrero.png)<br>Annotated screenshot · 485,329 bytes | ![Compressed screenshot of the same portal, with its watermark, small text and red arrows](https://raw.githubusercontent.com/lndgalante/oxlint-plugin-pngdeer/main/docs/images/showcase/multabot/tres-de-febrero.optimized.png)<br>190,091 bytes · 61% smaller |
+| ![Photo of a man smiling at a laptop that shows a fleet dashboard, with trucks outside the window](https://raw.githubusercontent.com/lndgalante/oxlint-plugin-pngdeer/main/docs/images/showcase/multabot/flotas.jpg)<br>Blog photo · 108,899 bytes | ![Compressed photo of the same man, laptop and trucks](https://raw.githubusercontent.com/lndgalante/oxlint-plugin-pngdeer/main/docs/images/showcase/multabot/flotas.optimized.jpg)<br>60,161 bytes · 45% smaller |
+
+Using pngdeer in a real project? We'd like to feature more. [Share yours in an issue](https://github.com/lndgalante/oxlint-plugin-pngdeer/issues/new?template=showcase.yml): what it caught, how much smaller the images became, and whether the result looked good enough to ship. [A prompt](https://github.com/lndgalante/oxlint-plugin-pngdeer/blob/main/docs/showcase.md#a-prompt-to-share) helps a coding assistant draft one.
 
 ## License
 
-[MIT](https://github.com/lndgalante/oxlint-plugin-pngdeer/blob/main/LICENSE). The engine's dependencies keep their own licenses ([engine/THIRD_PARTY_LICENSES.txt](https://github.com/lndgalante/oxlint-plugin-pngdeer/blob/main/engine/THIRD_PARTY_LICENSES.txt)), and [engine/README.md](https://github.com/lndgalante/oxlint-plugin-pngdeer/blob/main/engine/README.md) says where the engine comes from. The example images keep theirs ([example/SOURCES.md](https://github.com/lndgalante/oxlint-plugin-pngdeer/blob/main/example/SOURCES.md)). JPEG output is encoded with mozjpeg: this software is based in part on the work of the Independent JPEG Group.
+[MIT](https://github.com/lndgalante/oxlint-plugin-pngdeer/blob/main/LICENSE). The engine's dependencies keep their own licenses ([engine/THIRD_PARTY_LICENSES.txt](https://github.com/lndgalante/oxlint-plugin-pngdeer/blob/main/engine/THIRD_PARTY_LICENSES.txt)), and [engine/README.md](https://github.com/lndgalante/oxlint-plugin-pngdeer/blob/main/engine/README.md) says where the engine comes from. The example images keep theirs ([example/SOURCES.md](https://github.com/lndgalante/oxlint-plugin-pngdeer/blob/main/example/SOURCES.md)), and the MIT license doesn't cover the showcase images. JPEG output is encoded with mozjpeg: this software is based in part on the work of the Independent JPEG Group.
