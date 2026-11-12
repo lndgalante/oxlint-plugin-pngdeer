@@ -344,8 +344,9 @@ export default {
         if (declined) {
           // the --check it gives looks where this batch did: in the project's folder, from a lint run
           // anywhere else (oxlint in src/, a folder beside it, a monorepo's root, where a bare --check
-          // would walk every package), and without the images the rule leaves out
-          const project = pathFrom(context.cwd, root);
+          // would walk every package), and without the images the rule leaves out. Both ends as the
+          // filesystem spells them, or a file named through a link (macOS's /var) gives a long ../ chain.
+          const project = pathFrom(physical(context.cwd), physical(root));
           const paths = project ? [project] : [];
           const options = { paths, exclude: excludeOption, minSavedBytes, minSavedPercent, cacheDir: dir === local ? undefined : settings.cacheDir };
           process.stderr.write(`${printable(`pngdeer: ${floorLine(computed, declined, options)}`)}\n`);
