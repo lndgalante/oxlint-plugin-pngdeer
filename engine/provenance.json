@@ -8,7 +8,7 @@
   },
   "build": { "package": "slimdeer-wasm", "features": ["avif"] },
   "outputIdentity": "ad2351d25459d45c",
-  "verification": { "runUrl": "https://github.com/lndgalante/oxlint-plugin-slimdeer/actions/runs/43150215691", "recipeRevision": "53e821b088f6a9a84128659fe9fbe9ac8aeb18a2", "cleanBuilds": 2, "matchesVendored": true },
+  "verification": { "runUrl": "https://github.com/lndgalante/oxlint-plugin-slimdeer/actions/runs/43168095056", "recipeRevision": "605cd8341a133fd53bc0c944074488774dee3cce", "cleanBuilds": 2, "matchesVendored": true },
   "observedProducers": {
     "rustc": "1.99.1 (58cf8f9c3 2026-10-13)",
     "clang": "23.1.0-wasi-sdk (https://github.com/llvm/llvm-project 895aa2c896ada719451be2e3673c83da8ddf1141)",
