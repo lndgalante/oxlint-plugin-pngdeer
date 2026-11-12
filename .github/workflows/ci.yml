@@ -53,7 +53,7 @@ jobs:
       - run: npm ci
       - run: npm install --no-save eslint@9.0.0
       - run: npx eslint --version
-      - run: node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./.github/test-reporter.mjs --test-reporter-destination=stdout test/eslint.test.js test/detect.test.js
+      - run: node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./.github/test-reporter.mjs --test-reporter-destination=stdout test/eslint.test.js test/detect.test.js test/compat.test.js
       - run: npm run check:package
 
   # The oldest oxlint the peer range allows, and 1.89, which Vite+ 1.4 bundles (the main jobs run 1.90).
