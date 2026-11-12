@@ -7,6 +7,6 @@
   "exports": "./index.js",
   "bin": { "oxlint-plugin-pngdeer": "bin.js" },
   "files": ["index.js", "bin.js"],
-  "homepage": "https://github.com/lndgalante/oxlint-plugin-slimdeer#moving-from-oxlint-plugin-pngdeer",
+  "homepage": "https://github.com/lndgalante/oxlint-plugin-slimdeer#readme",
   "repository": { "type": "git", "url": "git+https://github.com/lndgalante/oxlint-plugin-slimdeer.git" }
 }

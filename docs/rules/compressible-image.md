@@ -546,8 +546,6 @@ Shared by every file. In `.oxlintrc.json`, `settings` sits next to `rules`; in E
 | `aliases` | the project's tsconfig/jsconfig `paths`, else `{ "@/": "src/", "~/": "src/" }` | Path prefixes and the folder, or list of folders, they stand for, relative to the project root, like `"$lib/": "src/lib/"` or `"#assets/": "src/assets/"`. Without this setting, the rule reads `compilerOptions.paths` from `tsconfig.json` (or `jsconfig.json`) the way TypeScript does: through `extends` (later entries win), with `baseUrl` from wherever the chain sets it and `${configDir}` as the project's folder, and through `references` when the config itself has no `paths` (Vite keeps them in `tsconfig.app.json`). It reads them again when a config changes. Setting it replaces those. |
 | `cacheDir` | `node_modules/.cache/slimdeer` | Where results are kept, relative to the project root. A folder you commit, like `.slimdeer`, keeps CI and fresh clones from measuring again; its entries are formatted for Prettier. Packages can share one. An image of another package that this package's code names (`../../assets/logo.png`, or through an alias) is also looked up in that package's cache folders. Images slimdeer fails on are remembered in `node_modules/.cache/slimdeer` only. |
 
-Before 0.6.0, under the old name oxlint-plugin-pngdeer, the key was `settings.pngdeer`; it is still read when `settings.slimdeer` is missing, with a line asking you to rename it.
-
 Paths starting with `./` or `../` resolve from the file. A path with none of these prefixes (`assets/logo.png`) isn't looked up, unless you add an alias for it, like `{ "assets/": "src/assets/" }`. The project root is the nearest folder above the file with a `package.json`.
 
 Automatic aliases support prefix patterns ending in `*`, choose the longest matching prefix, and try its target folders in order. Package-based `extends` such as `@tsconfig/node22/tsconfig.json`, exact-file aliases, and patterns with a suffix after `*` are not resolved. Set `settings.slimdeer.aliases` explicitly when needed.
@@ -597,7 +595,7 @@ The memory budget applies to each batch. Concurrent lints of different packages 
 From 0.5.0, which had the old name oxlint-plugin-pngdeer, start with [Moving from oxlint-plugin-pngdeer](#moving-from-oxlint-plugin-pngdeer). The engine changed to slimdeer 0.3.1, but it writes the same PNG and JPEG files, and the cache format is the same, so results in a committed `cacheDir` carry over. The local cache moved to `node_modules/.cache/slimdeer`, and the folder 0.5.0 used isn't read, so the first lint on each machine measures every image again, once. In a `cacheDir`, only automatic-target results that scored below 70 are measured again, once, because of the [quality floor](#the-quality-floor); every other result, explicit targets included, is reused. The first lint or `--check` that measures copies the other 0.5.0 automatic-target results to new entries, without measuring those images again. On tanstack.com's 148 images, with a cache folder 0.5.0 had filled, the first `--check` after upgrading measured again only the 7 whose 0.5.0 result was below 70.
 
 - **A committed `cacheDir`:** that first run writes new entry files for the automatic target. Commit them. 0.5.0's automatic-target entries stay, unread and harmless. To drop them, delete the folder before filling it again, at the cost of measuring again what your local cache doesn't hold.
-- **`measure: "never"`:** a lint measures nothing, so until the cache is filled again it doesn't check the images that have no result, and says so with the command that fills it (see [What the lint says](#what-the-lint-says-until-you-finish)). Without a `cacheDir`, the local cache starts empty: run `npx oxlint-plugin-slimdeer --check` once (with the rule's `--target`, if it sets one). With one, run `npx oxlint-plugin-slimdeer --check --cache-dir PATH` once, with PATH your `cacheDir`, and commit the folder: it copies 0.5.0's automatic-target results to new entries and measures again only those below 70.
+- **`measure: "never"`:** a lint measures nothing, so until the cache is filled again it doesn't check the images that have no result, and says so with the command that fills it. Without a `cacheDir`, the local cache starts empty: run `npx oxlint-plugin-slimdeer --check` once (with the rule's `--target`, if it sets one). With one, run `npx oxlint-plugin-slimdeer --check --cache-dir PATH` once, with PATH your `cacheDir`, and commit the folder: it copies 0.5.0's automatic-target results to new entries and measures again only those below 70.
 - **`--flagged`:** run the lint once before it. 0.5.0's list doesn't say which folder its lint ran in, so `--flagged` ignores it.
 - **Images 0.5.0 flagged below quality 70:** they are compressed again at 70. Those that reach it are still flagged, with a smaller saving; those that don't are no longer flagged. On tanstack.com, 3 of those 7 images were flagged again at quality 70 or 71, and 4 dropped out.
 - **`--check` in CI:** it now checks nested packages too, so a step that gates on its exit code can fail where 0.5.0 passed (test fixtures, examples, vendored packages). To check only the root package, as 0.5.0 did, leave out every folder with a package.json of its own. Where those are all in `packages/` and `examples/`, that is `npx oxlint-plugin-slimdeer --check --exclude 'packages/*' --exclude 'examples/*'`; add any others, like `apps/*` or `docs`. `--check --json` gives each listed image's `package`.
@@ -607,92 +605,28 @@ A later version whose engine writes other PNG or JPEG files, or whose cache form
 
 ## Moving from oxlint-plugin-pngdeer
 
-Until 0.5.0, this package was oxlint-plugin-pngdeer. It was renamed along with its engine, which HeyDeer now calls slimdeer. These are all the steps; [the README](../../README.md#moving-from-oxlint-plugin-pngdeer) has the short version. An old package name or rule id left in your lint config stops the lint (steps 2 and 3 show the errors). For the rest, the lint [says what is left](#what-the-lint-says-until-you-finish) as it runs.
+Until 0.5.0, this package was oxlint-plugin-pngdeer. It was renamed along with its engine, which HeyDeer now calls slimdeer. Images it shrank need nothing: they keep their mark (`pngdeer <size>`), which every version recognizes, so none is compressed twice. 0.5.0 keeps working, but gets no more updates. The old name has one more version, which only says it moved: if a dependency bot installs it, the lint stops with an error that says how to move.
 
-1. **The package.** Swap it with your package manager:
-
+1. Swap the package:
    ```bash
-   npm uninstall oxlint-plugin-pngdeer && npm install --save-dev oxlint-plugin-slimdeer
-   pnpm remove oxlint-plugin-pngdeer && pnpm add -D oxlint-plugin-slimdeer
-   yarn remove oxlint-plugin-pngdeer && yarn add --dev oxlint-plugin-slimdeer
-   bun remove oxlint-plugin-pngdeer && bun add --dev oxlint-plugin-slimdeer
+   npm uninstall oxlint-plugin-pngdeer
+   npm install --save-dev oxlint-plugin-slimdeer
    ```
+2. In `.oxlintrc.json` (or the `lint` block of `vite.config.ts`): `"oxlint-plugin-slimdeer"` in `jsPlugins`, `"slimdeer/compressible-image"` in `rules` and `overrides`, and `"settings": { "slimdeer": { … } }`. With ESLint: `import slimdeer from "oxlint-plugin-slimdeer"`, then `slimdeer.configs.recommended`, or `plugins: { slimdeer }` with `"slimdeer/compressible-image"` in `rules`.
+3. Find the rest with `git grep -n -I pngdeer` (`-I` leaves out binary files, like the images the old package shrank: their mark keeps the old word):
 
-2. **oxlint's config.** In `.oxlintrc.json`, or the `lint` block of `vite.config.ts`: `"oxlint-plugin-slimdeer"` in `jsPlugins`, and `"slimdeer/compressible-image"` in `rules` and in every `overrides` block. A key you miss stops oxlint before it lints anything, with exit code 1 and an error that names it:
+   | What you find | Change it to |
+   |---|---|
+   | `pngdeer/compressible-image` in disable comments or `eslint-suppressions.json` | `slimdeer/compressible-image` |
+   | `oxlint-plugin-pngdeer` in scripts (with or without `npx`), CI and docs | `oxlint-plugin-slimdeer` |
+   | `node_modules/.cache/pngdeer` in a CI cache step | `node_modules/.cache/slimdeer` |
+   | `.pngdeer` as a `cacheDir` | nothing: it keeps working (step 4) |
 
-   ```
-   Failed to parse oxlint configuration file.
+4. Lint once. Then delete `node_modules/.cache/pngdeer`, and if you commit a `cacheDir`, commit the new files the lint wrote in it. [Upgrading](#upgrading) says what that first lint measures again, and what to run with `measure: "never"`.
 
-     x Plugin 'pngdeer' not found
-   ```
+Missed a step? An old package name or rule id left in your lint config stops the lint with an error that names it, and under ESLint an old disable comment is an error too. For the rest, the lint tells you: an old `settings.pngdeer` is still read, with a line asking you to rename it; an old disable comment gets a line with its file and line; and an old cache folder gets a line when the lint measures again. Once the old package is uninstalled, a missed `npx oxlint-plugin-pngdeer` checks nothing: it prints the same command with the new name and exits 2.
 
-   An old rule id in an `overrides` block reads `Failed to build configuration.` above the same line, and the old package in `jsPlugins` reads `x Failed to load JS plugin: oxlint-plugin-pngdeer`.
-
-3. **ESLint's config.** `import slimdeer from "oxlint-plugin-slimdeer"`, then `slimdeer.configs.recommended`, or `plugins: { slimdeer }` with `"slimdeer/compressible-image"` in `rules`. A rule key you miss stops ESLint with exit code 2: `A configuration object specifies rule "pngdeer/compressible-image", but could not find plugin "pngdeer".`
-
-4. **Disable comments.** Find them with `git grep -n "pngdeer/compressible-image"`, and write `slimdeer/compressible-image` instead. Until then, oxlint shows the warning there again. ESLint shows it too, and adds its own error on the comment, `Definition for rule 'pngdeer/compressible-image' was not found`, which fails the lint. The rule names each old comment on stderr, and still keeps its image out of `--flagged`.
-
-5. **ESLint suppressions.** Entries for `pngdeer/compressible-image` in `eslint-suppressions.json` no longer match, so the errors come back, and ESLint exits 2 with `There are suppressions left that do not occur anymore.` Suppress them under the new name, then drop the old entries:
-
-   ```bash
-   npx eslint --suppress-rule slimdeer/compressible-image
-   npx eslint --prune-suppressions
-   ```
-
-   The first still exits 2, since the old entries are there until the second removes them. Renaming the key in `eslint-suppressions.json` by hand does the same as both.
-
-6. **Settings.** `"settings": { "slimdeer": { … } }`. Until you rename it, `settings.pngdeer` is still read, with a line asking you to rename it; once both are set, the old key is ignored, with a line saying so.
-
-7. **Scripts and CI.** `oxlint-plugin-slimdeer` in `package.json` scripts (with or without `npx`), CI steps and docs. A script that runs `oxlint-plugin-pngdeer` without `npx` fails once the old package is uninstalled. A missed `npx oxlint-plugin-pngdeer` then fetches the old name's last version, which checks nothing: it prints the same command with the new name and exits 2.
-
-8. **A CI cache step.** The path `node_modules/.cache/slimdeer`, and a key prefix like `slimdeer-` ([the cache](#the-cache) has the steps). Until then, each run measures every image again and names the old folder.
-
-9. **Cache folders.** The local cache moved to `node_modules/.cache/slimdeer`, and the folder 0.5.0 used isn't read, so the first lint on each machine measures every image again and names the old folder; then delete `node_modules/.cache/pngdeer`. A committed `cacheDir` like `.pngdeer` keeps working under its name, and its results still count, since the engine writes the same PNG and JPEG files. The first lint or `--check --cache-dir` copies each automatic-target result to a new file without measuring it again, and measures again only those below quality 70 ([Upgrading](#upgrading)): commit the new files. With `measure: "never"`, a lint measures and copies nothing, so it skips images without a result until you run, once, the `--check` command it prints.
-
-10. **Your editor.** Restart it, or its oxlint or ESLint server, so it loads the new package.
-
-11. **The agent skill.** If you added it, add it again under its new name, `npx skills add lndgalante/oxlint-plugin-slimdeer`, and remove the old one, named `pngdeer`, with `npx skills remove pngdeer`.
-
-12. **Images already shrunk.** Nothing to do. They keep their mark, `pngdeer <size>`, which every version recognizes, so none is compressed twice.
-
-Many disable comments? Keep the old rule id and change only the package: `"jsPlugins": [{ "name": "pngdeer", "specifier": "oxlint-plugin-slimdeer" }]` in oxlint, or `plugins: { pngdeer: slimdeer }` in ESLint. Rules, comments and `settings.pngdeer` then work as they are, and warnings keep the old id: `pngdeer(compressible-image)` in oxlint, `pngdeer/compressible-image` in ESLint. Under that alias, the rule says nothing about the old settings key or comments; the lines about cache folders and `measure: "never"` still print.
-
-### What the lint says until you finish
-
-A command-line lint prints these lines on stderr, each once per run, and `--check` prints the cache folder's line too. Editors print none. Under ESLint's `--concurrency`, they print at the end of the run, before the summary.
-
-- `settings.pngdeer` while `settings.slimdeer` is missing:
-
-  ```
-  slimdeer: reading settings.pngdeer, the old name of settings.slimdeer; rename it in your lint config
-  ```
-
-- Both keys set:
-
-  ```
-  slimdeer: settings.pngdeer is ignored, since settings.slimdeer is set; remove it from your lint config
-  ```
-
-- A disable comment with the old rule id. Five comments get a line each, then one line covers the rest. A comment that also names `slimdeer/compressible-image`, or one where an earlier comment already turns off every rule, gets no line, since the rule is off there anyway:
-
-  ```
-  slimdeer: src/App.jsx:15 turns off pngdeer/compressible-image, this rule's old name, so the warning shows there again; write slimdeer/compressible-image instead (until then, --flagged still leaves that image alone)
-  slimdeer: more disable comments name pngdeer/compressible-image; find them all with: git grep -n pngdeer/compressible-image
-  ```
-
-  As with any disable comment, `--flagged` leaves the image alone only when no other mention of it, without a comment, flags it.
-
-- The old local cache folder, when a run is about to measure images into the default folder beside it, just before `slimdeer: measuring …`. Results that go into a `cacheDir` get no line:
-
-  ```
-  slimdeer: node_modules/.cache/pngdeer holds results from oxlint-plugin-pngdeer, which this version doesn't read, so these images are measured again; delete that folder, and save node_modules/.cache/slimdeer in any CI cache step instead
-  ```
-
-- With `measure: "never"`, images the lint names that have no result yet. The `--check` it gives names the packages that hold them, and the rule's `exclude`, thresholds, `target` and `cacheDir` when they differ from the defaults:
-
-  ```
-  slimdeer: measure is "never", and images named here have no result in node_modules/.cache/slimdeer, so they weren't checked; to fill it, run: npx oxlint-plugin-slimdeer --check
-  ```
+Many disable comments? Keep the old rule id and change only the package: `"jsPlugins": [{ "name": "pngdeer", "specifier": "oxlint-plugin-slimdeer" }]` in oxlint, or `plugins: { pngdeer: slimdeer }` in ESLint. Rules, comments and `settings.pngdeer` then work as they are, and warnings keep the old id: `pngdeer(compressible-image)` in oxlint, `pngdeer/compressible-image` in ESLint.
 
 ## What it skips
 

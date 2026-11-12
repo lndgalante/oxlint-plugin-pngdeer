@@ -7,8 +7,8 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const stub = join(fileURLToPath(new URL("..", import.meta.url)), "legacy", "oxlint-plugin-pngdeer");
-const link = "https://github.com/lndgalante/oxlint-plugin-slimdeer#moving-from-oxlint-plugin-pngdeer";
-const message = `oxlint-plugin-pngdeer is now oxlint-plugin-slimdeer, and its rule is slimdeer/compressible-image. To move: npm uninstall oxlint-plugin-pngdeer && npm install --save-dev oxlint-plugin-slimdeer, then replace pngdeer with slimdeer in your lint config. Every step: ${link}`;
+const link = "https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/docs/rules/compressible-image.md#moving-from-oxlint-plugin-pngdeer";
+const message = `oxlint-plugin-pngdeer is now oxlint-plugin-slimdeer. To move: npm uninstall oxlint-plugin-pngdeer && npm install --save-dev oxlint-plugin-slimdeer, then replace pngdeer with slimdeer in your lint config. Every step: ${link}`;
 
 function bin(...args) {
   const run = spawnSync(process.execPath, [join(stub, "bin.js"), ...args], { encoding: "utf8", timeout: 60_000 });
@@ -87,4 +87,9 @@ test("the folder packs index.js, bin.js, package.json and README.md only", (t) =
   } finally {
     rmSync(cache, { recursive: true, force: true });
   }
+});
+
+test("the section the link names is in the rule's docs", () => {
+  const docs = readFileSync(join(stub, "..", "..", "docs", "rules", "compressible-image.md"), "utf8");
+  assert.match(docs, /^## Moving from oxlint-plugin-pngdeer\r?$/m);
 });

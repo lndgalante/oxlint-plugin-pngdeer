@@ -15,7 +15,7 @@ A lint rule for [oxlint](https://oxc.rs/docs/guide/usage/linter) and ESLint. It 
 
 ![VS Code with the Oxc extension: "/hero.png" in App.jsx is underlined, and the hover says hero.png could be 70% smaller (509 kB → 151 kB) and gives the command that shrinks it](https://raw.githubusercontent.com/lndgalante/oxlint-plugin-slimdeer/main/docs/images/editor.png)
 
-Formerly oxlint-plugin-pngdeer: [moving takes a few edits](#moving-from-oxlint-plugin-pngdeer). This plugin isn't made by HeyDeer; it runs their MIT-licensed engine.
+This plugin isn't made by HeyDeer; it runs their MIT-licensed engine.
 
 ## Try it on your images
 
@@ -244,6 +244,8 @@ With ESLint's recommended config, set the rule again in a config object after it
 
 This plugin is a separate project from slimdeer. Report problems with the rule or the command in [this repository's issues](https://github.com/lndgalante/oxlint-plugin-slimdeer/issues). An error that says "a bug in HeyDeer's slimdeer engine" goes to [slimdeer's issues](https://github.com/heydeer/slimdeer/issues).
 
+This package was formerly named oxlint-plugin-pngdeer, until 0.5.0. [Moving to the new name](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/docs/rules/compressible-image.md#moving-from-oxlint-plugin-pngdeer) takes a few edits.
+
 ## Showcase
 
 [Multabot](https://multabot.com.ar) tracks traffic fines in Argentina. It ran this package's command (version 0.5.0, formerly named oxlint-plugin-pngdeer) on three images that its Astro site, on Cloudflare Pages, serves from `public/` as they are. At `--target 90`, the quality suggested above for photos and screenshots with small text, they became 67% smaller in all (965 kB → 317 kB). Multabot shipped the compressed files: on November 2, 2026, the site served each one byte for byte. Two are below. The third, an annotated screenshot of a partner's site, went from 485,329 to 190,091 bytes (61% smaller). [The full report](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/docs/showcase.md#multabot)
@@ -254,34 +256,6 @@ This plugin is a separate project from slimdeer. Report problems with the rule o
 | ![Photo of a man smiling at a laptop that shows a fleet dashboard, with trucks outside the window](https://raw.githubusercontent.com/lndgalante/oxlint-plugin-slimdeer/main/docs/images/showcase/multabot/flotas.jpg)<br>Blog photo · 108,899 bytes | ![Compressed photo of the same man, laptop and trucks](https://raw.githubusercontent.com/lndgalante/oxlint-plugin-slimdeer/main/docs/images/showcase/multabot/flotas.optimized.jpg)<br>60,161 bytes · 45% smaller |
 
 Using the rule or the command in a real project? We'd like to feature more. [Share yours in an issue](https://github.com/lndgalante/oxlint-plugin-slimdeer/issues/new?template=showcase.yml): what it caught, how much smaller the images became, and whether the result looked good enough to ship. [A prompt](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/docs/showcase.md#a-prompt-to-share) helps a coding assistant draft one.
-
-## Moving from oxlint-plugin-pngdeer
-
-oxlint-plugin-pngdeer was renamed along with its engine, which HeyDeer now calls slimdeer. Images it shrank need nothing: they keep their mark (`pngdeer <size>`), which every version recognizes, so none is compressed twice. 0.5.0 keeps working, but gets no more updates. The old name has one more version, which only points here: if a dependency bot installs it, the lint stops with an error that says how to move.
-
-1. Swap the package:
-   ```bash
-   npm uninstall oxlint-plugin-pngdeer
-   npm install --save-dev oxlint-plugin-slimdeer
-   ```
-2. In `.oxlintrc.json` (or the `lint` block of `vite.config.ts`): `"oxlint-plugin-slimdeer"` in `jsPlugins`, `"slimdeer/compressible-image"` in `rules` and `overrides`, and `"settings": { "slimdeer": { … } }`. With ESLint: `import slimdeer from "oxlint-plugin-slimdeer"`, then `slimdeer.configs.recommended`, or `plugins: { slimdeer }` with `"slimdeer/compressible-image"` in `rules`.
-3. Find the rest with `git grep -n -I pngdeer` (`-I` leaves out binary files, like the images the old package shrank: their mark keeps the old word):
-
-   | What you find | Change it to |
-   |---|---|
-   | `pngdeer/compressible-image` in disable comments or `eslint-suppressions.json` | `slimdeer/compressible-image` |
-   | `oxlint-plugin-pngdeer` in scripts (with or without `npx`), CI and docs | `oxlint-plugin-slimdeer` |
-   | `node_modules/.cache/pngdeer` in a CI cache step | `node_modules/.cache/slimdeer` |
-   | `npx skills add lndgalante/oxlint-plugin-pngdeer` | `npx skills add lndgalante/oxlint-plugin-slimdeer` |
-   | `.pngdeer` as a `cacheDir` | nothing: it keeps working (step 4) |
-
-4. Lint once. The local cache moved to `node_modules/.cache/slimdeer`, so the first lint on each machine measures every image again; then delete `node_modules/.cache/pngdeer`. A committed cache folder (a `cacheDir` like `.pngdeer`) keeps its results, since the new engine writes the same PNG and JPEG files: the first lint copies each automatic-target result to a new file, and measures again only those below quality 70. Commit the new files. With `measure: "never"`, a lint measures and copies nothing, so it skips images without a result until you run, once, the `--check` command it prints.
-
-Missed a step? An old package name or rule id left in your lint config stops the lint with an error that names it, and under ESLint an old disable comment is an error too. For the rest, the lint tells you: an old `settings.pngdeer` is still read, with a line asking you to rename it; an old disable comment gets a line with its file and line; and an old cache folder gets a line when the lint measures again. Once the old package is uninstalled, a missed `npx oxlint-plugin-pngdeer` prints the same command with the new name.
-
-Many disable comments? Keep the old rule id and change only the package: `"jsPlugins": [{ "name": "pngdeer", "specifier": "oxlint-plugin-slimdeer" }]` in oxlint, or `plugins: { pngdeer: slimdeer }` in ESLint. Rules, comments and `settings.pngdeer` then work as they are, and warnings keep the old id: `pngdeer(compressible-image)` in oxlint, `pngdeer/compressible-image` in ESLint.
-
-Every step, with ESLint suppressions and editors: [the rule's docs](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/docs/rules/compressible-image.md#moving-from-oxlint-plugin-pngdeer).
 
 ## License
 
