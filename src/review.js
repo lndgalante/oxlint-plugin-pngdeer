@@ -7,15 +7,17 @@ import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync
 import { isAbsolute, join, relative, resolve, sep, win32 } from "node:path";
 import { pathToFileURL } from "node:url";
 import { peakOf, pool } from "./batch.js";
-import { cacheDir, key } from "./cache.js";
-import { measureAll, notes, print, shortened } from "./check.js";
+import { cacheDir, convertKey, key } from "./cache.js";
+import { cautionsOf, listing, notes, print, saving } from "./check.js";
+import { measureAll, shortened } from "./measure.js";
+import { cautions, FORMATS } from "./convert.js";
 import { dimensions, kind, pngChunk } from "./images.js";
 import { marked } from "./marker.js";
 import { unwrapped } from "./progress.js";
 import { commandCount, page } from "./review-page.js";
 import { projectRoot } from "./scan.js";
 import { plain } from "./shrink.js";
-import { count, pathFrom, printable, reviewCommand, size, smaller } from "./text.js";
+import { checkCommand, count, pathFrom, printable, reviewCommand } from "./text.js";
 
 const ISSUES = "https://github.com/lndgalante/oxlint-plugin-slimdeer/issues";
 // How long --open waits for the opener to give up before it takes the page as opening.
@@ -25,26 +27,34 @@ const SETTLE = 2000;
  * Measures what --check would (cached results are reused), or with `flagged` ([{ file, target,
  * cacheDir, changed }]) the images the last lint here flagged, each at its own target, from the
  * cache folder the lint measured it into; writes each listed image's preview and a page comparing
- * them into the review folder of the project the command runs in, and says where it is. Resolves 0
- * when the page was written or there's nothing to review, 2 when an image couldn't be measured or
- * previewed (the page still shows the rest).
+ * them into the review folder of the project the command runs in, and says where it is. With `format`
+ * ("webp", "avif"), each preview is the image's copy in that format, as the command writes it next to
+ * the image, and the page compares it with the image's own shrink too. Resolves 0 when the page was
+ * written or there's nothing to review, 2 when an image couldn't be measured or previewed (the page
+ * still shows the rest).
  */
-export async function review(inputs, { cwd = process.cwd(), target, minSavedBytes, minSavedPercent, exclude, cacheDir: customCacheDir, open = false, flagged } = {}) {
+export async function review(inputs, { cwd = process.cwd(), target, minSavedBytes, minSavedPercent, exclude, cacheDir: customCacheDir, open = false, flagged, format } = {}) {
   cwd = resolve(cwd);
   // what an error that may clear on its own says to run again: this review, not --check
-  const again = flagged ? "--review --flagged" : "--review";
-  const options = { cwd, target, minSavedBytes, minSavedPercent, exclude, cacheDir: customCacheDir, again };
+  const again = `--review${flagged ? " --flagged" : ""}${format ? ` --format ${format}` : ""}`;
   // the local cache, never a --cache-dir that may be committed
   const folder = join(cacheDir(projectRoot(cwd, cwd)), "review");
+  // measuring writes each copy it makes into the folder, as its preview: it has to be there, and not a link
+  if (format) prepare(folder, cwd, again);
+  const options = { cwd, target, minSavedBytes, minSavedPercent, exclude, cacheDir: customCacheDir, again, ...(format && { format, previewDir: folder }) };
   // an image changed since the lint isn't the one it flagged (summary.js): neither measured nor shown
   const changed = (flagged ?? []).filter((image) => image.changed).map(({ file }) => ({ file, path: pathFrom(cwd, file), message: "changed since the last lint here; lint again to check it" }));
   const lists = flagged ? await measureFlagged(flagged.filter((image) => !image.changed), options) : [{ inputs, settings: options, result: await measureAll(inputs, options) }];
-  const all = (part) => lists.flatMap(({ result }) => result[part]);
-  // each image that missed with the target it missed, for the page
-  const result = { rows: all("rows"), declined: all("declined"), missed: lists.flatMap(({ settings, result }) => result.missed.map((image) => ({ ...image, target: settings.target }))), errors: [...changed, ...all("errors")] };
+  // with a format, the images whose copy's place something takes already are done (check.js listing())
+  const all = (part) => lists.flatMap(({ result }) => listing(result)[part] ?? []);
+  // each image with the target it was measured at, for the page
+  const each = (part) => lists.flatMap(({ settings, result }) => (result[part] ?? []).map((image) => ({ ...image, target: settings.target })));
+  const result = { format, rows: all("rows"), declined: all("declined"), missed: each("missed"), notWorthIt: each("notWorthIt"), leftOut: all("leftOut"), existing: all("existing"), errors: [...changed, ...all("errors")] };
   // what the page leaves out, as --check says it (for a lint's list, of each target's images), with
   // --review where a note gives the same run again (a lint's list names each image, so it gets none)
-  const unlisted = lists.flatMap(({ inputs, settings, result }) => notes(inputs, result, settings, reviewCommand));
+  const unlisted = (rerun) => lists.flatMap(({ inputs, settings, result }) => notes(inputs, result, settings, rerun));
+  // with a format, what to keep in mind before converting, as --check says it of the same images
+  const caution = (show) => cautionsOf(result, { cwd }, show);
   // what couldn't be checked, before the previews take their time
   for (const { path, message } of result.errors) console.error(printable(`${path}: ${shortened(message)}`));
   if (result.rows.length === 0) {
@@ -59,16 +69,18 @@ export async function review(inputs, { cwd = process.cwd(), target, minSavedByte
     // tab still showing the old one would pass for this run's
     if (!flagged) {
       const status = print(inputs, lists[0].result, { ...options, summary: false });
-      console.log("slimdeer: no image to compare, so no page was written.");
+      console.log(`slimdeer: ${none(format)}`);
       return status;
     }
-    for (const line of unlisted) console.log(printable(line));
-    console.log(`slimdeer: ${nothing(flagged, result.errors.length, target)}`);
+    // with a format, in --check's words, as without --flagged: there's no page for an image not to be on
+    for (const line of unlisted(format ? checkCommand : reviewCommand)) console.log(printable(line));
+    for (const line of caution()) console.error(printable(line));
+    console.log(`slimdeer: ${nothing(flagged, result.errors.length, target, format)}`);
     return result.errors.length ? 2 : 0;
   }
 
   const errors = [...result.errors];
-  const cards = await previews(result.rows, folder, cwd, again, (file, path, message) => {
+  const cards = await previews(result.rows, folder, cwd, again, format, (file, path, message) => {
     errors.push({ file, path, message });
     console.error(printable(`${path}: ${message}`));
   });
@@ -77,29 +89,36 @@ export async function review(inputs, { cwd = process.cwd(), target, minSavedByte
     return 2;
   }
   const index = join(folder, "index.html");
-  // the options that check the images left out again: a lint's list was measured without thresholds
-  const settings = flagged ? { cacheDir: customCacheDir } : { exclude, cacheDir: customCacheDir, minSavedBytes, minSavedPercent };
-  const html = page({ cwd, date: stamp(new Date()), target, cards, declined: result.declined, missed: result.missed, errors, settings });
+  // the options that check the images left out again
+  const settings = { ...(flagged ? { cacheDir: customCacheDir } : { exclude, cacheDir: customCacheDir, minSavedBytes, minSavedPercent }), ...(format && { format }) };
+  const rows = cards.flatMap((card) => card.rows);
+  const html = page({
+    cwd, date: stamp(new Date()), target, cards, declined: result.declined, missed: result.missed, errors, settings,
+    ...(format
+      ? { format, notWorthIt: result.notWorthIt, leftOut: result.leftOut, existing: result.existing, cautions: caution }
+      : { hint: hint(inputs, rows, { cwd, target, exclude, cacheDir: customCacheDir, minSavedBytes, minSavedPercent }, flagged) }),
+  });
   writable(cwd, folder, () => {
     const tmp = `${index}.${process.pid}.tmp`;
     writeFileSync(tmp, html);
     renameSync(tmp, index);
   });
 
-  const files = cards.reduce((sum, card) => sum + card.paths.length, 0);
-  const original = cards.reduce((sum, card) => sum + card.total.original, 0);
-  const compressed = cards.reduce((sum, card) => sum + card.total.compressed, 0);
   const one = cards.length === 1;
   // the page gives a command per target, and splits a long one
-  const several = commandCount(cards) > 1;
-  console.log(`slimdeer: ${count(files, "image")} could be ${size(original - compressed)} smaller (${size(original)} → ${size(compressed)}, ${smaller(original, compressed)}% smaller). Images unchanged.`);
+  const several = commandCount(cards, format) > 1;
+  console.log(`slimdeer: ${saving(rows, format)}. Images unchanged.`);
   // the terminal names what the page leaves out too
-  for (const line of unlisted) console.log(printable(line));
+  for (const line of unlisted(reviewCommand)) console.log(printable(line));
+  for (const line of caution()) console.error(printable(line));
   console.log(`slimdeer: the page that compares ${one ? "it" : "each one"} before and after: ${pathToFileURL(index).href}`);
   const failure = open ? await launch(index) : null;
-  const gives = `run the ${several ? "commands" : "command"} it gives.`;
+  const gives = `run the ${several ? "commands" : "command"} it gives`;
   const next = one ? `if the after looks right, ${gives}` : `untick any image to keep as it is, and ${gives}`;
-  console.log(`slimdeer: ${open && !failure ? "opening it in your browser;" : `open it in a browser,${one ? " and" : ""}`} ${next}`);
+  // a copy is a new file, which the code has to be pointed at
+  const what = rows.length === 1 ? "file next to the original" : "files next to the originals";
+  const does = format ? `: ${several ? "they write" : "it writes"} the ${FORMATS[format].name} ${what} and ${several ? "list" : "lists"} the code that still names ${rows.length === 1 ? "it" : "them"}` : "";
+  console.log(`slimdeer: ${open && !failure ? "opening it in your browser;" : `open it in a browser,${one ? " and" : ""}`} ${next}${does}.`);
   if (failure) console.error(printable(`slimdeer: couldn't open a browser: ${failure}`));
   return errors.length ? 2 : 0;
 }
@@ -107,8 +126,9 @@ export async function review(inputs, { cwd = process.cwd(), target, minSavedByte
 /**
  * Measures the images a lint flagged, each at its own target and from the cache folder the lint
  * measured it into (so nothing it measured is measured again), a measureAll() per target and folder:
- * [{ inputs, settings, result }]. The lint applied its thresholds: an image is shown if slimdeer still
- * makes it smaller at all.
+ * [{ inputs, settings, result }]. The lint applied its thresholds to each image's own shrink: an image
+ * is shown if slimdeer still makes it smaller at all. A copy, which the lint never measured, is shown
+ * if it beats that shrink by --review's own thresholds, as without --flagged.
  */
 async function measureFlagged(flagged, options) {
   const groups = new Map(); // [target, cache folder] -> its images
@@ -117,73 +137,120 @@ async function measureFlagged(flagged, options) {
     groups.set(group, { target, cacheDir, inputs: [...(groups.get(group)?.inputs ?? []), file] });
   }
   const lists = [];
+  const thresholds = options.format ? {} : { minSavedBytes: 0, minSavedPercent: 0 };
   for (const { target, cacheDir, inputs } of groups.values()) {
-    const result = await measureAll(inputs, { ...options, target, cacheDir, minSavedBytes: 0, minSavedPercent: 0 });
-    // --check's notes for them, with its own thresholds and the --cache-dir given, if any, in the
-    // commands they give
+    const result = await measureAll(inputs, { ...options, target, cacheDir, ...thresholds });
+    // --check's notes for them, with the --cache-dir given, if any, in the commands they give
     lists.push({ inputs, settings: { cwd: options.cwd, target, cacheDir: options.cacheDir }, result });
   }
   return lists;
 }
 
 /**
+ * The same-format page's pointer to the review of the same images as WebP, `rows` being the images it
+ * shows: this review's own command with --format webp, or null where a project of theirs depends on a
+ * framework that converts images itself (convert.js cautions()), where a copy would go through a
+ * second lossy pass.
+ */
+function hint(inputs, rows, settings, flagged) {
+  if (cautions(rows.map(({ root }) => root), "webp", []).length) return null;
+  const { cwd } = settings;
+  if (flagged) {
+    const command = reviewCommand([], { ...settings, format: "webp" });
+    return { ...command, text: command.text.replace(" --review", " --review --flagged") };
+  }
+  // as typed, but none for the folder it runs in, as --check gives it
+  const paths = inputs.length === 1 && resolve(cwd, inputs[0]) === cwd ? [] : inputs;
+  return reviewCommand(paths, { ...settings, format: "webp" });
+}
+
+/**
  * What a review of a lint's list (`flagged`) says when it shows none: none listed (a lint that held
  * every image it flagged back from --flagged leaves an empty list too), none that could be checked,
- * or none that slimdeer still makes smaller (at `target`, the --target given here, if one was).
+ * none whose copy as `format`, if given, would be smaller, or none that slimdeer still makes smaller
+ * (at `target`, the --target given here, if one was).
  */
-function nothing(flagged, failed, target) {
+function nothing(flagged, failed, target, format) {
   if (flagged.length === 0) return "the last lint here left no images to review with --flagged.";
   // a list that names an image gone or changed since is out of date; one the cache folder failed
   // for isn't
   const gone = flagged.some(({ file, changed }) => changed || !existsSync(file));
   if (failed) return `review incomplete: none of the images the last lint here flagged could be shown${gone ? "; lint again to update the list" : ""}.`;
+  if (format) return none(format);
   const which = flagged.length === 1 ? "the image the last lint here flagged can't" : `none of the ${flagged.length} images the last lint here flagged can`;
   // at a target given here, linting again would leave the same list: the target is why
   if (target !== undefined) return `${which} be made smaller at --target ${target}, so there is nothing to review.`;
   return `${which} be made smaller now, so there is nothing to review; lint again to update the list.`;
 }
 
+/** What a review says when it has no image to show: with `format`, none to compare as that format. */
+function none(format) {
+  return `no image to compare${format ? ` as ${FORMATS[format].name}` : ""}, so no page was written.`;
+}
+
 /**
- * Writes the preview of each row into `folder` on the pool's engines, at the row's target: the bytes
- * the command writes in place, so what the page shows is what the command does. A preview from an
- * earlier run is kept when its image hasn't changed (its name is the image's cache key), so a second
- * review is quick and an interrupted one goes on where it stopped; everything else in the folder
- * goes. Copies of one image share a preview, and a card. Resolves the cards previewed, biggest saving
- * first, each with its URLs from the folder and its pixel size; reports the images it couldn't
- * preview to `error(file, path, message)`, naming `again` where running it again may help.
+ * Makes the review folder, which a review empties of what it doesn't write: through a link (to
+ * public/, a home folder), that would be someone's own files, the originals among them, so a link is
+ * refused. lstat calls a Windows junction a link too.
  */
-async function previews(rows, folder, cwd, again, error) {
+function prepare(folder, cwd, again) {
   try {
     mkdirSync(folder, { recursive: true });
   } catch (cause) {
     throw new Error(`can't make the review folder ${pathFrom(cwd, folder)}: ${["EEXIST", "ENOTDIR"].includes(cause.code) ? "a file is in the way" : plain(cause)}`);
   }
-  // a review empties its folder of what it doesn't write: through a link (to public/, a home folder),
-  // that would be someone's own files, the originals among them. lstat calls a Windows junction a link too.
   if (lstatSync(folder).isSymbolicLink()) throw new Error(`the review folder ${pathFrom(cwd, folder)} is a link to another folder, which a review would empty: remove the link and run ${again} again`);
+  // kept out of a repository that doesn't ignore node_modules, before any preview goes in (measuring
+  // writes copies there, and a review stopped then leaves them): previews weigh as much as the images
+  writable(cwd, folder, () => {
+    if (!existsSync(join(folder, ".gitignore"))) writeFileSync(join(folder, ".gitignore"), "# slimdeer --review's previews, rewritten on each run\n*\n");
+  });
+}
+
+/**
+ * Writes the preview of each row into `folder` on the pool's engines, at the row's target: the bytes
+ * the command writes in place, or with `format` the copy it writes next to the image, so what the
+ * page shows is what the command does. A preview from an earlier run, or one measuring wrote, is kept
+ * when its image hasn't changed (its name is the image's cache key, or its copy's), so a second
+ * review is quick and an interrupted one goes on where it stopped; everything else in the folder
+ * goes. Copies of one image share a preview, and a card. Resolves the cards previewed, biggest saving
+ * first (with a format, beyond the image's own shrink, as --check orders its command), each with its
+ * rows, its URLs from the folder and its pixel size; reports the images it couldn't preview to
+ * `error(file, path, message)`, naming `again` where running it again may help.
+ */
+async function previews(rows, folder, cwd, again, format, error) {
+  // with a format, review() made it before measuring, which writes the copies into it
+  if (!format) prepare(folder, cwd, again);
   const cards = new Map(); // preview name -> its card
   const jobs = new Map(); // preview name -> what writes it, for its card
   // biggest saving first; copies, which save alike, by path, so the first named is the same each time
-  const order = (a, b) => b.original - b.compressed - (a.original - a.compressed) || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+  const saved = (row) => (row.base ?? row.original) - row.compressed;
+  const order = (a, b) => saved(b) - saved(a) || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
   for (const row of [...rows].sort(order)) {
     try {
       const bytes = readFileSync(row.file);
       if (bytes.length !== row.original) throw new Error(`changed while reviewing; run ${again} again`);
       const type = kind(bytes);
-      // named by the image's cache key: copies of one image share a preview, and a changed image gets a new one
+      // named by the image's cache key, or its copy's: copies of one image share a preview, and a
+      // changed image gets a new one
       const { target } = row;
-      const k = key(bytes, target);
-      const name = `${k}.${type === "jpeg" ? "jpg" : "png"}`;
+      const k = format ? convertKey(bytes, row.equal, format) : key(bytes, target);
+      const name = `${k}${format ? FORMATS[format].extension : type === "jpeg" ? ".jpg" : ".png"}`;
+      // measuring named the copy by the bytes it read
+      if (format && join(folder, name) !== row.preview) throw new Error(`changed while reviewing; run ${again} again`);
       if (!cards.has(name)) {
         const [width, height] = dimensions(bytes, type);
-        const { original, compressed, outcome, score } = row;
-        const card = { paths: [], files: [], before: href(folder, row.file), after: name, width, height, alpha: transparent(bytes, type), original, compressed, outcome, score, target, total: { original: 0, compressed: 0 } };
+        // a copy listed reached its target
+        const { original, compressed, outcome = "hit", score, sameFormat, base } = row;
+        const card = { paths: [], files: [], rows: [], before: href(folder, row.file), after: name, width, height, alpha: transparent(bytes, type), original, compressed, outcome, score, target, type, sameFormat, base, total: { original: 0, compressed: 0 } };
         cards.set(name, card);
-        jobs.set(name, { k, card, size: bytes.length, peak: peakOf(bytes), message: { file: row.file, target, out: join(folder, name) } });
+        const message = format ? { file: row.file, target: row.equal, format, out: row.preview } : { file: row.file, target, out: join(folder, name) };
+        jobs.set(name, { k, card, size: bytes.length, peak: peakOf(bytes, format), message });
       }
       const card = cards.get(name);
       card.paths.push(row.path);
       card.files.push(row.file);
+      card.rows.push(row);
       card.total.original += row.original;
       card.total.compressed += row.compressed;
     } catch (cause) {
@@ -191,13 +258,11 @@ async function previews(rows, folder, cwd, again, error) {
     }
   }
   writable(cwd, folder, () => {
-    // kept out of a repository that doesn't ignore node_modules: previews weigh as much as the images
-    if (!existsSync(join(folder, ".gitignore"))) writeFileSync(join(folder, ".gitignore"), "# slimdeer --review's previews, rewritten on each run\n*\n");
     // the old page first, so it never links a preview that's gone
     rmSync(join(folder, "index.html"), { force: true });
     for (const entry of readdirSync(folder)) {
       if (entry === ".gitignore") continue;
-      if (jobs.has(entry) && preview(join(folder, entry), cards.get(entry))) jobs.delete(entry);
+      if (jobs.has(entry) && preview(join(folder, entry), cards.get(entry), format)) jobs.delete(entry);
       else rmSync(join(folder, entry), { recursive: true, force: true });
     }
   });
@@ -218,12 +283,13 @@ async function previews(rows, folder, cwd, again, error) {
       done: (job, reply) => {
         answered.add(job);
         counter(answered.size);
-        const { files: [file], compressed } = job.card;
+        // a copy's measurement says its size, and saves only a copy that reaches its target (worker.js)
+        const written = format ? reply.outcome === "hit" && reply.compressed : reply.written;
         if (reply.error) fail(job, reply.error);
-        // slimdeer left the image as it is, and the "preview" is a copy of it
-        else if (!reply.written) fail(job, `no preview: ${reply.text}`);
+        // slimdeer left the image as it is, and the "preview" is a copy of it; or no copy reached the target
+        else if (!written) fail(job, `no preview: ${format ? `as ${FORMATS[format].name}, no file reaches quality ${Math.round(job.message.target)}/100 now; please report this at ${ISSUES}` : reply.text}`);
         // the page shows what was measured, so a preview of another size can't go on it
-        else if (reply.written !== compressed) fail(job, changed(file, job.k, job.message.target) ? `changed while reviewing; run ${again} again` : `its preview is ${reply.written} bytes, but measuring said ${compressed}; please report this at ${ISSUES}`);
+        else if (written !== job.card.compressed) fail(job, changed(job.message, job.k) ? `changed while reviewing; run ${again} again` : `its preview is ${written} bytes, but measuring said ${job.card.compressed}; please report this at ${ISSUES}`);
       },
     });
   } catch (cause) {
@@ -250,9 +316,16 @@ function denied(cause) {
   return cause?.code === "ENOTEMPTY" ? "permission denied" : plain(cause);
 }
 
-/** Whether `out` holds the preview of `card`: slimdeer's file, of the size measured. */
-function preview(out, { compressed }) {
+/**
+ * Whether `out` holds the preview of `card`: slimdeer's file, of the size measured; with `format`, a
+ * file of its own (not a link) of the size measured, as a copy has no mark to tell it by.
+ */
+function preview(out, { compressed }, format) {
   try {
+    if (format) {
+      const stat = lstatSync(out);
+      return stat.isFile() && stat.size === compressed;
+    }
     const bytes = readFileSync(out);
     return bytes.length === compressed && marked(bytes);
   } catch {
@@ -260,10 +333,14 @@ function preview(out, { compressed }) {
   }
 }
 
-/** Whether `file` no longer has the cache key `k`, which explains a preview of another size. */
-function changed(file, k, target) {
+/**
+ * Whether the image of a preview's `message` ({ file, target, format }) no longer has the cache key
+ * `k` (with a format, its copy's), which explains a preview of another size.
+ */
+function changed({ file, target, format }, k) {
   try {
-    return key(readFileSync(file), target) !== k;
+    const bytes = readFileSync(file);
+    return (format ? convertKey(bytes, target, format) : key(bytes, target)) !== k;
   } catch {
     return true;
   }

@@ -110,6 +110,17 @@ test("from a monorepo's root, the lines of its other packages are found too", (t
   // from inside a package, its own lines alone
   process.chdir(web);
   assert.deepEqual(at("packages/web/public/hero.png", web), ["packages/web/src/App.jsx:1"]);
+  // from the folder given, wherever the process is: --check's, say
+  const from = (cwd) => mentions(join(root, "packages/web/public/hero.png"), web, undefined, cwd).map(({ file, line }) => `${pathFrom(root, file)}:${line}`);
+  assert.deepEqual(from(root), ["packages/web/src/App.jsx:1", "packages/docs/guide.md:1"]);
+  process.chdir(root);
+  assert.deepEqual(from(web), ["packages/web/src/App.jsx:1"]);
+});
+
+test("the lines of each kind come by file path, whatever order the file system lists them in", () => {
+  const files = Object.fromEntries(["src/z.js", "src/a.js", "lib/m.js", "z.md", "a.md", "public/b.html", "a.css"].map((path) => [path, 'const hero = "/hero.png";\n']));
+  const dir = project({ images: [], files });
+  assert.deepEqual(found(dir, "public/hero.png").map(([file]) => file), ["a.css", "public/b.html", "lib/m.js", "src/a.js", "src/z.js", "a.md", "z.md"]);
 });
 
 test("a path that leads to another image of the same name is not one that names it", () => {

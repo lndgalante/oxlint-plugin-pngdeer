@@ -528,7 +528,7 @@ test("measureAll prints nothing on stdout and resolves what --check found", () =
   const out = join(dir, "result.json");
   // onError hears each error as it's found
   const script = `import { writeFileSync } from "node:fs";
-import { measureAll } from ${JSON.stringify(pathToFileURL(join(plugin, "src/check.js")).href)};
+import { measureAll } from ${JSON.stringify(pathToFileURL(join(plugin, "src/measure.js")).href)};
 const heard = [];
 const result = await measureAll(["."], { onError: (error) => heard.push(error) });
 writeFileSync(${JSON.stringify(out)}, JSON.stringify({ ...result, heard }));`;

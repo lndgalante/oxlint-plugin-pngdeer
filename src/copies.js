@@ -181,10 +181,10 @@ function afterwards(written, { name, mode, target }) {
   return [...notes, ...nowhere];
 }
 
-/** `images` in a line: the first NAMES, then how many more. */
-function listed(images) {
+/** `images` in a line, each after `separator`: the first NAMES, then how many more. */
+export function listed(images, separator = ", ") {
   const more = images.length - NAMES;
-  return `${images.slice(0, NAMES).join(", ")}${more > 0 ? `, and ${more} more` : ""}`;
+  return `${images.slice(0, NAMES).join(separator)}${more > 0 ? `${separator}and ${more} more` : ""}`;
 }
 
 const folders = new Map(); // folder -> the names in it, read once
@@ -194,7 +194,7 @@ const folders = new Map(); // folder -> the names in it, read once
  * spells it, so HERO.PNG typed for hero.png on macOS or Windows gets hero.webp, which code on a
  * server that tells letter case apart can reach.
  */
-function copyOf(image, format) {
+export function copyOf(image, format) {
   let name = basename(image);
   if (CASELESS) {
     const folder = dirname(resolve(image));

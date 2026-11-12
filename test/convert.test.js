@@ -5,7 +5,7 @@ import fs, { chmodSync, lstatSync, mkdirSync, readdirSync, readFileSync, symlink
 import { syncBuiltinESMExports } from "node:module";
 import { basename, join } from "node:path";
 import { test } from "node:test";
-import { AVIF_MAX_PIXELS, cautions, convertImage, equalTarget, leftOut, sibling, WEBP_MAX_SIDE } from "../src/convert.js";
+import { AVIF_MAX_PIXELS, cautions, convertImage, equalTarget, leftOut, missText, sibling, WEBP_MAX_SIDE } from "../src/convert.js";
 import { compress, convert } from "../src/engine.js";
 import { keepOrientation, mark, turned } from "../src/marker.js";
 import { looks, pathFrom, shrinkCommand, size, smaller } from "../src/text.js";
@@ -81,11 +81,11 @@ test("an image is left out for the first reason that holds, in the words the com
     assert.equal(leftOut(turn(animate(png), 6), file, format, dir).kind, "animated");
   }
   // the engines' limits, by the header alone
-  assert.deepEqual(leftOut(header(5000, 5000), file, "avif", dir), { kind: "size", reason: "too large for AVIF (25.0 MP, at most 24)" });
+  assert.deepEqual(leftOut(header(5000, 5000), file, "avif", dir), { kind: "size", reason: "too large for AVIF: 25.0 MP, at most 24" });
   assert.equal(leftOut(header(6000, AVIF_MAX_PIXELS / 6000), file, "avif", dir), null);
   // rounded up: one pixel row over the limit isn't "24.0 MP"
-  assert.equal(leftOut(header(6000, AVIF_MAX_PIXELS / 6000 + 1), file, "avif", dir).reason, "too large for AVIF (24.1 MP, at most 24)");
-  assert.deepEqual(leftOut(header(WEBP_MAX_SIDE + 1, 1), file, "webp", dir), { kind: "size", reason: "too wide or tall for WebP (at most 16,383 pixels a side)" });
+  assert.equal(leftOut(header(6000, AVIF_MAX_PIXELS / 6000 + 1), file, "avif", dir).reason, "too large for AVIF: 24.1 MP, at most 24");
+  assert.deepEqual(leftOut(header(WEBP_MAX_SIDE + 1, 1), file, "webp", dir), { kind: "size", reason: "too wide or tall for WebP: at most 16,383 pixels a side" });
   assert.equal(leftOut(header(1, WEBP_MAX_SIDE + 1), file, "webp", dir).kind, "size");
   assert.equal(leftOut(header(WEBP_MAX_SIDE, WEBP_MAX_SIDE), file, "webp", dir), null);
   assert.equal(leftOut(header(WEBP_MAX_SIDE + 1, 1), file, "avif", dir), null);
@@ -178,8 +178,8 @@ test("a copy that misses its quality, or would be no smaller, is left with the r
   // a best whose rounding would show it one higher: the best is rounded down
   assert.ok(score < 100 && Math.floor(score) !== Math.round(score), `scored ${score}`);
   const best = Math.floor(score);
-  assert.deepEqual(convertImage(at("lossless.png"), sibling(at("lossless.png"), "avif"), { format: "avif", mode: "sibling" }), { status: "left", reason: `as AVIF, no file reaches quality 100/100, the PNG's (the best reaches ${best}/100)` });
-  assert.deepEqual(convertImage(at("lossless.png"), sibling(at("lossless.png"), "avif"), { format: "avif", target: 100, mode: "named" }), { status: "left", reason: `as AVIF, no file reaches --target 100 (the best reaches ${best}/100)` });
+  assert.deepEqual(convertImage(at("lossless.png"), sibling(at("lossless.png"), "avif"), { format: "avif", mode: "sibling" }), { status: "left", reason: `as AVIF, no file reaches quality 100/100, the PNG's (the best reaches quality ${best}/100)` });
+  assert.deepEqual(convertImage(at("lossless.png"), sibling(at("lossless.png"), "avif"), { format: "avif", target: 100, mode: "named" }), { status: "left", reason: `as AVIF, no file reaches --target 100 (the best reaches quality ${best}/100)` });
   // an AVIF file starts at about 300 bytes
   const small = readFileSync(at("small.png"));
   const avif = convert(small, "avif", 100).output.length;
@@ -197,6 +197,15 @@ test("a copy that misses its quality, or would be no smaller, is left with the r
   assert.equal(named.status, "written");
   assert.match(named.text, new RegExp(`\\); shrunk as PNG \\(lossless\\): ${size(shrunk)}, smaller than this AVIF$`));
   assert.deepEqual(files(dir), [".oxlintrc.json", "eslint.config.js", "lossless.png", "out.avif", "package.json", "small.png", "stored.png"]);
+});
+
+test("a copy that misses its target names it apart from the best it reached, even where they round alike", () => {
+  assert.equal(missText("webp", "png", { equal: 88.2, score: 86.9 }), "as WebP, no file reaches quality 88/100, the PNG's (the best reaches quality 86/100)");
+  assert.equal(missText("webp", "png", { equal: 87.3, score: 87.1 }), "as WebP, no file reaches quality 87.3/100, the PNG's (the best reaches quality 87.1/100)");
+  assert.equal(missText("avif", "jpeg", { equal: 87.31, score: 87.302 }), "as AVIF, no file reaches quality 87.31/100, the JPEG's (the best reaches quality 87.30/100)");
+  // the engine's scores have 3 decimals
+  assert.equal(missText("webp", "png", { equal: 87.314, score: 87.312 }), "as WebP, no file reaches quality 87.314/100, the PNG's (the best reaches quality 87.312/100)");
+  assert.equal(missText("webp", "png", { equal: 80, score: 79.6, target: 80 }), "as WebP, no file reaches --target 80 (the best reaches quality 79/100)");
 });
 
 test("an image left out, turned down by the engine, or not taken is never converted", () => {
@@ -366,4 +375,7 @@ test("before writing copies, a project whose framework converts images and a sha
     assert.deepEqual(cautions([dir, docs], "avif", images), [note("this project", "next"), ...images.slice(0, 5).map(share)]);
   }
   assert.deepEqual(cautions([docs], "avif", ["public/hero.png"]), []);
+  // from the folder given, wherever the process is
+  assert.deepEqual(cautions([web], "webp", [], undefined, web), [note("this project", "vite-imagetools")]);
+  assert.deepEqual(cautions([web], "webp", [], undefined, dir), [note("packages/web", "vite-imagetools")]);
 });

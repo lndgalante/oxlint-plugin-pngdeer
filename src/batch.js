@@ -273,7 +273,7 @@ function thresholds({ minSavedBytes = 4096, minSavedPercent = 10 }) {
  */
 function carried(bytes, k, dir, failures) {
   const old = readFirst(legacyKey(bytes), dir, failures);
-  // what --check would call an invalid measurement (check.js) is measured again instead
+  // what --check would call an invalid measurement (measure.js) is measured again instead
   if (!old || !valid(old, bytes.length) || belowFloor(old)) return false;
   const { original, compressed, outcome, score } = old;
   write(dir, k, outcome === "output" ? { original, outcome } : { original, compressed, outcome, score });

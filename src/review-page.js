@@ -4,9 +4,11 @@
 import { createHash } from "node:crypto";
 import { FLOOR } from "./cache.js";
 // the target --check suggests for the images the automatic target turned down, and how many of the
-// biggest its command names
-import { COMMAND_ROWS, LOWER } from "./check.js";
-import { checkCommand, count, looks, quote, shrinkCommand, size, smaller } from "./text.js";
+// biggest its command names; with a format, what it says of copies that wouldn't save enough
+import { COMMAND_ROWS, LOWER, shortfall } from "./check.js";
+import { FORMATS, own, sameText, SUGGESTED } from "./convert.js";
+import { capital } from "./markdown.js";
+import { apart, checkCommand, count, looks, pathFrom, quote, shrinkCommand, size, smaller } from "./text.js";
 
 // Below this quality a difference may show side by side: the images worth a look first.
 const REVIEW = 80;
@@ -19,6 +21,8 @@ const LIST = 10;
 // to the page, for one) after the script has started with every image ticked, and a box would then
 // show unticked while the command still shrinks its image.
 const UNSAVED = `autocomplete="off"`;
+// What an AVIF page shows where a browser can't show its "after".
+const UNSHOWN = "This browser can't show AVIF (Safari needs 16.4 or later).";
 
 /**
  * The page for `cards` (biggest saving first), each one picture: { paths (its copies, the first
@@ -27,21 +31,33 @@ const UNSAVED = `autocomplete="off"`;
  * command pieces for `platform`'s shell. `cwd` is where the command runs; `declined`, `missed` (each
  * with its target) and `errors` (as measureAll() gives them) are what isn't shown, and `settings` the
  * options to check them again. A card or missed image without a target of its own has `target`.
+ *
+ * With `format` ("webp", "avif"), each "after" is the image's copy in that format, and its card has
+ * the image's `type`, its own shrink (`sameFormat`) and what that leaves (`base`), as measureAll()
+ * gives them; `notWorthIt` (each with its target), `leftOut` and `existing` are the other images not
+ * shown, and `cautions(show)` what to keep in mind before converting (check.js cautionsOf()). Without
+ * one, `hint` ({ text, shell }) is the command that reviews the images as WebP, if the page offers it.
  */
-export function page({ cwd, date, target, cards, declined = [], missed = [], errors = [], settings = {} }, platform = process.platform) {
+export function page({ cwd, date, target, cards, declined = [], missed = [], errors = [], settings = {}, format, notWorthIt = [], leftOut = [], existing = [], cautions = () => [], hint = null }, platform = process.platform) {
   const targetOf = (item) => (Object.hasOwn(item, "target") ? item.target : target);
   // a lint's list may name images at several targets: each card says its own, and each gets a command
   const targets = [...new Set(cards.map(targetOf))];
   const mixed = targets.length > 1;
-  const data = scriptData(cards, targetOf, platform);
+  const as = format ? FORMATS[format] : null;
+  const data = scriptData(cards, targetOf, format, platform);
   const { images } = data;
   const on = images.map(() => true);
   const files = images.reduce((sum, image) => sum + image.count, 0);
   const original = images.reduce((sum, image) => sum + image.original, 0);
   const compressed = images.reduce((sum, image) => sum + image.compressed, 0);
-  const headline = `${count(files, "image")} could be ${size(original - compressed)} smaller`;
-  const style = `${STYLE}${cards.map((card, i) => `#image-${i} { --w: ${card.width}; --h: ${card.height}; --z: ${zoom(card).first || 1}; }`).join("\n")}\n`;
-  const script = `"use strict";\n${[size, smaller, count, commands, tally, instruction, unbroken, start, viewer, follow, copy].map(String).join("\n\n")}\n\nif (typeof document === "object") start();\n`;
+  const headline = `${as ? `as ${as.name}, ` : ""}${count(files, "image")} could be ${size(original - compressed)} smaller`;
+  const sum = `${size(original)} → ${size(compressed)}, ${smaller(original, compressed)}% smaller`;
+  const style = `${STYLE}${as ? COPY_STYLE : ""}${cards.map((card, i) => `#image-${i} { --w: ${card.width}; --h: ${card.height}; --z: ${zoom(card).first || 1}; }`).join("\n")}\n`;
+  // a page of copies says what its command writes, by the same names start() calls; an AVIF page
+  // says where a browser can't show the copy
+  const [tallied, instructed] = as ? [copyTally, copyInstruction] : [tally, instruction];
+  const run = format === "avif" ? `{\n  start();\n  unshown(${JSON.stringify(UNSHOWN)});\n}` : "start();";
+  const script = `"use strict";\n${[size, smaller, count, commands, tallied, instructed, unbroken, start, viewer, follow, copy, ...(format === "avif" ? [unshown] : [])].map(String).join("\n\n")}\n\nif (typeof document === "object") ${run}\n`;
   const { lines, shell } = commands(data, on);
   const lows = cards.filter(low).length;
   const several = cards.length > 1;
@@ -64,20 +80,20 @@ export function page({ cwd, date, target, cards, declined = [], missed = [], err
 <header class="top">
 <div class="lead">
 <p class="tool">slimdeer review</p>
-<h1>${escape(unbroken(headline))}</h1>
-<p class="sum">${escape(unbroken(`${size(original)} → ${size(compressed)}, ${smaller(original, compressed)}% smaller`))}</p>
+<h1>${escape(unbroken(capital(headline)))}</h1>
+<p class="sum">${escape(unbroken(as ? `${sum}; shrunk in place at the same quality, ${files === 1 ? "it" : "they"} would be ${size(cards.reduce((total, card) => total + card.base * card.paths.length, 0))}` : sum))}</p>
 <dl class="meta">
 <div><dt>Folder</dt><dd><code>${escape(cwd)}</code></dd></div>
-${mixed ? `<div><dt>Targets</dt><dd>${eachTarget(cards, targetOf)}</dd></div>` : `<div><dt>Target</dt><dd>${targets[0] === undefined ? `automatic, never below quality ${FLOOR}` : `quality ${escape(targets[0])} (<code>--target ${escape(targets[0])}</code>)`}</dd></div>`}
+${as ? `<div><dt>Format</dt><dd>${as.name}, written next to ${files === 1 ? "the original" : "each original"}, which stays</dd></div>\n` : ""}${mixed ? `<div><dt>Targets</dt><dd>${eachTarget(cards, targetOf, as)}</dd></div>` : `<div><dt>Target</dt><dd>${targets[0] === undefined ? automatic(as, files) : `quality ${escape(targets[0])} (<code>--target ${escape(targets[0])}</code>)`}</dd></div>`}
 <div><dt>Date</dt><dd>${escape(date)}</dd></div>
 </dl>
-</div>
+${as ? cautioned(cautions) : ""}</div>
 <div class="notes">
 <details class="about" id="about" open><summary>What the numbers mean</summary>
 <p>Quality is SSIMULACRA2, out of 100: 90+ looks identical, 80+ the same side by side, 70+ close, with differences you might spot side by side, below 70 visibly different.</p>
-<p>Each “after” is the file the command writes, byte for byte. Nothing was uploaded, and no image file was changed.</p>
-</details>
-${unlisted({ declined, missed, errors, targetOf, settings }, platform)}
+<p>${as ? about(as, files) : "Each “after” is the file the command writes, byte for byte. Nothing was uploaded, and no image file was changed."}</p>
+${hint ? `<p>As WebP or AVIF? <code>${escape(hint.text)}</code>${hint.shell ? ", run in PowerShell," : ""} compares each image as WebP at the same quality as the file above. A new format means a new file name, so the code that uses the image has to change.</p>\n` : ""}</details>
+${unlisted({ declined, missed, errors, notWorthIt, leftOut, existing, as, cwd, targetOf, settings }, platform)}
 </div>
 </header>
 <main id="main">
@@ -87,14 +103,14 @@ ${unlisted({ declined, missed, errors, targetOf, settings }, platform)}
 ${several ? `<div class="bulk"><label class="all"><input ${UNSAVED} type="checkbox" id="all" checked> Tick all</label><button type="button" id="low"${lows ? "" : " disabled"}>Untick quality below ${REVIEW}</button></div>` : ""}
 </div>
 ${cards.length >= LIST ? index(cards) : ""}
-${cards.map((image, i) => card(image, i, mixed && targetOf(image))).join("\n")}
+${cards.map((image, i) => card(image, i, targetOf(image), mixed, as)).join("\n")}
 </main>
-<section class="bar" aria-label="Shrink the ticked images">
+<section class="bar" aria-label="${as ? `Write the ticked images as ${as.name}` : "Shrink the ticked images"}">
 <div class="bar-in">
-<p id="tally" aria-live="polite">${escape(tally(data, on))}</p>
-<p class="say"><span id="say">${escape(instruction(files, lines.length, shell))}</span><span class="where"> in <code>${escape(cwd)}</code></span><span class="colon">:</span></p>
+<p id="tally" aria-live="polite">${escape(tallied(data, on))}</p>
+<p class="say"><span id="say">${escape(instructed(files, lines.length, shell))}</span><span class="where"> in <code>${escape(cwd)}</code></span><span class="colon">:</span></p>
 <div class="cmd"><pre id="command" tabindex="0" role="region" aria-label="Command">${escape(lines.join("\n"))}</pre><button type="button" id="copy">Copy</button></div>
-<p id="status" class="hidden" aria-live="polite"></p>
+${as ? `<p class="writes">${escape(writes(as, files, lines.length))}</p>\n` : ""}<p id="status" class="hidden" aria-live="polite"></p>
 </div>
 </section>
 <script type="application/json" id="data">${JSON.stringify(data).replace(/</g, "\\u003c")}</script>
@@ -106,22 +122,57 @@ ${cards.map((image, i) => card(image, i, mixed && targetOf(image))).join("\n")}
 
 /**
  * How many commands the page gives as it opens, every image ticked: one per target, and a long one
- * split. review.js says "command" or "commands" by it; its cards each have their target.
+ * split. review.js says "command" or "commands" by it; its cards each have their target, and with
+ * `format` the commands write copies in it.
  */
-export function commandCount(cards, platform = process.platform) {
-  const data = scriptData(cards, (card) => card.target, platform);
+export function commandCount(cards, format, platform = process.platform) {
+  const data = scriptData(cards, (card) => card.target, format, platform);
   return commands(data, data.images.map(() => true)).lines.length;
 }
 
-/** What the page's script needs: the command's pieces, and each card's numbers, at `targetOf(card)`. */
-function scriptData(cards, targetOf, platform) {
-  const { args, ...runners } = pieces(cards.flatMap((card) => card.paths.map((path) => ({ path, target: targetOf(card) }))), platform);
+/**
+ * What the page's script needs: the command's pieces, and each card's numbers, at `targetOf(card)`;
+ * with `format`, its name, for the tally.
+ */
+function scriptData(cards, targetOf, format, platform) {
+  const { args, ...runners } = pieces(cards.flatMap((card) => card.paths.map((path) => ({ path, target: targetOf(card) }))), format, platform);
   let next = 0;
   const images = cards.map((card) => {
     const own = args.slice(next, (next += card.paths.length));
-    return { args: own.map(({ arg }) => arg), powershell: own.some(({ powershell }) => powershell), suffix: suffix(targetOf(card)), count: card.paths.length, ...card.total, low: low(card) };
+    return { args: own.map(({ arg }) => arg), powershell: own.some(({ powershell }) => powershell), suffix: suffix(targetOf(card), format), count: card.paths.length, ...card.total, low: low(card) };
   });
-  return { ...runners, limit: LIMIT, images };
+  return { ...runners, limit: LIMIT, ...(format && { name: FORMATS[format].name }), images };
+}
+
+/** The Target row of a page at the automatic target: with a format, the target its copies aim at. */
+function automatic(as, files) {
+  if (!as) return `automatic, never below quality ${FLOOR}`;
+  return `the quality ${files === 1 ? "the image's" : "each image's"} PNG or JPEG shrink would have (automatic, never below quality ${FLOOR})`;
+}
+
+/** What a page of copies in `as` ({ name }) says its "after" is, of `files` images. */
+function about({ name }, files) {
+  if (files === 1) return `The “after” is the ${name} file the command writes next to the original, byte for byte. Nothing was uploaded, and no image file was changed. The original stays; the code that names it has to change to use the new file.`;
+  return `Each “after” is the ${name} file the command writes next to its original, byte for byte. Nothing was uploaded, and no image file was changed. The originals stay; the code that names them has to change to use the new files.`;
+}
+
+/**
+ * What the command of a page of copies in `as` ({ extension }) does, under it, as it opens: `files`
+ * images each written as a new file, in `lines` commands, and the code to change.
+ */
+function writes({ extension }, files, lines) {
+  if (files === 1) return `It writes it as a new ${extension} file next to the original, which stays, then lists the lines of code that still name the original.`;
+  return `${lines > 1 ? "They write" : "It writes"} each one as a new ${extension} file next to its original, which stays, then ${lines > 1 ? "list" : "lists"} the lines of code that still name the originals.`;
+}
+
+/**
+ * The page's list of what to keep in mind before converting: `cautions(show)` (check.js
+ * cautionsOf()) as sentences, each path in them as code.
+ */
+function cautioned(cautions) {
+  const lines = cautions((path) => `<code>${escape(path)}</code>`);
+  // their words are the package's own; only the paths come from the project
+  return lines.length ? `<ul class="cautions">${lines.map((line) => `<li>${capital(line.slice("slimdeer: ".length))}.</li>`).join("")}</ul>\n` : "";
 }
 
 /**
@@ -136,35 +187,40 @@ function zoom({ width, height }) {
 }
 
 /**
- * One card: its path (and its copies'), numbers, the comparison and the tick; with `target` (false on
- * a page of one target), the target it was measured at.
+ * One card: its path (and its copies'), numbers, the comparison and the tick, at `target`, which it
+ * names when the page is `mixed`; with `as` ({ name }), its "after" is the image's copy in that
+ * format, set beside what the image's own shrink would do.
  */
-function card(image, i, target) {
+function card(image, i, target, mixed, as) {
   const { paths: [path, ...copies], before, after, width, height, original, compressed, outcome, score } = image;
   const quality = outcome === "hit" ? `Quality ${Math.round(score)}/100: looks ${looks(score)}` : "Lossless: looks identical";
-  const at = target === false ? "" : ` <span class="dot" aria-hidden="true">·</span> ${target === undefined ? "automatic target" : `<code>--target ${escape(target)}</code>`}`;
+  const dot = ` <span class="dot" aria-hidden="true">·</span> `;
+  const at = mixed ? `${dot}${target === undefined ? "automatic target" : `<code>--target ${escape(target)}</code>`}` : "";
+  // as the command says it of the image's own shrink
+  const shrink = as ? `${dot}${escape(unbroken(capital(sameText(image.sameFormat, original, target, image.type))))}` : "";
   // the numbers are one copy's, and the tick shrinks them all
   const each = copies.length ? " each" : "";
+  const pick = as ? `Write ${copies.length ? `all ${copies.length + 1} ` : ""}as ${as.name}` : copies.length ? `Shrink all ${copies.length + 1}` : "Shrink this one";
   const { up, first } = zoom(image);
   const levels = [[0, "Fit"], [1, "100%"], [2, "200%"], ...(up > 2 ? [[up, `${up * 100}%`]] : [])];
   const img = (which, src, alt) => `<img class="${which}" src="${escape(src)}" width="${width}" height="${height}" alt="${escape(alt)}" loading="lazy" decoding="async" draggable="false">`;
   return `<article class="image${low(image) ? " low-card" : ""}" id="image-${i}" aria-labelledby="path-${i}">
 <div class="head">
 <h2 class="path" id="path-${i}">${escape(path)}</h2>
-<label class="pick"><input ${UNSAVED} type="checkbox" checked aria-describedby="path-${i}"> ${copies.length ? `Shrink all ${copies.length + 1}` : "Shrink this one"}</label>
+<label class="pick"><input ${UNSAVED} type="checkbox" checked aria-describedby="path-${i}"> ${pick}</label>
 </div>
 ${copies.length ? `<p class="also">Also at ${copies.map((copy) => `<code>${escape(copy)}</code>`).join(", ")}</p>\n` : ""}<div class="facts">
-<p>${escape(unbroken(`${smaller(original, compressed)}% smaller, ${size(original)} → ${size(compressed)}${each}`))} <span class="dot" aria-hidden="true">·</span> <span class="quality${low(image) ? " low" : ""}">${escape(quality)}</span>${at}</p>
+<p>${escape(unbroken(`${smaller(original, compressed)}% smaller, ${size(original)} → ${size(compressed)}${each}`))}${dot}<span class="quality${low(image) ? " low" : ""}">${escape(quality)}</span>${at}${shrink}</p>
 <fieldset class="choice zoom"><legend class="hidden">Zoom for ${escape(path)}</legend>
 ${levels.map(([value, label]) => `<label><input ${UNSAVED} type="radio" name="zoom-${i}" value="${value}"${value === first ? " checked" : ""}><span>${label}</span></label>`).join("")}
 </fieldset>
 </div>
 <figure class="compare${first ? " zoomed" : ""}${first >= 2 ? " pixels" : ""}">
-<div class="labels"><span>Before <b>${escape(size(original))}</b></span><span>After <b>${escape(size(compressed))}</b></span></div>
+<div class="labels"><span>Before <b>${escape(size(original))}</b></span><span>After${as ? ` (${as.name})` : ""} <b>${escape(size(compressed))}</b></span></div>
 <div class="view">
 <div class="pan" role="group" aria-label="${escape(path)}, before and after"><div class="canvas">
 ${img("before", before, `${path}, before`)}
-${img("after", after, `${path}, after: the file the command writes`)}
+${img("after", after, `${path}, after: the ${as ? `${as.name} ` : ""}file the command writes`)}
 </div></div>
 <input ${UNSAVED} class="slider" type="range" min="0" max="100" step="1" value="50" aria-label="Divider for ${escape(path)}: before on its left, after on its right" aria-valuetext="50%">
 <div class="divider" aria-hidden="true"><span class="grip"></span></div>
@@ -197,17 +253,27 @@ function choice(name, legend, options, more = "") {
 }
 
 /**
- * What was measured but isn't on the page, each in a disclosure that names the images: those the
- * automatic target turned down (with the command that tries them lower, as --check gives), those
+ * What was measured but isn't on the page, each in a disclosure that names the images: with a format
+ * (`as`), copies that wouldn't save enough beyond their image's own shrink (with the command that
+ * shrinks those worth it, as --check gives), images with a file where their copy would go, and images
+ * left out; those the automatic target turned down (with the command that tries them lower), those
  * that didn't reach the target, and those that couldn't be checked or previewed.
  */
-function unlisted({ declined, missed, errors, targetOf, settings }, platform) {
+function unlisted({ declined, missed, errors, notWorthIt, leftOut, existing, as, cwd, targetOf, settings }, platform) {
   const item = (path, text) => `<li><code>${escape(path)}</code>: ${escape(text)}</li>`;
   // rounded down, as --check says it: a miss's best is below its target
   const best = ({ path, score }) => item(path, `best quality ${Math.floor(score)}/100`);
   const biggest = (list) => [...list].sort((a, b) => b.original - a.original);
-  const parts = [];
-  if (declined.length) {
+  const parts = as ? copyParts({ notWorthIt, leftOut, existing, as, cwd, targetOf, settings }, platform) : [];
+  if (declined.length && as) {
+    // as --check says it with a format: below the floor, there is no quality for a copy to match
+    const one = declined.length === 1;
+    const command = checkCommand(biggest(declined).slice(0, COMMAND_ROWS).map(({ path }) => path), { ...settings, target: SUGGESTED }, platform);
+    parts.push([
+      `${count(declined.length, "image")} ${one ? "isn't" : "aren't"} here: shrunk in place ${one ? "it doesn't" : "they don't"} reach quality ${FLOOR}, so there is no quality to match.`,
+      `<ul>${biggest(declined).map(best).join("")}</ul>\n<p>To choose one${declined.length > COMMAND_ROWS ? ` for the ${COMMAND_ROWS} biggest` : ""}, run${command.shell}:</p>\n<pre>${escape(command.text)}</pre>`,
+    ]);
+  } else if (declined.length) {
     const one = declined.length === 1;
     const which = one ? "it" : declined.length > COMMAND_ROWS ? `the ${COMMAND_ROWS} biggest` : "them";
     const command = checkCommand(biggest(declined).slice(0, COMMAND_ROWS).map(({ path }) => path), { ...settings, target: LOWER }, platform);
@@ -216,7 +282,18 @@ function unlisted({ declined, missed, errors, targetOf, settings }, platform) {
       `<ul>${biggest(declined).map(best).join("")}</ul>\n<p>To try ${which} at a lower target, run${command.shell}:</p>\n<pre>${escape(command.text)}</pre>`,
     ]);
   }
-  if (missed.length) {
+  if (missed.length && as) {
+    // a copy aims at its target given, or at the quality of its image's own shrink: apart() keeps the
+    // two numbers apart when they round alike, here against the best of the images that ask the same
+    const asked = (image) => JSON.stringify([targetOf(image), targetOf(image) === undefined ? image.equal : null, image.type]);
+    const top = (image) => Math.max(...missed.filter((other) => asked(other) === asked(image)).map(({ score }) => score));
+    const wanted = (image) => (targetOf(image) === undefined ? `quality ${apart(image.equal, top(image))[0]}/100, the ${own(image.type)}'s` : `--target ${targetOf(image)}`);
+    const reached = (image) => `best quality ${apart(image.equal, image.score)[1]}/100`;
+    // one quality asked of them all is said once
+    const one = new Set(missed.map(asked)).size === 1;
+    const each = (image) => item(image.path, one ? reached(image) : `${reached(image)}, short of ${wanted(image)}`);
+    parts.push([`${count(missed.length, "image")} ${missed.length === 1 ? "isn't" : "aren't"} here: as ${as.name}, no file reaches ${one ? wanted(missed[0]) : "the quality asked"}.`, `<ul>${biggest(missed).map(each).join("")}</ul>`]);
+  } else if (missed.length) {
     const wanted = (target) => (target === undefined ? "the automatic quality" : `--target ${target}`);
     const targets = new Set(missed.map(targetOf));
     // at several targets, each says which it missed
@@ -230,6 +307,40 @@ function unlisted({ declined, missed, errors, targetOf, settings }, platform) {
   return parts.map(([summary, body]) => `<details class="unlisted"><summary>${escape(summary)}</summary>\n${body}\n</details>`).join("\n");
 }
 
+/**
+ * The disclosures of a page of copies in `as` ({ name }), as unlisted() gives them: copies that
+ * wouldn't save enough beyond their image's own shrink, at each target, by the thresholds in
+ * `settings` (check.js shortfall()); images with a file where their copy would go, the biggest saving
+ * first; images left out, each with its reason.
+ */
+function copyParts({ notWorthIt, leftOut, existing, as, cwd, targetOf, settings }, platform) {
+  const parts = [];
+  const groups = new Map(); // target -> its images
+  for (const image of notWorthIt) groups.set(targetOf(image), [...(groups.get(targetOf(image)) ?? []), image]);
+  for (const [target, group] of groups) {
+    const { images, why, command, which } = shortfall(group, { ...settings, target }, platform);
+    const one = images.length === 1;
+    // a shrink that leaves the image as it is gives no smaller file to name
+    const sizes = ({ path, original, compressed, base }) => `<li><code>${escape(path)}</code>: ${escape(`${size(compressed)} as ${as.name}, ${size(base)} ${base === original ? "as it is" : "shrunk in place"}`)}</li>`;
+    parts.push([
+      `${count(images.length, "image")} ${one ? "isn't" : "aren't"} here: as ${as.name} ${one ? "it" : "they"} ${why} shrinking ${one ? "it" : "them"} in place.`,
+      `<ul>${images.map(sizes).join("")}</ul>${command ? `\n<p>To shrink ${which} in place instead, run${command.shell}:</p>\n<pre>${escape(command.text)}</pre>` : ""}`,
+    ]);
+  }
+  if (existing.length) {
+    const one = existing.length === 1;
+    const done = [...existing].sort((a, b) => b.base - b.compressed - (a.base - a.compressed));
+    parts.push([
+      one ? `1 image already has ${as.article} ${as.name} file next to it, which the command never replaces, so it isn't here.` : `${existing.length} images already have ${as.article} ${as.name} file next to them, which the command never replaces, so they aren't here.`,
+      `<ul>${done.map(({ path, output }) => `<li><code>${escape(path)}</code> → <code>${escape(pathFrom(cwd, output))}</code></li>`).join("")}</ul>`,
+    ]);
+  }
+  if (leftOut.length) {
+    parts.push([`${count(leftOut.length, "image")} ${leftOut.length === 1 ? "is" : "are"} left out:`, `<ul>${leftOut.map(({ path, reason }) => `<li><code>${escape(path)}</code> (${escape(reason)})</li>`).join("")}</ul>`]);
+  }
+  return parts;
+}
+
 /** Whether the image is one to look at first: a lossy result below REVIEW, as people see it. */
 function low({ outcome, score }) {
   return outcome === "hit" && Math.round(score) < REVIEW;
@@ -238,31 +349,35 @@ function low({ outcome, score }) {
 /**
  * The command's pieces, for the page's script to join: each path (with its target) quoted as text.js
  * quotes it for `platform`, whether that path needs PowerShell there, and the runner for each case.
- * With each card's suffix(), the page's commands are the terminal's (shrinkCommand()) for any choice
- * of images.
+ * With each card's suffix(), the page's commands are the terminal's (shrinkCommand(), with `format`
+ * the one that writes copies in it) for any choice of images.
  */
-function pieces(paths, platform) {
+function pieces(paths, format, platform) {
   const without = (text, tail) => text.slice(0, text.length - tail.length);
   let powershell = null;
   const args = paths.map(({ path, target }) => {
     const arg = quote(path, platform);
-    const one = shrinkCommand([path], target, platform);
-    if (one.shell) powershell = without(one.text, ` ${arg}${suffix(target)}`);
+    const one = shrinkCommand([path], target, platform, format);
+    if (one.shell) powershell = without(one.text, ` ${arg}${suffix(target, format)}`);
     return { arg, powershell: Boolean(one.shell) };
   });
   return { npx: shrinkCommand([], undefined, platform).text, powershell, args };
 }
 
-/** How a command ends for `target`, as shrinkCommand() ends it. */
-function suffix(target) {
-  return target === undefined ? "" : ` --target ${target}`;
+/** How a command ends for `target` and `format`, as shrinkCommand() ends it. */
+function suffix(target, format) {
+  return `${target === undefined ? "" : ` --target ${target}`}${format === undefined ? "" : ` --format ${format}`}`;
 }
 
-/** The targets of a page's cards in plain words: how many images are at each, in the order they come. */
-function eachTarget(cards, targetOf) {
+/**
+ * The targets of a page's cards in plain words: how many images are at each, in the order they come;
+ * with a format (`as`), the automatic one is that of each image's own shrink.
+ */
+function eachTarget(cards, targetOf, as) {
   const files = new Map(); // target -> how many images
   for (const card of cards) files.set(targetOf(card), (files.get(targetOf(card)) ?? 0) + card.paths.length);
-  const each = [...files].map(([target, n]) => `${target === undefined ? `automatic (never below quality ${FLOOR})` : `quality ${escape(target)}`} for ${count(n, "image")}`);
+  const automatic = as ? `automatic (the quality of its PNG or JPEG shrink, never below quality ${FLOOR})` : `automatic (never below quality ${FLOOR})`;
+  const each = [...files].map(([target, n]) => `${target === undefined ? automatic : `quality ${escape(target)}`} for ${count(n, "image")}`);
   return `each image at the target the lint flagged it at: ${each.join(", ")}`;
 }
 
@@ -333,6 +448,29 @@ function instruction(ticked, lines, shell, one = false) {
   const what = lines > 1 ? `these ${lines} commands` : "this";
   return `To shrink ${ticked === 1 ? "it" : "them"} in place (lossy, so commit first), run ${what}${shell}`;
 }
+
+/**
+ * tally() on a page of copies, under the name start() calls: what the ticked images' copies in
+ * data.name ("WebP", "AVIF") add up to, every copy counted.
+ */
+const copyTally = function tally(data, on) {
+  const chosen = data.images.filter((_, i) => on[i]);
+  const all = data.images.reduce((sum, image) => sum + image.count, 0);
+  const one = data.images.length === 1;
+  if (chosen.length === 0) return one ? "Not ticked." : `None of the ${count(all, "image")} ticked.`;
+  const ticked = chosen.reduce((sum, image) => sum + image.count, 0);
+  const original = chosen.reduce((sum, image) => sum + image.original, 0);
+  const compressed = chosen.reduce((sum, image) => sum + image.compressed, 0);
+  const lead = one ? "Ticked" : `${ticked} of ${count(all, "image")} ticked`;
+  return unbroken(`${lead}: as ${data.name}, could save ${size(original - compressed)} (${size(original)} → ${size(compressed)}, ${smaller(original, compressed)}% smaller)`);
+};
+
+/** instruction() on a page of copies, under the name start() calls: its command writes new files, and leaves the images as they are. */
+const copyInstruction = function instruction(ticked, lines, shell, one = false) {
+  if (ticked === 0 && one) return "Tick the image to write it, and the command that writes it appears here.";
+  if (ticked === 0) return "Tick the images to write, and the command that writes them appears here.";
+  return `To write ${ticked === 1 ? "it" : "them"}, run ${lines > 1 ? `these ${lines} commands` : "this"}${shell}`;
+};
 
 /** `text` with each size's number and unit joined by a no-break space, so no line breaks between them. */
 function unbroken(text) {
@@ -531,6 +669,29 @@ function follow(element, event, state, step) {
   element.addEventListener("pointermove", step);
   element.addEventListener("pointerup", end);
   element.addEventListener("pointercancel", end);
+}
+
+/**
+ * On an AVIF page, each "after" the browser can't show (Safari before 16.4 has no AVIF) gives way to
+ * `sentence`; an image that failed before this script ran has no error left to send, so its state is
+ * looked at too. The page's policy runs no inline handler: the listener is added here.
+ */
+function unshown(sentence) {
+  for (const image of document.querySelectorAll("img.after")) {
+    const say = () => {
+      // the after half stays covered, so the original never passes for the copy; the sentence goes
+      // under the picture, where it fits at any size and zoom
+      const cover = document.createElement("div");
+      cover.className = "after unshown";
+      const note = document.createElement("p");
+      note.className = "unshown-note";
+      note.textContent = sentence;
+      image.closest(".compare").append(note);
+      image.replaceWith(cover);
+    };
+    if (image.complete && image.naturalWidth === 0) say();
+    else image.addEventListener("error", say);
+  }
 }
 
 /** Copies the commands in `lines`, or failing that, selects them in `shown` for the reader to copy. */
@@ -733,4 +894,14 @@ input[type="checkbox"] { width: 18px; height: 18px; margin: 0; accent-color: var
   #command { max-height: none; white-space: pre-wrap; overflow-wrap: anywhere; }
   #copy, #status { display: none; }
 }
+`;
+
+// A page of copies adds what to keep in mind before converting, what its command does, and, where an
+// "after" can't be shown, a blank right of the divider, where the "after" would be, and the reason under it.
+const COPY_STYLE = `.cautions { margin: 0 0 16px; padding-left: 20px; font-size: 14px; max-width: 70ch; }
+.cautions li { margin: 0 0 4px; }
+.writes { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
+.bar.empty .writes { display: none; }
+.unshown { position: absolute; inset: 0; background: var(--surface); }
+.unshown-note { margin: 6px 0 0; color: var(--warn); font-size: 13px; }
 `;

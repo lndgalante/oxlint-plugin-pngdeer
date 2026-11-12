@@ -40,6 +40,20 @@ export function looks(score) {
   return "visibly different";
 }
 
+/**
+ * A target and a best score below it, as a line shows them: the target rounded and the best rounded
+ * down (90.5 shown as 91 would reach 91), as whole numbers, or where those are the same, with as many
+ * decimals as it takes, up to the engine's three: "no file reaches 87 (the best reaches 87)" would make
+ * no sense.
+ */
+export function apart(target, best) {
+  for (let digits = 0; ; digits++) {
+    const scale = 10 ** digits;
+    const shown = [(Math.round(target * scale) / scale).toFixed(digits), (Math.floor(best * scale) / scale).toFixed(digits)];
+    if (shown[0] !== shown[1] || digits === 3) return shown;
+  }
+}
+
 /** What the quality numbers mean, in looks()'s words, for a table that shows the numbers alone. */
 export const LEGEND = "quality is SSIMULACRA2, out of 100: 90+ looks identical, 80+ the same side by side, 70+ close, with differences you might spot side by side, below 70 visibly different";
 

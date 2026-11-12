@@ -10,12 +10,15 @@ import { keepOrientation, mark, marked, turned } from "./marker.js";
 import { physical, projectRoot } from "./scan.js";
 import { plain, save } from "./shrink.js";
 import { nextMetadata } from "./summary.js";
-import { looks, pathFrom, quote, shrinkCommand, size, smaller } from "./text.js";
+import { apart, looks, pathFrom, quote, shrinkCommand, size, smaller } from "./text.js";
 
-export const FORMATS = { webp: { name: "WebP", extension: ".webp" }, avif: { name: "AVIF", extension: ".avif" } };
+// each with the article a line puts before its name ("a WebP file", "an AVIF file")
+export const FORMATS = { webp: { name: "WebP", extension: ".webp", article: "a" }, avif: { name: "AVIF", extension: ".avif", article: "an" } };
 // slimdeer's AVIF limit (at 24 MP the engine needs about 2.9 GB), and the WebP format's own
 export const AVIF_MAX_PIXELS = 24e6;
 export const WEBP_MAX_SIDE = 16383;
+// The target the command suggests where an image's own shrink gives no quality for its copy to match
+export const SUGGESTED = 80;
 
 // Projects whose build or server can convert images itself: a copy made here would go through a
 // second lossy pass there
@@ -43,8 +46,8 @@ export function leftOut(bytes, file, format, root) {
   if (frames > 1) return { kind: "animated", reason: `animated PNGs can't be written as ${name} yet` };
   if (turned(bytes)) return { kind: "turned", reason: `its eXIf data turns it, and the ${name} file would show it unturned; shrink it as PNG instead` };
   // rounded up, so an image just over the limit doesn't read as 24.0 MP
-  if (format === "avif" && width * height > AVIF_MAX_PIXELS) return { kind: "size", reason: `too large for AVIF (${(Math.ceil((width * height) / 1e5) / 10).toFixed(1)} MP, at most ${AVIF_MAX_PIXELS / 1e6})` };
-  if (format === "webp" && Math.max(width, height) > WEBP_MAX_SIDE) return { kind: "size", reason: `too wide or tall for WebP (at most ${WEBP_MAX_SIDE.toLocaleString("en-US")} pixels a side)` };
+  if (format === "avif" && width * height > AVIF_MAX_PIXELS) return { kind: "size", reason: `too large for AVIF: ${(Math.ceil((width * height) / 1e5) / 10).toFixed(1)} MP, at most ${AVIF_MAX_PIXELS / 1e6}` };
+  if (format === "webp" && Math.max(width, height) > WEBP_MAX_SIDE) return { kind: "size", reason: `too wide or tall for WebP: at most ${WEBP_MAX_SIDE.toLocaleString("en-US")} pixels a side` };
   if (nextMetadata(file, root)) return { kind: "next", reason: "Next.js serves app/ metadata images by their file name, and doesn't take WebP or AVIF there" };
   if (format === "avif" && ["react-native", "expo"].some((dependency) => dependencies(root).has(dependency))) {
     return { kind: "react-native", reason: "React Native's Image doesn't list AVIF among the formats it shows" };
@@ -103,7 +106,7 @@ export function convertImage(input, output, { format, target, mode }) {
   if (mode === "sibling" && extname(input).toLowerCase() === extension) return { status: "left", reason: `its name already ends in ${extension}; name the copy with -o` };
   const left = leftOut(bytes, resolve(input), format, rootOf(input));
   if (left) return { status: "left", reason: left.reason };
-  const own = kind(bytes) === "jpeg" ? "JPEG" : "PNG";
+  const type = kind(bytes);
 
   // never from the cache: these are the bytes converted, read once
   const shrunk = compress(bytes, target);
@@ -111,9 +114,9 @@ export function convertImage(input, output, { format, target, mode }) {
   const equal = equalTarget(target, sameFormat);
   if (equal === null) {
     // with -o, the example keeps -o: --format would write another file than the one asked for
-    const example = shrinkCommand([input], 80, undefined, mode === "named" ? undefined : format);
+    const example = shrinkCommand([input], SUGGESTED, undefined, mode === "named" ? undefined : format);
     const command = mode === "named" ? `${example.text} -o ${quote(output)}` : example.text;
-    return { status: "left", reason: `shrunk as ${own} it doesn't reach quality ${FLOOR}, so there is no quality to match; to choose one, add --target, like${example.shell}: ${command}` };
+    return { status: "left", reason: `shrunk as ${own(type)} it doesn't reach quality ${FLOOR}, so there is no quality to match; to choose one, add --target, like${example.shell}: ${command}` };
   }
   let copy;
   try {
@@ -122,18 +125,14 @@ export function convertImage(input, output, { format, target, mode }) {
     if (error.refused) return { status: "left", reason: error.message };
     throw error;
   }
-  if (copy.outcome === "miss") {
-    // rounded down: a miss's best is below its target, and 90.5 shown as 91 would reach --target 91
-    const asked = target === undefined ? `quality ${Math.round(equal)}/100, the ${own}'s` : `--target ${target}`;
-    return { status: "left", reason: `as ${name}, no file reaches ${asked} (the best reaches ${Math.floor(copy.score)}/100)` };
-  }
+  if (copy.outcome === "miss") return { status: "left", reason: missText(format, type, { equal, score: copy.score, target }) };
   const written = copy.output.length;
   if (written >= bytes.length) return { status: "left", reason: `as ${name} it would be ${size(written)}, no smaller than the image itself (${size(bytes.length)})` };
   const base = baseOf(sameFormat, bytes.length);
   // next to the image, a copy has to beat its shrink too
   if (mode === "sibling" && written >= base) {
     const { text, shell } = shrinkCommand([input], target);
-    return { status: "left", reason: `as ${name} it would be ${size(written)}, no smaller than shrinking it as ${own} at the same quality (${size(base)}); to shrink it in place instead, run${shell}: ${text}` };
+    return { status: "left", reason: `as ${name} it would be ${size(written)}, no smaller than shrinking it as ${own(type)} at the same quality (${size(base)}); to shrink it in place instead, run${shell}: ${text}` };
   }
 
   if (mode === "named") {
@@ -145,18 +144,19 @@ export function convertImage(input, output, { format, target, mode }) {
     const status = create(output, copy.output);
     if (status) return { status };
   }
-  const shrink = sameText(sameFormat, bytes.length, target, own) + (base < written ? `, smaller than this ${name}` : "");
+  const shrink = sameText(sameFormat, bytes.length, target, type) + (base < written ? `, smaller than this ${name}` : "");
   const text = `${size(bytes.length)} → ${size(written)} (${smaller(bytes.length, written)}% smaller, quality ${Math.round(copy.score)}/100: looks ${looks(copy.score)}); ${shrink}`;
   return { status: "written", text, original: bytes.length, written, base, sameFormat };
 }
 
 /**
  * What to say before writing copies in `format` of `files` (as they're shown) from the projects at
- * `roots`: for each project that depends on a framework that converts images itself, that it does;
- * then, for AVIF, each image named like a share image or an icon. Lines for stderr, without a line break.
+ * `roots`: for each project that depends on a framework that converts images itself, that it does
+ * ("this project", or its path from `cwd`, the folder the command runs in); then, for AVIF, each image
+ * named like a share image or an icon. Lines for stderr, without a line break, `show` writing each path
+ * in them (as code, in Markdown).
  */
-export function cautions(roots, format, files) {
-  const cwd = process.cwd();
+export function cautions(roots, format, files, show = (path) => path, cwd = process.cwd()) {
   const lines = [];
   for (const root of new Set(roots)) {
     const framework = FRAMEWORKS.find((dependency) => dependencies(root).has(dependency));
@@ -164,21 +164,39 @@ export function cautions(roots, format, files) {
     // as the filesystem spells them, so a link (macOS's /var) doesn't hide that one folder holds the other
     const up = relative(physical(root), physical(cwd));
     const here = !isAbsolute(up) && up !== ".." && !up.startsWith(`..${sep}`);
-    lines.push(`slimdeer: ${here ? "this project" : pathFrom(cwd, root)} depends on ${framework}, which can serve images as WebP by itself; convert only images it doesn't serve, or they go through a second lossy pass`);
+    lines.push(`slimdeer: ${here ? "this project" : show(pathFrom(cwd, root))} depends on ${framework}, which can serve images as WebP by itself; convert only images it doesn't serve, or they go through a second lossy pass`);
   }
   if (format !== "avif") return lines;
   for (const file of files) {
-    if (SHARED.test(basename(file))) lines.push(`slimdeer: ${file} looks like a share image or an icon by its name; in a December 2024 test, link previews on X, LinkedIn, Slack and iMessage didn't show AVIF, so keep a PNG or JPEG for those`);
+    if (SHARED.test(basename(file))) lines.push(`slimdeer: ${show(file)} looks like a share image or an icon by its name; in a December 2024 test, link previews on X, LinkedIn, Slack and iMessage didn't show AVIF, so keep a PNG or JPEG for those`);
   }
   return lines;
 }
 
-/** What the image's own shrink would do, after the copy's sizes. */
-function sameText({ compressed, outcome }, original, target, own) {
-  if (outcome === "miss") return `as ${own}, no smaller file reaches --target ${target}`;
+/**
+ * What the image's own shrink would do, after the copy's sizes: `sameFormat` as convertImage() gives
+ * it, of an image of `original` bytes and `type` ("png", "jpeg"), at `target`.
+ */
+export function sameText({ compressed, outcome }, original, target, type) {
+  if (outcome === "miss") return `as ${own(type)}, no smaller file reaches --target ${target}`;
   // the mark costs a few dozen bytes, more than slimdeer saves on some tiny files (shrink.js)
-  if (outcome === "original" || compressed >= original) return `as ${own}, slimdeer can't make it smaller`;
-  return outcome === "hit" ? `shrunk as ${own} at the same quality: ${size(compressed)}` : `shrunk as ${own} (lossless): ${size(compressed)}`;
+  if (outcome === "original" || compressed >= original) return `as ${own(type)}, slimdeer can't make it smaller`;
+  return outcome === "hit" ? `shrunk as ${own(type)} at the same quality: ${size(compressed)}` : `shrunk as ${own(type)} (lossless): ${size(compressed)}`;
+}
+
+/**
+ * Why an image of `type` ("png", "jpeg") has no copy in `format`: none reaches `equal`, the target
+ * given (`target`) or its own shrink's score, the best reaching `score`.
+ */
+export function missText(format, type, { equal, score, target }) {
+  const [wanted, best] = apart(equal, score);
+  const asked = target === undefined ? `quality ${wanted}/100, the ${own(type)}'s` : `--target ${target}`;
+  return `as ${FORMATS[format].name}, no file reaches ${asked} (the best reaches quality ${best}/100)`;
+}
+
+/** An image's own format, as a line names it: kind()'s "png" or "jpeg". */
+export function own(type) {
+  return type === "jpeg" ? "JPEG" : "PNG";
 }
 
 const packages = new Map(); // project root -> the names its package.json depends on, read once

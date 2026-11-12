@@ -27,6 +27,19 @@ test("a WebP is a hit exactly when its score reaches the target asked for", () =
   assert.deepEqual([heart.outcome, heart.mode, heart.score, heart.target], ["hit", "lossless", 87.608, 87.61]);
 });
 
+test("an AVIF is a hit exactly when its score, as reported, reaches the target asked for", () => {
+  // the engine's own outcome compares the score before its report rounds it to 3 decimals: it calls
+  // the first file a miss at 92.649, and the third a hit at 89.5374
+  const at = (side, target) => {
+    const { outcome, score } = convert(gradient(side), "avif", target);
+    return [outcome, score];
+  };
+  assert.deepEqual(at(20, 92.649), ["hit", 92.649]);
+  assert.deepEqual(at(20, 92.65), ["miss", 92.649]);
+  assert.deepEqual(at(24, 89.537), ["hit", 89.537]);
+  assert.deepEqual(at(24, 89.5374), ["miss", 89.537]);
+});
+
 test("an animated PNG is turned down in the engine's words", () => {
   for (const [format, name] of [["webp", "WebP"], ["avif", "AVIF"]]) {
     assert.throws(() => convert(animate(png), format, 80), { refused: true, message: `animated PNGs can't be written as ${name} yet` });

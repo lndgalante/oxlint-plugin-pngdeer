@@ -1,4 +1,4 @@
-// measureAll() with a format (check.js), which --check --format and --review --format print: which
+// measureAll() with a format (measure.js), which --check --format and --review --format print: which
 // list each image lands in, and what each holds. The copies' sizes and scores are the engine's of the
 // day (test/engine-output.test.js pins those); what's pinned here is where each image goes and why.
 import assert from "node:assert/strict";
@@ -18,7 +18,7 @@ const MARKED = "already shrunk by this command, so converting it would be a seco
 function measure(dir, options = {}, inputs = ["."]) {
   const out = join(dir, "result.json");
   const script = `import { writeFileSync } from "node:fs";
-import { measureAll } from ${JSON.stringify(pathToFileURL(join(plugin, "src/check.js")).href)};
+import { measureAll } from ${JSON.stringify(pathToFileURL(join(plugin, "src/measure.js")).href)};
 writeFileSync(${JSON.stringify(out)}, JSON.stringify(await measureAll(${JSON.stringify(inputs)}, ${JSON.stringify(options)})));`;
   const run = spawnSync(process.execPath, ["--input-type=module", "-e", script], { cwd: dir, encoding: "utf8", timeout: 300_000 });
   assert.equal(run.status, 0, run.stderr);

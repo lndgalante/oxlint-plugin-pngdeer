@@ -16,18 +16,18 @@ const CASELESS = process.platform === "darwin" || process.platform === "win32";
  * the root, or "/x" from one of `publicDirs`, as written or URL-encoded), or, when no line does, by its
  * name alone: [{ file, line, text, markdown }], `file` absolute, `line` from 1, `text` trimmed, tabs
  * as spaces, and cut to 100 characters, and `markdown` for Markdown files, which come after all the
- * others. The lines are looked for in the project this runs in when it holds `root` (a monorepo's
- * root holds its packages), else in `root`'s, packages inside it included. Give `image` and `root`
- * the same spelling (both from resolve(), say), or the paths won't match.
+ * others, each kind by file path. The lines are looked for in the project of the folder `cwd` when it
+ * holds `root` (a monorepo's root holds its packages), else in `root`'s, packages inside it included.
+ * Give `image` and `root` the same spelling (both from resolve(), say), or the paths won't match.
  */
-export function mentions(image, root, publicDirs = ["public", "static"]) {
+export function mentions(image, root, publicDirs = ["public", "static"], cwd = process.cwd()) {
   // folded before any path is made from them, so SRC/ASSETS typed for src/assets still leads from src/
   const fold = (text) => (CASELESS ? text.toLowerCase() : text);
   const spellings = (forms) => [...new Set(forms.flatMap((form) => [form, encodeURI(form)]).map(fold))];
   const [path, home] = [fold(image), fold(root)];
   const names = spellings([basename(path)]);
   // every path ends in the name, so only files that hold it need a closer look
-  const pages = pagesIn(scopeOf(root)).filter(({ folded }) => names.some((name) => folded.includes(name)));
+  const pages = pagesIn(scopeOf(root, cwd)).filter(({ folded }) => names.some((name) => folded.includes(name)));
   const byPath = pages.flatMap((page) => {
     const paths = spellings([
       pathFrom(fold(dirname(page.path)), path),
@@ -60,10 +60,10 @@ function named(line, spelling) {
   return false;
 }
 
-/** Where to look for the lines that name an image of the project at `root`: see mentions(). */
-function scopeOf(root) {
-  // with no package.json above the current folder, it holds no project but `root`'s
-  const here = projectRoot(process.cwd(), root);
+/** Where to look, from the folder `cwd`, for the lines that name an image of the project at `root`: see mentions(). */
+function scopeOf(root, cwd) {
+  // with no package.json above `cwd`, it holds no project but `root`'s
+  const here = projectRoot(cwd, root);
   const down = relative(here, root);
   return down === "" || (!isAbsolute(down) && down !== ".." && !down.startsWith(`..${sep}`)) ? here : root;
 }
@@ -74,8 +74,8 @@ const pages = new Map(); // folder -> [{ path, text, folded }] of the files unde
 function pagesIn(folder) {
   if (!pages.has(folder)) {
     const rank = (path) => ORDER.indexOf(extname(path).toLowerCase());
-    // one walk, sorted by kind; the sort is stable, so each kind keeps the walk's order
-    const files = projectFiles(folder, ORDER, 0, PAGE_BYTES, [], { nested: true }).sort((a, b) => rank(a) - rank(b));
+    // one walk, sorted by kind, then by path: the walk's order is the file system's, which differs
+    const files = projectFiles(folder, ORDER, 0, PAGE_BYTES, [], { nested: true }).sort((a, b) => rank(a) - rank(b) || (a < b ? -1 : a > b ? 1 : 0));
     pages.set(folder, files.flatMap((path) => {
       try {
         const text = readFileSync(path, "utf8");

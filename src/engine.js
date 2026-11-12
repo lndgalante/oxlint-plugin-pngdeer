@@ -33,11 +33,12 @@ export function compress(bytes, target) {
 /**
  * The image (a PNG or JPEG) as WebP or AVIF ("webp", "avif") at `target`, a score the caller always
  * gives: no floor and no retry. { output, outcome, score, target (as the engine rounded it, to 2
- * decimals), mode (WebP's "lossy" or "lossless", never shown as "lossless"; AVIF has none) }. WebP
- * reports no outcome: it is a hit when its score reaches `target`, not the rounded one the engine
- * reports. A PNG that eXIf turns comes out unturned, so callers leave such PNGs out. Throws an Error
- * with `refused` set when the engine turns the image down (its own words), and a bug error, as
- * compress() does, on a panic.
+ * decimals), mode (WebP's "lossy" or "lossless", never shown as "lossless"; AVIF has none) }. Either
+ * format is a hit when its score, as reported (to 3 decimals), reaches `target`, not the rounded one
+ * the engine reports: WebP reports no outcome, and AVIF's compares the score before the report rounds
+ * it, so it could call a file that shows the very score asked a miss. A PNG that eXIf turns comes out
+ * unturned, so callers leave such PNGs out. Throws an Error with `refused` set when the engine turns
+ * the image down (its own words), and a bug error, as compress() does, on a panic.
  */
 export function convert(bytes, format, target) {
   if (format !== "webp" && format !== "avif") throw new TypeError(`convert() writes "webp" or "avif", not ${format}`);
@@ -61,8 +62,7 @@ export function convert(bytes, format, target) {
     // each getter copies out of the engine's memory, so each is read once
     const output = webp ? out.webp : out.avif;
     const report = JSON.parse(out.report);
-    const outcome = webp ? (report.score >= target ? "hit" : "miss") : report.outcome;
-    return { output, outcome, score: report.score, target: report.target, mode: report.mode };
+    return { output, outcome: report.score >= target ? "hit" : "miss", score: report.score, target: report.target, mode: report.mode };
   } finally {
     out.free();
   }
