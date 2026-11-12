@@ -129,7 +129,7 @@ jobs:
           exit 1
 
   # A GitHub Release with the notes in docs/releases/<version>.md. Say in them whether the engine
-  # changed: a new engine measures every image again.
+  # changed, and whether its PNG or JPEG files did: only that measures every image again.
   release:
     needs: [verify, check-published]
     if: ${{ !cancelled() && needs.check-published.result == 'success' }}

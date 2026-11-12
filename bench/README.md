@@ -22,7 +22,7 @@ Each row is one command run in the app:
 
 | Row | What it runs |
 |---|---|
-| oxlint, without the plugin | the same lint without pngdeer: the baseline |
+| oxlint, without the plugin | the same lint without the plugin: the baseline |
 | first run | a fresh clone: no cache, so every image is measured |
 | later runs | everything cached (median of 3) |
 | after one image changed | one image's bytes replaced, so only that image is measured again |
@@ -39,10 +39,10 @@ Peak memory is the whole process's, read from `/usr/bin/time` on macOS and Linux
 | What | Time | Peak memory | |
 |---|---:|---:|---|
 | oxlint, without the plugin | 68 ms | 86 MB |  |
-| oxlint + pngdeer, first run | 14.6 s | 3.0 GB | measured 35 images, 78 warnings |
-| oxlint + pngdeer, later runs (median of 3) | 178 ms | 116 MB | 78 warnings |
-| oxlint + pngdeer, after one image changed | 960 ms | 169 MB | measured 1 image, 78 warnings |
-| ESLint + pngdeer, later run (.jsx files) | 264 ms | 195 MB | 66 warnings |
+| oxlint + slimdeer, first run | 14.6 s | 3.0 GB | measured 35 images, 78 warnings |
+| oxlint + slimdeer, later runs (median of 3) | 178 ms | 116 MB | 78 warnings |
+| oxlint + slimdeer, after one image changed | 960 ms | 169 MB | measured 1 image, 78 warnings |
+| ESLint + slimdeer, later run (.jsx files) | 264 ms | 195 MB | 66 warnings |
 | ESLint's language server, first lint, nothing cached | 171 ms | 3.1 GB | 0 warnings at once, all 66 after 15.3 s (measured in the background) |
 | npx oxlint-plugin-pngdeer --flagged | 11.5 s | 3.0 GB | shrank 30 images |
 
@@ -51,7 +51,7 @@ Peak memory is the whole process's, read from `/usr/bin/time` on macOS and Linux
 ## Comparing scan scopes
 
 ```bash
-npm run bench -- --scope-comparison --size medium --json /tmp/pngdeer-scopes.json
+npm run bench -- --scope-comparison --size medium --json /tmp/slimdeer-scopes.json
 ```
 
 This runs both `"scan": "project"` and `"scan": "referenced"` over the same generated app. Each scope gets a full lint and a lint of `Card0.jsx`, which references two images. Each cold scenario starts with an empty cache; cached times are the median of three runs. The command reports time, peak memory, images measured and warning count. It does not compress files in place.

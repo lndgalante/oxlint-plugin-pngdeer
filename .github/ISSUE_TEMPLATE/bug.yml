@@ -6,7 +6,7 @@ body:
     id: what
     attributes:
       label: What happened, and what did you expect?
-      description: Paste the warning or the stderr line (slimdeer prints its notes on stderr).
+      description: Paste the warning or the stderr line (the rule and the command print their notes on stderr).
     validations:
       required: true
   - type: textarea

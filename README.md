@@ -11,9 +11,11 @@
   <a href="https://github.com/lndgalante/oxlint-plugin-slimdeer/actions/workflows/ci.yml"><img src="https://github.com/lndgalante/oxlint-plugin-slimdeer/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
 </p>
 
-A lint rule for [oxlint](https://oxc.rs/docs/guide/usage/linter) and ESLint. It runs slimdeer, a lossy compressor like TinyPNG, on your project's PNGs and JPEGs, in memory and on your machine. Then it warns, on the line of code that names an image, when that image could be much smaller at about the same visual quality:
+A lint rule for [oxlint](https://oxc.rs/docs/guide/usage/linter) and ESLint. It runs [slimdeer](https://github.com/heydeer/slimdeer), HeyDeer's open-source lossy image compressor, on your project's PNGs and JPEGs, in memory and on your machine. Then it warns, on the line of code that names an image, when that image could be at least 4 KiB and 10% smaller at about the same visual quality:
 
 ![VS Code with the Oxc extension: "/hero.png" in App.jsx is underlined, and the hover says hero.png could be 70% smaller (509 kB → 151 kB) and gives the command that shrinks it](https://raw.githubusercontent.com/lndgalante/oxlint-plugin-slimdeer/main/docs/images/editor.png)
+
+Formerly oxlint-plugin-pngdeer: [moving takes a few edits](#moving-from-oxlint-plugin-pngdeer). This plugin isn't made by HeyDeer; it runs their MIT-licensed engine.
 
 ## Try it on your images
 
@@ -23,11 +25,11 @@ From your project's folder, with no setup:
 npx oxlint-plugin-slimdeer --review
 ```
 
-It writes a page that shows each image before and after, with the command that shrinks the ones you keep ticked. It changes no image and uploads nothing: the compressor runs inside the package as WebAssembly (HeyDeer's [slimdeer](https://github.com/heydeer/slimdeer) engine). It is lossy, so commit before you shrink.
+It writes a page that shows each image before and after, with the command that shrinks the ones you keep ticked. It changes no image and uploads nothing. Shrinking is lossy, so commit before you run that command. On this repository's example app, it shows 5 images that could be 70% smaller in all (1.0 MB → 317 kB). Their quality scores run from 76 to 90 out of 100, where 80 and up looks the same side by side.
 
 The first run takes a few seconds per image, several at a time, and later runs read the cache. The cache and the page go in `node_modules/.cache/slimdeer`. It needs Node 20.19+ or 22.12+.
 
-![slimdeer's review page in a browser: public/hero.png, an arcade stick, split by a divider into before (509 kB) and after (151 kB), with "Quality 87/100: looks the same side by side" and Fit, 100% and 200% buttons. The bar at the bottom says "5 of 5 images ticked: could save 723 kB (1.0 MB → 317 kB, 70% smaller)" above the command that shrinks them and a Copy button](https://raw.githubusercontent.com/lndgalante/oxlint-plugin-slimdeer/main/docs/images/review.png)
+![The command's review page, "slimdeer review", in a browser: public/hero.png, an arcade stick, split by a divider into before (509 kB) and after (151 kB), with "Quality 87/100: looks the same side by side" and Fit, 100% and 200% buttons. The bar at the bottom says "5 of 5 images ticked: could save 723 kB (1.0 MB → 317 kB, 70% smaller)" above the command that shrinks them and a Copy button](https://raw.githubusercontent.com/lndgalante/oxlint-plugin-slimdeer/main/docs/images/review.png)
 
 - Drag the divider across an image, or switch from Fit to 100% or 200% to see the pixels. Each "after" is the file the command writes, byte for byte.
 - Untick an image to keep it as it is, or press "Untick quality below 80". The bar gives the command for the rest; run it in the same folder. The lint still warns on an image you keep until you add it to the rule's [`exclude` option](#options).
@@ -92,7 +94,7 @@ export default [
 
 If your config doesn't lint and parse your JSX or TypeScript files yet, [add a config object for them](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/docs/rules/compressible-image.md#eslint-setup).
 
-Then run `npx eslint .`, without `--cache`: ESLint would replay old warnings for images you already shrank, and slimdeer would print no summary.
+Then run `npx eslint .`, without `--cache`: ESLint would replay old warnings for images you already shrank, and the rule would print no summary.
 
 ## Quick start with Vite+
 
@@ -115,7 +117,7 @@ Then run `npx vp lint`.
 
 ## What a lint shows
 
-Each warning ends with the command that shrinks its image. After the warnings, slimdeer sums them up, each image once, biggest saving first (here in `example/`, shortened):
+Each warning ends with the command that shrinks its image. After the warnings, the rule sums them up, each image once, biggest saving first (here in `example/`, shortened):
 
 ```
 slimdeer: 4 flagged images could be 718 kB smaller in all (1.0 MB → 310 kB, 70% smaller):
@@ -165,7 +167,7 @@ Above the floor, a score in the 70s still means "close, with differences you mig
 
 Warnings show in editors that run your project's oxlint as a language server: the [Oxc extension](https://github.com/oxc-project/oxc-vscode) for VS Code and its forks, Zed's Oxc extension (when `package.json` lists `oxlint` or `vite-plus`), and Neovim's `oxlint` config. With ESLint, ESLint's own editor extensions run the rule.
 
-By default, the editor never waits for slimdeer, which measures images in the background. A file shows its warnings the next time the editor lints it, usually when you type in it. Lint once from the command line first, or commit the cache (see CI below), and the warnings are there when you open a file.
+By default, the editor never waits for the rule, which measures images in the background. A file shows its warnings the next time the editor lints it, usually when you type in it. Lint once from the command line first, or commit the cache (see CI below), and the warnings are there when you open a file.
 
 ## CI
 
@@ -193,7 +195,7 @@ A pull request that adds a heavy image then gets a warning on the line that uses
 
 ![A GitHub pull request's Files changed tab: under the added line that uses /hero.png, a check warning from slimdeer(compressible-image) says hero.png could be 70% smaller (509 kB → 151 kB) and gives the command that shrinks it](https://raw.githubusercontent.com/lndgalante/oxlint-plugin-slimdeer/main/docs/images/pull-request.png)
 
-With ESLint, run `npx eslint .`: `actions/setup-node` turns its output into annotations. With Vite+, run `npx vp lint --format github`. GitHub annotates at most 10 warnings and 10 errors per step, your other lint warnings included. slimdeer also writes the job summary, with no option or permission: a table of the flagged images (up to 200) and the commands that review and shrink them.
+With ESLint, run `npx eslint .`: `actions/setup-node` turns its output into annotations. With Vite+, run `npx vp lint --format github`. GitHub annotates at most 10 warnings and 10 errors per step, your other lint warnings included. The rule also writes the job summary, with no option or permission: a table of the flagged images (up to 200) and the commands that review and shrink them.
 
 ### Commit the cache
 
@@ -226,18 +228,21 @@ With ESLint's recommended config, set the rule again in a config object after it
 
 ## Questions
 
-- **Does it upload my images?** No. The engine ships in the package as 2 MB of WebAssembly: no upload, no API key, no dependencies, no native binaries, no install scripts.
-- **Is it lossless?** No. By default, slimdeer keeps the smallest file that scores about what TinyPNG would give the image on SSIMULACRA2, a 0–100 score of how close an image looks to its original, shown in each warning. In slimdeer's own benchmark of 180 PNGs, the median file is 8–12% smaller than TinyPNG's at the same quality ([leaderboard](https://github.com/heydeer/slimdeer/blob/a8e88267ba02cbaf66e746db93ed04242dca8450/README.md#leaderboard)). For photos and screenshots with small text, try `"target": 90` and compare.
+- **Does it upload my images?** No. The engine ships in the package as 5.3 MB of WebAssembly (the package is a 1.9 MB download): no upload, no API key, no dependencies, no native binaries, no install scripts.
+- **Is it lossless?** No. SSIMULACRA2 scores how close an image looks to its original, from 0 to 100, and each warning shows it. By default, slimdeer keeps the smallest file that scores about as high as TinyPNG's file would. In slimdeer's own benchmark of 180 PNGs (published under its former name, pngdeer), the median file is 8–12% smaller than TinyPNG's at the same quality ([leaderboard](https://github.com/heydeer/slimdeer/blob/a8e88267ba02cbaf66e746db93ed04242dca8450/README.md#leaderboard)). For photos and screenshots with small text, try `"target": 90` and compare.
+- **Does it resize images?** No. Each image keeps its width and height; only the file gets smaller.
 - **How is it different from TinyPNG or Squoosh?** Both compress the images you hand them. TinyPNG uploads each one, and its API needs a key, with 500 free compressions a month. Squoosh runs in your browser, one image at a time, at the settings you pick. This plugin runs slimdeer on your machine, picks the quality per image, and finds the images that need it in your code.
 - **Does it help behind `next/image`, Astro's `<Image>` or an image CDN?** Less: they re-encode images for visitors anyway, so shrinking those mostly saves repository and build size, and adds a second lossy pass. Behind `next/image`, the warning says so. Leave those folders out with `exclude`. Images served as they are still count: plain `<img>`, CSS backgrounds, and `public/` in Vite and Astro. [When not to use it](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/docs/rules/compressible-image.md#when-not-to-use-it)
 - **Why not WebP or AVIF?** It keeps each image's name and format, so no code or reference changes. WebP, AVIF, GIF and SVG files aren't measured.
-- **How slow is the first run?** The first lint measures every PNG and JPEG in the project, one engine per core (8 at most); later lints read the cache. On a 16-core M3 Max, the first lint of an app with 39 images (12 MB) took 14.6 s and peaked at 3.0 GB of memory, and later lints took 178 ms, against 68 ms without the plugin (version 0.3.0, the same engine as today's). Since 0.6.0, an image whose automatic result scores below 70 is compressed a second time, at 70: on tanstack.com's 148 images, that took 8.5% more CPU time than 0.5.0, in the same wall time. [The benchmark](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/bench/README.md)
+- **How slow is the first run?** The first lint measures every PNG and JPEG in the project, one engine per core (8 at most); later lints read the cache. On a 16-core M3 Max, the first lint of an app with 39 images (12 MB) took 14.6 s and peaked at 3.0 GB of memory. Later lints took 178 ms, against 68 ms without the plugin. That was version 0.3.0; today's engine writes the same PNG and JPEG files in about the same time ([the benchmark](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/bench/README.md)). Since 0.6.0, an image whose automatic result scores below 70 is compressed a second time, at 70: on tanstack.com's 148 images, a cold run took 718 s of CPU time, against 661 s with 0.5.0, in the same wall time ([the quality floor](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/docs/releases/0.6.0.md#the-quality-floor)).
 - **Does it need oxlint?** No. `--check`, `--review` and the shrink command run alone, and ESLint 9 and 10 run the same rule.
 - **Where doesn't it work?** oxlint runs JS plugins only on 64-bit little-endian machines, and on some memory-constrained Linux machines any JS plugin can make oxlint run out of memory ([oxc#20331](https://github.com/oxc-project/oxc/issues/20331)). slimdeer fails on some images, like flat-color JPEGs, and the rule skips others, like grayscale PNGs with a color profile; a command-line lint names them on stderr. [What it skips](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/docs/rules/compressible-image.md#what-it-skips)
 
 ## Learn more
 
 [The rule's docs](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/docs/rules/compressible-image.md) cover every option and setting, `--check`, `--review`, paths and aliases, the cache, and upgrading. Also: [CHANGELOG.md](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/CHANGELOG.md), [FINDINGS.md](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/FINDINGS.md) (design notes) and [CONTRIBUTING.md](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/CONTRIBUTING.md).
+
+This plugin is a separate project from slimdeer. Report problems with the rule or the command in [this repository's issues](https://github.com/lndgalante/oxlint-plugin-slimdeer/issues). An error that says "a bug in HeyDeer's slimdeer engine" goes to [slimdeer's issues](https://github.com/heydeer/slimdeer/issues).
 
 ## Showcase
 
@@ -248,8 +253,36 @@ With ESLint's recommended config, set the rule again in a config object after it
 | ![Multabot's social preview: the headline "Las multas de tu flota, en un solo tablero." beside a glowing dotted map of Argentina and a list of speeding fines](https://raw.githubusercontent.com/lndgalante/oxlint-plugin-slimdeer/main/docs/images/showcase/multabot/opengraph.png)<br>Social preview · 370,801 bytes | ![Compressed social preview with the same headline, map and list of fines](https://raw.githubusercontent.com/lndgalante/oxlint-plugin-slimdeer/main/docs/images/showcase/multabot/opengraph.optimized.png)<br>66,520 bytes · 82% smaller |
 | ![Photo of a man smiling at a laptop that shows a fleet dashboard, with trucks outside the window](https://raw.githubusercontent.com/lndgalante/oxlint-plugin-slimdeer/main/docs/images/showcase/multabot/flotas.jpg)<br>Blog photo · 108,899 bytes | ![Compressed photo of the same man, laptop and trucks](https://raw.githubusercontent.com/lndgalante/oxlint-plugin-slimdeer/main/docs/images/showcase/multabot/flotas.optimized.jpg)<br>60,161 bytes · 45% smaller |
 
-Using slimdeer in a real project? We'd like to feature more. [Share yours in an issue](https://github.com/lndgalante/oxlint-plugin-slimdeer/issues/new?template=showcase.yml): what it caught, how much smaller the images became, and whether the result looked good enough to ship. [A prompt](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/docs/showcase.md#a-prompt-to-share) helps a coding assistant draft one.
+Using the rule or the command in a real project? We'd like to feature more. [Share yours in an issue](https://github.com/lndgalante/oxlint-plugin-slimdeer/issues/new?template=showcase.yml): what it caught, how much smaller the images became, and whether the result looked good enough to ship. [A prompt](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/docs/showcase.md#a-prompt-to-share) helps a coding assistant draft one.
+
+## Moving from oxlint-plugin-pngdeer
+
+oxlint-plugin-pngdeer was renamed along with its engine, which HeyDeer now calls slimdeer. Images it shrank need nothing: they keep their mark (`pngdeer <size>`), which every version recognizes, so none is compressed twice. 0.5.0 keeps working, but gets no more updates. The old name has one more version, which only points here: if a dependency bot installs it, the lint stops with an error that says how to move.
+
+1. Swap the package:
+   ```bash
+   npm uninstall oxlint-plugin-pngdeer
+   npm install --save-dev oxlint-plugin-slimdeer
+   ```
+2. In `.oxlintrc.json` (or the `lint` block of `vite.config.ts`): `"oxlint-plugin-slimdeer"` in `jsPlugins`, `"slimdeer/compressible-image"` in `rules` and `overrides`, and `"settings": { "slimdeer": { … } }`. With ESLint: `import slimdeer from "oxlint-plugin-slimdeer"`, then `slimdeer.configs.recommended`, or `plugins: { slimdeer }` with `"slimdeer/compressible-image"` in `rules`.
+3. Find the rest with `git grep -n -I pngdeer` (`-I` leaves out binary files, like the images the old package shrank: their mark keeps the old word):
+
+   | What you find | Change it to |
+   |---|---|
+   | `pngdeer/compressible-image` in disable comments or `eslint-suppressions.json` | `slimdeer/compressible-image` |
+   | `oxlint-plugin-pngdeer` in scripts (with or without `npx`), CI and docs | `oxlint-plugin-slimdeer` |
+   | `node_modules/.cache/pngdeer` in a CI cache step | `node_modules/.cache/slimdeer` |
+   | `npx skills add lndgalante/oxlint-plugin-pngdeer` | `npx skills add lndgalante/oxlint-plugin-slimdeer` |
+   | `.pngdeer` as a `cacheDir` | nothing: it keeps working (step 4) |
+
+4. Lint once. The local cache moved to `node_modules/.cache/slimdeer`, so the first lint on each machine measures every image again; then delete `node_modules/.cache/pngdeer`. A committed cache folder (a `cacheDir` like `.pngdeer`) keeps its results, since the new engine writes the same PNG and JPEG files: the first lint copies each automatic-target result to a new file, and measures again only those below quality 70. Commit the new files. With `measure: "never"`, a lint measures and copies nothing, so it skips images without a result until you run, once, the `--check` command it prints.
+
+Missed a step? An old package name or rule id left in your lint config stops the lint with an error that names it, and under ESLint an old disable comment is an error too. For the rest, the lint tells you: an old `settings.pngdeer` is still read, with a line asking you to rename it; an old disable comment gets a line with its file and line; and an old cache folder gets a line when the lint measures again. Once the old package is uninstalled, a missed `npx oxlint-plugin-pngdeer` prints the same command with the new name.
+
+Many disable comments? Keep the old rule id and change only the package: `"jsPlugins": [{ "name": "pngdeer", "specifier": "oxlint-plugin-slimdeer" }]` in oxlint, or `plugins: { pngdeer: slimdeer }` in ESLint. Rules, comments and `settings.pngdeer` then work as they are, and warnings keep the old id: `pngdeer(compressible-image)` in oxlint, `pngdeer/compressible-image` in ESLint.
+
+Every step, with ESLint suppressions and editors: [the rule's docs](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/docs/rules/compressible-image.md#moving-from-oxlint-plugin-pngdeer).
 
 ## License
 
-[MIT](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/LICENSE). The engine's dependencies keep their own licenses ([engine/THIRD_PARTY_LICENSES.txt](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/engine/THIRD_PARTY_LICENSES.txt)), and [engine/README.md](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/engine/README.md) says where the engine comes from. The example images keep theirs ([example/SOURCES.md](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/example/SOURCES.md)), and the MIT license doesn't cover the showcase images. JPEG output is encoded with mozjpeg: this software is based in part on the work of the Independent JPEG Group.
+[MIT](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/LICENSE). The engine's dependencies keep their own licenses ([engine/THIRD_PARTY_LICENSES.txt](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/engine/THIRD_PARTY_LICENSES.txt)), and [engine/README.md](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/engine/README.md) says where the engine comes from. The example images keep theirs ([example/SOURCES.md](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/example/SOURCES.md)), and the MIT license doesn't cover the showcase images. JPEG output is encoded with mozjpeg: this software is based in part on the work of the Independent JPEG Group. The engine also holds libaom, an AVIF encoder, under the BSD-2-Clause license and the Alliance for Open Media Patent License 1.0.

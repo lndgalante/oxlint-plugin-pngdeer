@@ -1,6 +1,6 @@
 # Showcase
 
-These projects ran pngdeer on their own images. Using pngdeer in a real project? We'd like to feature more cases in the README: what it caught, how much smaller the images became, and whether the result looked good enough to ship. [Share yours in an issue](https://github.com/lndgalante/oxlint-plugin-pngdeer/issues/new?template=showcase.yml); [the prompt below](#a-prompt-to-share) helps a coding assistant draft one.
+These projects ran the rule or its command on their own images. Using them in a real project? We'd like to feature more cases in the README: what they caught, how much smaller the images became, and whether the result looked good enough to ship. [Share yours in an issue](https://github.com/lndgalante/oxlint-plugin-slimdeer/issues/new?template=showcase.yml); [the prompt below](#a-prompt-to-share) helps a coding assistant draft one.
 
 ## Multabot
 
@@ -13,7 +13,7 @@ These projects ran pngdeer on their own images. Using pngdeer in a real project?
 | `public/images/blog/multabot-flotas.jpg`, 1024×576 JPEG | The featured image of [a blog post](https://multabot.com.ar/blog/multabot-para-flotas) | 108,899 bytes | 60,161 bytes | 45% |
 | **Total** | | **965,029 bytes** | **316,772 bytes** | **67%** |
 
-The originals come from the commit before the project compressed its images. pngdeer 0.5.0 measured them at quality 90 and wrote each compressed file:
+The originals come from the commit before the project compressed its images. oxlint-plugin-pngdeer 0.5.0, this package's former name, measured them at quality 90 and wrote each compressed file:
 
 ```bash
 npx oxlint-plugin-pngdeer@0.5.0 --check --target 90 \
@@ -37,11 +37,11 @@ Compare the originals and compressed files at full size in [docs/images/showcase
 Send this to a maintainer, or paste it into your coding assistant from your project's folder. Review the report and previews before sharing them in an issue.
 
 ```text
-Help me prepare a showcase case for oxlint-plugin-pngdeer in this project.
+Help me prepare a showcase case for oxlint-plugin-slimdeer in this project.
 
 Inspect the project and choose up to three PNG/JPEG assets used by the app.
-Run `npx oxlint-plugin-pngdeer --version`, then run
-`npx oxlint-plugin-pngdeer@<that version> --check` with explicit paths to
+Run `npx oxlint-plugin-slimdeer --version`, then run
+`npx oxlint-plugin-slimdeer@<that version> --check` with explicit paths to
 those assets.
 Keep original images, source files and linter configuration unchanged.
 For images with useful savings, create separate previews in a temporary
