@@ -5,6 +5,7 @@ import { readFileSync, realpathSync, statSync } from "node:fs";
 import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { fillAll } from "./batch.js";
 import { cacheDir, FLOOR, floored, key, read, readFirst, reportable, valid, write } from "./cache.js";
+import { oldCacheLines } from "./compat.js";
 import { kind, unsupported } from "./images.js";
 import { appendJobSummary, block, capital, code, inCheckout, prose, table } from "./markdown.js";
 import { marked } from "./marker.js";
@@ -214,9 +215,11 @@ async function measure(groups, { target, minSavedBytes, minSavedPercent }, count
   if (requests.size === 0) return;
   let started = false;
   // the batch says it once it holds the locks, counting copies of one image once and leaving out what
-  // another lint measured meanwhile (a closed stderr loses the line, nothing else: progress.js)
-  const onStart = (total) => {
+  // another lint measured meanwhile (a closed stderr loses the line, nothing else: progress.js), after
+  // any old cache folder beside the ones the results go into (compat.js)
+  const onStart = (total, folders) => {
     started = true;
+    oldCacheLines(folders, process.cwd());
     startLine(total);
   };
   try {

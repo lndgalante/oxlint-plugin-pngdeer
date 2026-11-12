@@ -6,6 +6,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { isatty } from "node:tty";
 import { cacheDir, FLOOR, fileKey, read, readFirst, reportable, write } from "./cache.js";
+import { neverLine, OLD_RULE, oldCacheLines, oldCommentLines, pluginSettings } from "./compat.js";
 import { excluded, physical, projectImages, projectRoot } from "./scan.js";
 import { flag, name, owe, owing, requireTarget, settle, share, summarize, watch } from "./summary.js";
 import { configAliases } from "./tsconfig.js";
@@ -17,6 +18,8 @@ const IMAGE = /\.(png|apng|jpe?g)$/i;
 // ESLint's --no-inline-config ignores disable comments, so they turn nothing off
 const NO_INLINE_CONFIG = process.argv.includes("--no-inline-config");
 const REMOTE = /^[a-z][a-z0-9+.-]*:|^\/\//i;
+// a comment that turns rules off or on again: its kind, then its rules, if any, and its reason
+const DIRECTIVE = /^\s*(?:oxlint|eslint)-(disable-next-line|disable-line|disable|enable)\b(.*)$/s;
 const DEFAULTS = { minSavedBytes: 4096, minSavedPercent: 10, target: "auto", measure: "auto", scan: "project", exclude: [] };
 // when neither the settings nor the project's tsconfig/jsconfig define aliases
 const ALIASES = { "@/": "src/", "~/": "src/" };
@@ -81,7 +84,7 @@ export default {
   create(context) {
     const { minSavedBytes, minSavedPercent, target: option, measure, scan, exclude: excludeOption } = { ...DEFAULTS, ...context.options[0] };
     const target = option === "auto" ? undefined : option;
-    const settings = context.settings.slimdeer ?? {};
+    const settings = pluginSettings(context.settings, { id: context.id ?? RULE, quiet: EDITOR });
     const from = resolve(context.cwd, context.physicalFilename ?? context.filename);
     // public dirs, aliases and the cache belong to the package, wherever the linter was started
     const root = projectRoot(dirname(from), context.cwd);
@@ -137,6 +140,14 @@ export default {
     const off = (file) => excluded(root, file, exclude) || (exclude.length > 0 && excluded((realRoot ??= physical(root)), physical(file), exclude));
     // a path as the person running the linter would type it
     const shown = (file) => pathFrom(context.cwd, file);
+    // What a --check the rule prints names, to look where the lint does: the project's folder, or the
+    // `homes` of the images it names, from a lint run anywhere else (oxlint in src/, a folder beside
+    // it, a monorepo's root, where a bare --check would walk every package). Both ends as the
+    // filesystem spells them, or a file named through a link (macOS's /var) gives a long ../ chain.
+    const projectPaths = (homes = [root]) => {
+      const paths = [...new Set(homes.map((home) => pathFrom(physical(context.cwd), physical(home)) || "."))];
+      return paths.length === 1 && paths[0] === "." ? [] : paths;
+    };
     const wait = measure === "always" || (measure === "auto" && !EDITOR);
     const found = [];
     const nextImages = new Set(); // this file's local names for next/image's default export
@@ -183,9 +194,15 @@ export default {
       if (reported.has(path)) return;
       // The linter hides a warning a comment turns off by itself, but the image mustn't count as
       // flagged either, or --flagged would rewrite an image someone chose to keep. ESLint's
-      // --no-inline-config shows that warning, but the comment still says to keep the image.
+      // --no-inline-config shows that warning, but the comment still says to keep the image. So does
+      // a comment with the rule's old name, though the linter no longer knows it (compat.js): read
+      // apart from the rule's own, as the linter doesn't take an old name's -enable as ending a -disable.
       disabled ??= disabledLines(context.sourceCode, context.id ?? RULE);
-      kept ??= NO_INLINE_CONFIG ? disabledLines(context.sourceCode, context.id ?? RULE, false) : disabled;
+      if (!kept) {
+        const own = NO_INLINE_CONFIG ? disabledLines(context.sourceCode, context.id ?? RULE, false) : disabled;
+        const old = disabledLines(context.sourceCode, context.id ?? RULE, false, [OLD_RULE]);
+        kept = (line) => own(line) || old(line);
+      }
       const line = (loc?.start ?? node.loc.start).line;
       const suppressed = disabled(line);
       // The linter needs the report even when disabled, to recognize a used directive.
@@ -286,6 +303,14 @@ export default {
       // In project mode, the first file also measures unnamed images in the same parallel batch.
       // Later files find theirs cached, and the summary can list images only CSS or HTML uses.
       "Program:exit"() {
+        // a disable comment with the rule's old name, which the linter no longer knows (compat.js),
+        // unless the line it covers is off anyway: the comment names the rule both ways, or a bare -disable
+        if (!EDITOR && (context.id ?? RULE) !== OLD_RULE && context.sourceCode.text.includes(OLD_RULE)) {
+          disabled ??= disabledLines(context.sourceCode, context.id ?? RULE);
+          const covered = ({ kind, comment }) => (kind === "disable-next-line" ? comment.loc.end.line + 1 : comment.loc.start.line);
+          const old = directives(context.sourceCode).filter((directive) => directive.kind !== "enable" && directive.rules.includes(OLD_RULE) && !disabled(covered(directive)));
+          oldCommentLines(from, old.map(({ comment }) => ({ line: comment.loc.start.line })), context.cwd);
+        }
         // the problem of a run that ran out of time, which the file that measured turned off (measureNow)
         const owed = EDITOR ? null : owing();
         if (owed) {
@@ -305,6 +330,14 @@ export default {
           const image = fileKey(file, target);
           return image && !image.marked && !lookup(image.key, file);
         };
+        // with measure "never" only --check fills the cache: an empty one would report nothing, without a word
+        const missing = measure === "never" && !EDITOR ? found.filter(({ file }) => unmeasured(file)) : [];
+        if (missing.length) {
+          // --check measures an image into its own package's folder, where lookup() finds it (homes())
+          const paths = projectPaths(missing.map(({ file }) => projectRoot(dirname(file), context.cwd)));
+          const command = checkCommand(paths, { target, exclude: excludeOption, minSavedBytes, minSavedPercent, cacheDir: settings.cacheDir });
+          neverLine(command, settings.cacheDir ?? pathFrom(root, local));
+        }
         const named = measure === "never" ? [] : found.map(({ file }) => file);
         // the walk takes a linked image file by the link's own path: an exclusion holds for where it leads too
         const files = distinct([...new Set(first ? [...named, ...projectImages(root, minSavedBytes, exclude).filter((file) => !off(file))] : named)].filter(unmeasured));
@@ -335,6 +368,8 @@ export default {
       // on a terminal the batch's line is a count it rewrites, cleared after. Asked of the file
       // descriptor, as the batch does: in ESLint's --concurrency threads, process.stderr isn't a TTY.
       const clear = isatty(2) ? "\r\x1b[K" : "";
+      // an old cache folder beside the one the results go into (compat.js), named before the batch's own line
+      if (!EDITOR) oldCacheLines([dir], context.cwd);
       try {
         // measure: "always" waits in an editor too: a core stays free for the editor, as in its background batches (sync.js)
         const { computed, declined, ms } = fillSync({ dir, failures: local, target, files, progress: true, minSavedBytes, minSavedPercent, spare: EDITOR ? 1 : 0 });
@@ -342,13 +377,8 @@ export default {
         if (computed) process.stderr.write(`slimdeer: measured ${count(computed, "image")} in ${(ms / 1000).toFixed(1)} s; later runs read the cache\n`);
         // without a word, an image the floor turns down would just be missing: said once, as it's measured
         if (declined) {
-          // the --check it gives looks where this batch did: in the project's folder, from a lint run
-          // anywhere else (oxlint in src/, a folder beside it, a monorepo's root, where a bare --check
-          // would walk every package), and without the images the rule leaves out. Both ends as the
-          // filesystem spells them, or a file named through a link (macOS's /var) gives a long ../ chain.
-          const project = pathFrom(physical(context.cwd), physical(root));
-          const paths = project ? [project] : [];
-          const options = { paths, exclude: excludeOption, minSavedBytes, minSavedPercent, cacheDir: dir === local ? undefined : settings.cacheDir };
+          // the --check it gives looks where this batch did (projectPaths()), and without the images the rule leaves out
+          const options = { paths: projectPaths(), exclude: excludeOption, minSavedBytes, minSavedPercent, cacheDir: dir === local ? undefined : settings.cacheDir };
           process.stderr.write(`${printable(`slimdeer: ${floorLine(computed, declined, options)}`)}\n`);
         }
       } catch (error) {
@@ -459,19 +489,16 @@ function usable(path) {
 /**
  * Whether a comment turns this rule off at a line: `oxlint-` or `eslint-disable-next-line` above it,
  * `-disable-line` on it, or a `-disable` block around it, for this rule (`id`, as the config names
- * the plugin) or for all rules. Nowhere when the linter `ignores` such comments.
+ * the plugin, or any name in `also`) or for all rules. Nowhere when the linter `ignores` such comments.
  */
-function disabledLines(source, id, ignores = NO_INLINE_CONFIG) {
+function disabledLines(source, id, ignores = NO_INLINE_CONFIG, also = []) {
   if (ignores) return () => false;
+  const names = [id, RULE, ...also];
   const lines = new Set();
   const blocks = [];
   let open = null;
-  for (const comment of source.getAllComments()) {
-    const directive = /^\s*(?:oxlint|eslint)-(disable-next-line|disable-line|disable|enable)\b(.*)$/s.exec(comment.value);
-    if (!directive) continue;
-    const [, kind, rest] = directive;
-    const rules = rest.split("--")[0].split(",").map((rule) => rule.trim()).filter(Boolean);
-    if (rules.length && !rules.includes(id) && !rules.includes(RULE)) continue;
+  for (const { kind, rules, comment } of directives(source)) {
+    if (rules.length && !rules.some((rule) => names.includes(rule))) continue;
     if (kind === "disable-next-line") lines.add(comment.loc.end.line + 1);
     else if (kind === "disable-line") lines.add(comment.loc.start.line);
     else if (kind === "disable") open ??= comment.loc.start.line;
@@ -482,6 +509,16 @@ function disabledLines(source, id, ignores = NO_INLINE_CONFIG) {
   }
   if (open !== null) blocks.push([open, Infinity]);
   return (line) => lines.has(line) || blocks.some(([from, to]) => line >= from && line <= to);
+}
+
+/** The comments in a file that turn rules off or on again, as { kind, rules, comment }: `rules` empty for all of them. */
+function directives(source) {
+  return source.getAllComments().flatMap((comment) => {
+    const directive = DIRECTIVE.exec(comment.value);
+    if (!directive) return [];
+    const [, kind, rest] = directive;
+    return [{ kind, rules: rest.split("--")[0].split(",").map((rule) => rule.trim()).filter(Boolean), comment }];
+  });
 }
 
 /**

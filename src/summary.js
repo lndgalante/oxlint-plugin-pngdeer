@@ -8,6 +8,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync,
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { isMainThread, threadId } from "node:worker_threads";
 import { cacheDir, fileKey, read, reportable } from "./cache.js";
+import { notice, pending } from "./compat.js";
 import { appendJobSummary, block, capital, code, inCheckout, table } from "./markdown.js";
 import { physical, projectFiles, projectImages } from "./scan.js";
 import { count, LEGEND, pathFrom, printable, quote, shrinkCommand, size, smaller } from "./text.js";
@@ -197,7 +198,7 @@ export function share(cwd = process.cwd()) {
   try {
     const dir = join(cacheDir(cwd), "threads");
     mkdirSync(dir, { recursive: true });
-    const state = { started: STARTED, flagged: [...flagged].map(([file, entry]) => [file, { ...entry, files: [...entry.files] }]), named: [...named], roots: [...roots], kinds: [...kinds], targets: [...targets].map(([file, required]) => [file, [...required]]), owed, settled };
+    const state = { started: STARTED, flagged: [...flagged].map(([file, entry]) => [file, { ...entry, files: [...entry.files] }]), named: [...named], roots: [...roots], kinds: [...kinds], targets: [...targets].map(([file, required]) => [file, [...required]]), owed, settled, notices: pending };
     writeFileSync(join(dir, `${process.pid}-${threadId}.json`), JSON.stringify(state));
   } catch {
     // that thread's images go untold
@@ -233,6 +234,8 @@ function gather(cwd) {
         }
         owed ??= state.owed;
         settled ||= state.settled;
+        // said here, once each, however many threads hold them
+        for (const [key, text] of state.notices) notice(key, text);
       } else if (!mine && Date.now() - statSync(path).mtimeMs < SHARE_HOURS * 3600e3) continue;
       rmSync(path, { force: true });
     } catch {

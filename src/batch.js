@@ -28,7 +28,8 @@ const HEARTBEAT_MS = STALE_MS / 6;
  * { computed, cached, skipped, failed, declined, ms }, `declined` counting the images computed that
  * the quality floor alone kept from being reported (cache.js floored(), by the request's
  * minSavedBytes and minSavedPercent, the rule's defaults if it has none). Once the batch holds the
- * lock, `onStart(total)` hears how many images go to the engine, if any, and
+ * lock, `onStart(total, folders)` hears how many images go to the engine, if any, and the folders
+ * their results go into, and
  * `progress(done, total, { saved, file, request })` then hears about each one finished: the bytes it
  * could save (0 unless they clear both), its path and its request. Copies of one image count as
  * cached.
@@ -121,7 +122,7 @@ async function measure(requests, progress, onStart) {
       todo.push({ request, file, k, size: bytes.length, peak: peakOf(bytes), message: { file, target } });
     }
   }
-  if (todo.length) onStart(todo.length);
+  if (todo.length) onStart(todo.length, [...new Set(todo.map(({ request }) => request.dir))]);
 
   // a finished image's result, in its request's folders; returns what it could save
   const record = ({ request, k }, result) => {
