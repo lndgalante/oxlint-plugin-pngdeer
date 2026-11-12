@@ -9,7 +9,7 @@ import { keepOrientation, mark, marked } from "./marker.js";
 import { looks, size, smaller } from "./text.js";
 
 /**
- * Writes `input` made smaller to `output`, marked as slimdeer's: { text } saying what happened, plus
+ * Writes `input` made smaller to `output`, marked: { text } saying what happened, plus
  * { original, written } sizes when it wrote a smaller file. Throws when it can't read or compress, or
  * with `lint` ({ key, target }, an entry of a lint's list) when the image holds other bytes than the
  * ones that lint measured.
@@ -30,7 +30,7 @@ export function shrink(input, output, target, lint) {
     save(output, bytes);
     return { text: `${note}; copied as is` };
   };
-  if (marked(bytes)) return unchanged("already slimdeer's");
+  if (marked(bytes)) return unchanged("already shrunk by this command");
   // --flagged compares the list with the images as it starts (summary.js), but a long run leaves a
   // branch switch or an export time to land before an image's turn: these are the bytes it compresses
   if (lint?.key && key(bytes, lint.target) !== lint.key) throw new Error("changed since the last lint here; left as is (lint again to check it)");

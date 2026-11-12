@@ -18,7 +18,7 @@ test("makes several images smaller in place, and marks them", () => {
   assert.match(run.stdout, /^\[[12]\/2\] public\/photo\.jpg: 235 kB → 85 kB \(64% smaller, quality 76\/100: looks close, with differences you might spot side by side\)$/m);
   assert.match(run.stderr, /^slimdeer: 2 images, 271 kB → 96 kB \(174 kB smaller\)\. Lint again to check\.$/m);
   assert.equal(marked(readFileSync(join(dir, "public/photo.jpg"))), true);
-  assert.match(slimdeer(dir, "public/photo.jpg").stdout, /^public\/photo\.jpg: already slimdeer's; left as is$/m);
+  assert.match(slimdeer(dir, "public/photo.jpg").stdout, /^public\/photo\.jpg: already shrunk by this command; left as is$/m);
 });
 
 test("-o writes elsewhere and leaves the image alone", () => {
@@ -371,7 +371,7 @@ test("a file name's control characters reach no line the command or the lint pri
   const printed = spawnSync("bash", ["-c", `"$0" "$1" ${shrink}`, process.execPath, join(plugin, "bin", "slimdeer.js")], { cwd: dir, encoding: "utf8", timeout: 300_000 });
   assert.equal(printed.status, 0, printed.stderr);
   clean(printed, `${shown}: 35 kB`);
-  clean(slimdeer(dir, odd), `${shown}: already slimdeer's; left as is`);
+  clean(slimdeer(dir, odd), `${shown}: already shrunk by this command; left as is`);
   clean(slimdeer(dir, bad), "public/b\uFFFD\uFFFD\uFFFD.png: not a PNG or JPEG");
   // and a mistake in the arguments
   clean(slimdeer(dir, odd, "--frobnicate\x1b"), "unknown option --frobnicate\uFFFD");

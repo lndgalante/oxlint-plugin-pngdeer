@@ -126,8 +126,8 @@ export async function measureAll(inputs, { cwd = process.cwd(), target, minSaved
   for (const { file, root } of files.values()) {
     try {
       const bytes = readFileSync(file);
-      // an image too small to save minSavedBytes, or already slimdeer's, needs nothing more, whatever
-      // slimdeer would make of it; a file that isn't a PNG or JPEG is an error at any size
+      // an image too small to save minSavedBytes, or already shrunk by the command, needs nothing more,
+      // whatever slimdeer would make of it; a file that isn't a PNG or JPEG is an error at any size
       if (kind(bytes) && (marked(bytes) || bytes.length < minSavedBytes)) {
         counts.skipped++;
         continue;

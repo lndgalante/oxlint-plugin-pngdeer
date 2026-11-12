@@ -299,7 +299,7 @@ export default {
           return;
         }
         if (first) scanned.add(group);
-        // what the engine has yet to measure: slimdeer's own output (marked) needs none, and gets no entry,
+        // what the engine has yet to measure: the command's own output (marked) needs none, and gets no entry,
         // so the editor and the command line leave the same files in a cache folder someone commits
         const unmeasured = (file) => {
           const image = fileKey(file, target);

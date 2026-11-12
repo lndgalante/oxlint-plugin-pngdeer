@@ -294,8 +294,7 @@ test("an image slimdeer can't take is named on stderr, not silently skipped", ()
   const dir = project({ files, options: { target: 90 }, images: [] });
   const { found, stderr } = oxlint(dir);
   assert.deepEqual(found, []);
-  // upstream's new name, said so a user who knows the engine as slimdeer's isn't lost
-  assert.match(stderr, /^slimdeer: src\/assets\/fade\.png: slimdeer couldn't compress this image: unreachable \(a bug in slimdeer's engine, now named slimdeer: please report it at https:\/\/github\.com\/heydeer\/slimdeer\/issues\)$/m);
+  assert.match(stderr, /^slimdeer: src\/assets\/fade\.png: slimdeer couldn't compress this image: unreachable \(a bug in HeyDeer's slimdeer engine: please report it at https:\/\/github\.com\/heydeer\/slimdeer\/issues\)$/m);
   assert.match(stderr, /^slimdeer: skipped src\/assets\/fake\.png: not a PNG or JPEG$/m);
 });
 

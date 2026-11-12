@@ -152,7 +152,7 @@ export function readFlagged(cwd) {
 
 /**
  * Whether `file` holds other bytes than those with the cache key `k` at `target`, and not ones
- * slimdeer wrote (the command leaves those as they are); one it can't read is said so when shrunk.
+ * the command wrote (it leaves those as they are); one it can't read is said so when shrunk.
  */
 function changed(file, k, target) {
   const image = fileKey(file, target);

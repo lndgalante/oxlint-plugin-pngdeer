@@ -1,11 +1,14 @@
-// pngdeer's output, marked so that any clone can tell: a JPEG comment or a PNG tEXt "Software"
-// entry reading "pngdeer <size>", the file's size without the mark. Recompressing pngdeer's own
-// JPEG loses about another fifth each time, so the rule never measures a marked file, and a file
-// edited since (its size no longer matching) is measured again.
+// The command's output, marked so that any clone can tell: a JPEG comment or a PNG tEXt "Software"
+// entry reading "pngdeer <size>", the file's size without the mark. pngdeer is the engine's and
+// this package's name before 0.6.0 (formerly oxlint-plugin-pngdeer); every version from 0.1.0 to
+// 0.5.0 recognizes only that word, so the command keeps writing it, and "slimdeer <size>" is
+// recognized too, so that a later version can switch. Recompressing the command's own JPEG loses
+// about another fifth each time, so the rule never measures a marked file, and a file edited since
+// (its size no longer matching) is measured again.
 import { crc32 } from "node:zlib";
 import { kind, pngChunk } from "./images.js";
 
-const LABEL = /^pngdeer (\d+)$/;
+const LABEL = /^(?:pngdeer|slimdeer) (\d+)$/;
 
 /** `bytes` with the mark added (a PNG or JPEG; anything else comes back as is). */
 export function mark(bytes) {
@@ -26,8 +29,8 @@ export function mark(bytes) {
 }
 
 /**
- * pngdeer's `output` turned the way an eXIf chunk turns the PNG `input` (macOS sips writes these
- * when it converts a rotated photo): pngdeer drops eXIf, and the image would show unrotated. Only an
+ * The command's `output` turned the way an eXIf chunk turns the PNG `input` (macOS sips writes these
+ * when it converts a rotated photo): the engine drops eXIf, and the image would show unrotated. Only an
  * eXIf before the image data counts, as browsers ignore one after it. JPEGs keep their orientation.
  */
 export function keepOrientation(input, output) {

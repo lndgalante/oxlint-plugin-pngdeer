@@ -102,7 +102,7 @@ async function measure(requests, progress, onStart) {
         counts.cached++;
         continue;
       }
-      // slimdeer's own output needs no engine, and no entry: the rule knows it by its mark
+      // the command's own output needs no engine, and no entry: the rule knows it by its mark
       if (marked(bytes)) {
         counts.skipped++;
         continue;
@@ -153,7 +153,7 @@ async function measure(requests, progress, onStart) {
   await pool(todo, {
     // the editor's batches leave it a core (sync.js)
     spare: Math.max(0, ...requests.map(({ spare = 0 }) => spare)),
-    // the same bytes may have been measured, or marked as slimdeer's output, since the batch started
+    // the same bytes may have been measured, or marked as the command's output, since the batch started
     skip: (job) => {
       const { dir, failures = dir } = job.request;
       const entry = readFirst(job.k, dir, failures);

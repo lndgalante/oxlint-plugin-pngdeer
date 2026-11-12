@@ -73,7 +73,7 @@ test("0.5.0's automatic results carry over where the quality floor changes nothi
   const dir = project({ images: ["src/assets/crystal-ball.png", "public/unused-fire.png"] });
   const cache = join(dir, "cache");
   const [ball, fire] = ["src/assets/crystal-ball.png", "public/unused-fire.png"].map((file) => readFileSync(join(dir, file)));
-  // as 0.5.0 left them: a measurement with the time it took, and the mark of slimdeer's own output
+  // as 0.5.0 left them: a measurement with the time it took, and the mark of the command's own output
   write(cache, legacyKey(ball), { original: ball.length, compressed: 11179, outcome: "hit", score: 86.9, ms: 726 });
   write(cache, legacyKey(fire), { original: fire.length, outcome: "output" });
   const result = await fill({ dir: cache, files: ["src/assets/crystal-ball.png", "public/unused-fire.png"].map((file) => join(dir, file)) });

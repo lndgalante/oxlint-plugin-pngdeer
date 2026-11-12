@@ -29,7 +29,7 @@ When behavior or options change, update README.md, docs/rules/compressible-image
 
 ## The engine
 
-Don't edit `engine/` by hand. It is slimdeer's WebAssembly build (upstream is now called [slimdeer](https://github.com/heydeer/slimdeer)), rebuilt from pinned source: see [engine/README.md](engine/README.md#build-and-compare). A new engine measures every image again, so say so in the release notes.
+Don't edit `engine/` by hand. It is [slimdeer](https://github.com/heydeer/slimdeer)'s WebAssembly build, rebuilt from pinned source: see [engine/README.md](engine/README.md#build-and-compare). A new engine measures every image again, so say so in the release notes.
 
 ## Releasing
 

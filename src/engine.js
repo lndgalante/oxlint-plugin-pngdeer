@@ -46,8 +46,7 @@ function run(bytes, target) {
     // a panic inside the engine surfaces as a bare "unreachable"
     const bug = error instanceof WebAssembly.RuntimeError;
     if (bug) panicked = true;
-    // upstream renamed its engine slimdeer: said so, as the link names it
-    throw new Error(`slimdeer couldn't compress this image: ${error.message}${bug ? " (a bug in slimdeer's engine, now named slimdeer: please report it at https://github.com/heydeer/slimdeer/issues)" : ""}`);
+    throw new Error(`slimdeer couldn't compress this image: ${error.message}${bug ? " (a bug in HeyDeer's slimdeer engine: please report it at https://github.com/heydeer/slimdeer/issues)" : ""}`);
   }
   const output = jpeg ? out.jpeg : out.png;
   const { outcome, score } = JSON.parse(out.report);

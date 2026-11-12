@@ -164,7 +164,7 @@ ${levels.map(([value, label]) => `<label><input ${UNSAVED} type="radio" name="zo
 <div class="view">
 <div class="pan" role="group" aria-label="${escape(path)}, before and after"><div class="canvas">
 ${img("before", before, `${path}, before`)}
-${img("after", after, `${path}, after: slimdeer's file`)}
+${img("after", after, `${path}, after: the file the command writes`)}
 </div></div>
 <input ${UNSAVED} class="slider" type="range" min="0" max="100" step="1" value="50" aria-label="Divider for ${escape(path)}: before on its left, after on its right" aria-valuetext="50%">
 <div class="divider" aria-hidden="true"><span class="grip"></span></div>

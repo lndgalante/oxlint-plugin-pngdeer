@@ -1,5 +1,5 @@
 ---
-name: slimdeer
+name: oxlint-plugin-slimdeer
 description: Measures how much smaller a project's PNG and JPEG images could be at about the same visual quality, shows the user a before/after comparison page, and shrinks only the images they approve, in place, keeping names and formats so no code changes. Uses the oxlint-plugin-slimdeer command (a lossy compressor like TinyPNG, run locally as WebAssembly; nothing is uploaded) and its lint rule for oxlint and ESLint. Use when the user asks to optimize, compress, shrink or reduce images, to make a site or app lighter or faster to load, to act on Lighthouse's "Improve image delivery" or "Efficiently encode images", or to catch heavy images in CI or pull requests; after adding or replacing a PNG or JPEG in a project; or when a slimdeer(compressible-image) lint warning appears. Not for SVG, GIF, WebP or AVIF files, resizing, or format conversion.
 license: MIT
 compatibility: Needs Node.js 20.19+ or 22.12+, npx and git; oxlint-plugin-slimdeer 0.6.0 or later (for --json and --review).
@@ -46,7 +46,7 @@ The JSON:
 - `declined[]` `{file, original, quality}`: the automatic target never goes below 70, and these didn't reach it. `missed[]`: the same for an explicit `--target`. Both stay as they are (4).
 - `errors[]` `{file, message}`: "a Git LFS pointer, not the image itself": `git lfs pull` first. "not a PNG or JPEG": a misnamed file; `--exclude <path>` leaves it out.
 - `builds[]` `{folder, images}`: Gatsby's `public/`, left out as build output; name the folder to check it.
-- `counts.skipped`: already slimdeer's, or under 4096 bytes.
+- `counts.skipped`: already shrunk by this command, or under 4096 bytes.
 
 ## 2. Report, show, wait
 
@@ -71,7 +71,7 @@ The JSON:
    ```bash
    npx oxlint-plugin-slimdeer public/hero.png src/assets/diagram.png   # add --target 90 if reviewed at 90
    ```
-   A line ending "left as is" changed nothing (`already slimdeer's`: shrunk before; don't work around it). Exit 1: an image failed, its line says why, and the others are done. `permission denied`: it is read-only, likely on purpose; tell the user.
+   A line ending "left as is" changed nothing (`already shrunk by this command`: shrunk before; don't work around it). Exit 1: an image failed, its line says why, and the others are done. `permission denied`: it is read-only, likely on purpose; tell the user.
 3. Report exact bytes from `git diff --stat -- <paths>` (`Bin 509372 -> 150714 bytes`) and the total saved. `git restore <path>` undoes one.
 
 ## 4. Targets and the quality floor

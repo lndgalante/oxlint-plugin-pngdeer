@@ -23,7 +23,7 @@ From your project's folder, with no setup:
 npx oxlint-plugin-slimdeer --review
 ```
 
-It writes a page that shows each image before and after, with the command that shrinks the ones you keep ticked. It changes no image and uploads nothing: the compressor runs inside the package as WebAssembly (slimdeer's engine, now developed upstream as [slimdeer](https://github.com/heydeer/slimdeer)). It is lossy, so commit before you shrink.
+It writes a page that shows each image before and after, with the command that shrinks the ones you keep ticked. It changes no image and uploads nothing: the compressor runs inside the package as WebAssembly (HeyDeer's [slimdeer](https://github.com/heydeer/slimdeer) engine). It is lossy, so commit before you shrink.
 
 The first run takes a few seconds per image, several at a time, and later runs read the cache. The cache and the page go in `node_modules/.cache/slimdeer`. It needs Node 20.19+ or 22.12+.
 
@@ -35,7 +35,7 @@ The first run takes a few seconds per image, several at a time, and later runs r
 
 Prefer the terminal? `npx oxlint-plugin-slimdeer --check` lists the same images, then the commands that review and shrink them ([below](#check-without-a-linter)).
 
-Savings vary by image. On pinned copies of three public projects' images, `--check` flagged all 19 of the Vue docs' guide images (74% smaller in all, 1.2 MB → 316 kB) and 4 of the Docusaurus starter's 5 (53% smaller in all), but only 2 of Starlight's 12 small portraits (7% smaller in all). On [SSIMULACRA2](https://github.com/cloudinary/ssimulacra2), the 0–100 perceptual score each warning shows, 21 of those 25 scored 89 or more, and 4 scored 73 to 78, which slimdeer calls "close, with differences you might spot side by side". These are repository bytes: an image pipeline or CDN may already re-encode what users download. [The trials](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/bench/TRIALS.md)
+Savings vary by image. On pinned copies of three public projects' images, `--check` flagged all 19 of the Vue docs' guide images (74% smaller in all, 1.2 MB → 316 kB) and 4 of the Docusaurus starter's 5 (53% smaller in all), but only 2 of Starlight's 12 small portraits (7% smaller in all). On [SSIMULACRA2](https://github.com/cloudinary/ssimulacra2), the 0–100 perceptual score each warning shows, 21 of those 25 scored 89 or more, and 4 scored 73 to 78, which the rule calls "close, with differences you might spot side by side". These are repository bytes: an image pipeline or CDN may already re-encode what users download. [The trials](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/bench/TRIALS.md)
 
 ## Why a lint rule
 
@@ -153,7 +153,7 @@ Without it, ask the agent to run `npx oxlint-plugin-slimdeer --review` (after a 
 
 The rule reads imports, `require`, `new URL(…, import.meta.url)`, JSX `src` and `srcSet`, CSS `url()` in inline styles and CSS-in-JS templates, and strings that start with `./`, `../`, `/` or an alias like `@/`, in JS and TS and in the script parts of Vue, Svelte and Astro files. In React Native and Expo projects, `@2x` and platform variants count with the image they belong to. Images named only from CSS files, HTML or Markdown get no warning, but the summary lists them, and `--check` and `--review` include them. An image is flagged when it could be at least 4 KiB and 10% smaller.
 
-By default, slimdeer picks a quality for each image, about what TinyPNG would give it, and never below 70: below that, it calls a result "visibly different". An image it can't make smaller at 70 or above isn't flagged, and the shrink command leaves it as it is. The lint says how many it turned down as it measures, and `--check` names them:
+By default, the rule picks a quality for each image, about what TinyPNG would give it, and never below 70: below that, it calls a result "visibly different". An image it can't make smaller at 70 or above isn't flagged, and the shrink command leaves it as it is. The lint says how many it turned down as it measures, and `--check` names them:
 
 ```
 slimdeer: 1 image can't be made smaller without a visible difference (its best quality is below 70), so it isn't listed; to try it at a lower target, run: npx oxlint-plugin-slimdeer --check public/fade.png --target 60
@@ -228,7 +228,7 @@ With ESLint's recommended config, set the rule again in a config object after it
 
 - **Does it upload my images?** No. The engine ships in the package as 2 MB of WebAssembly: no upload, no API key, no dependencies, no native binaries, no install scripts.
 - **Is it lossless?** No. By default, slimdeer keeps the smallest file that scores about what TinyPNG would give the image on SSIMULACRA2, a 0–100 score of how close an image looks to its original, shown in each warning. In slimdeer's own benchmark of 180 PNGs, the median file is 8–12% smaller than TinyPNG's at the same quality ([leaderboard](https://github.com/heydeer/slimdeer/blob/a8e88267ba02cbaf66e746db93ed04242dca8450/README.md#leaderboard)). For photos and screenshots with small text, try `"target": 90` and compare.
-- **How is it different from TinyPNG or Squoosh?** Both compress the images you hand them. TinyPNG uploads each one, and its API needs a key, with 500 free compressions a month. Squoosh runs in your browser, one image at a time, at the settings you pick. slimdeer runs on your machine, picks the quality per image, and finds the images that need it in your code.
+- **How is it different from TinyPNG or Squoosh?** Both compress the images you hand them. TinyPNG uploads each one, and its API needs a key, with 500 free compressions a month. Squoosh runs in your browser, one image at a time, at the settings you pick. This plugin runs slimdeer on your machine, picks the quality per image, and finds the images that need it in your code.
 - **Does it help behind `next/image`, Astro's `<Image>` or an image CDN?** Less: they re-encode images for visitors anyway, so shrinking those mostly saves repository and build size, and adds a second lossy pass. Behind `next/image`, the warning says so. Leave those folders out with `exclude`. Images served as they are still count: plain `<img>`, CSS backgrounds, and `public/` in Vite and Astro. [When not to use it](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/docs/rules/compressible-image.md#when-not-to-use-it)
 - **Why not WebP or AVIF?** It keeps each image's name and format, so no code or reference changes. WebP, AVIF, GIF and SVG files aren't measured.
 - **How slow is the first run?** The first lint measures every PNG and JPEG in the project, one engine per core (8 at most); later lints read the cache. On a 16-core M3 Max, the first lint of an app with 39 images (12 MB) took 14.6 s and peaked at 3.0 GB of memory, and later lints took 178 ms, against 68 ms without the plugin (version 0.3.0, the same engine as today's). Since 0.6.0, an image whose automatic result scores below 70 is compressed a second time, at 70: on tanstack.com's 148 images, that took 8.5% more CPU time than 0.5.0, in the same wall time. [The benchmark](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/bench/README.md)
@@ -241,7 +241,7 @@ With ESLint's recommended config, set the rule again in a config object after it
 
 ## Showcase
 
-[Multabot](https://multabot.com.ar) tracks traffic fines in Argentina. It ran slimdeer's command line on three images that its Astro site, on Cloudflare Pages, serves from `public/` as they are. At `--target 90`, the quality suggested above for photos and screenshots with small text, they became 67% smaller in all (965 kB → 317 kB). Multabot shipped the compressed files: on November 2, 2026, the site served each one byte for byte. Two are below. The third, an annotated screenshot of a partner's site, went from 485,329 to 190,091 bytes (61% smaller). [The full report](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/docs/showcase.md#multabot)
+[Multabot](https://multabot.com.ar) tracks traffic fines in Argentina. It ran this package's command (version 0.5.0, formerly named oxlint-plugin-pngdeer) on three images that its Astro site, on Cloudflare Pages, serves from `public/` as they are. At `--target 90`, the quality suggested above for photos and screenshots with small text, they became 67% smaller in all (965 kB → 317 kB). Multabot shipped the compressed files: on November 2, 2026, the site served each one byte for byte. Two are below. The third, an annotated screenshot of a partner's site, went from 485,329 to 190,091 bytes (61% smaller). [The full report](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/docs/showcase.md#multabot)
 
 | Original | Compressed at quality 90 |
 |---|---|

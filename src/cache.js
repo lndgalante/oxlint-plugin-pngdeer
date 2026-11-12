@@ -50,8 +50,8 @@ export function belowFloor({ outcome, score }) {
 
 /**
  * { original, compressed, outcome, score }, compressed counting the mark the command adds;
- * { skipped } (with failed: true if slimdeer itself failed); { outcome: "output" } for bytes slimdeer
- * wrote; or null if not cached yet.
+ * { skipped } (with failed: true if slimdeer itself failed); { outcome: "output" } for bytes the
+ * command writes; or null if not cached yet.
  */
 export function read(dir, k) {
   try {
@@ -97,7 +97,7 @@ export function reportable(entry, { minSavedBytes, minSavedPercent }) {
   return saved > 0 && saved >= minSavedBytes && (100 * saved) / entry.original >= minSavedPercent;
 }
 
-/** An image's size, the cache key of its current bytes, whether slimdeer wrote it and its frame count; null if it can't be read. */
+/** An image's size, the cache key of its current bytes, whether the command wrote it and its frame count; null if it can't be read. */
 export function fileKey(file, target) {
   try {
     const { size, mtimeMs, ctimeMs, dev, ino } = statSync(file);

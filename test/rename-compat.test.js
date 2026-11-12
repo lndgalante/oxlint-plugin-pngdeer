@@ -9,6 +9,7 @@ import { basename, join } from "node:path";
 import { after, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { mark, marked } from "../src/marker.js";
+import { chunk } from "./helpers.js";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const fixture = (path) => join(root, path);
@@ -55,7 +56,7 @@ test("(c) the command leaves those files as they are", () => {
     const before = read(path);
     const result = run(dir, file);
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout.trim(), /; left as is$/);
+    assert.equal(result.stdout.trim(), `${file}: already shrunk by this command; left as is`);
     assert.deepEqual(readFileSync(join(dir, file)), before, file);
   }
 });
@@ -67,4 +68,13 @@ test("(d) --check skips them", () => {
   const report = JSON.parse(stdout);
   assert.equal(report.counts.skipped, 2);
   assert.deepEqual(report.images, []);
+});
+
+test("(e) the new word is recognized too", () => {
+  const png = read("example/src/assets/crystal-ball.png");
+  const text = Buffer.from(`Software\0slimdeer ${png.length}`, "latin1");
+  // after IHDR: 8 bytes of signature and 25 of IHDR
+  const bytes = Buffer.concat([png.subarray(0, 33), chunk("tEXt", text), png.subarray(33)]);
+  assert.equal(marked(bytes), true);
+  assert.equal(marked(png), false);
 });

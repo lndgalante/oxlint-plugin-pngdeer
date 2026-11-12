@@ -47,7 +47,7 @@ or when an image or folder couldn't be checked. It reads no linter configuration
 --review exits 0 when it wrote the page or found nothing to review, and 2 on a mistake,
 when --flagged finds no list, or when an image or folder couldn't be checked or previewed.
 Like --check, it reads no linter configuration; with --flagged, it shows what the lint flagged.
-Files it writes are marked as slimdeer's, so the lint rule doesn't flag them again.`;
+PNGs and JPEGs it writes are marked, so the lint rule doesn't flag them again.`;
 
 const CHECK_OPTIONS = {
   "--min-saved-bytes": "minSavedBytes",

@@ -1,6 +1,6 @@
 # slimdeer/compressible-image
 
-Flags PNGs and JPEGs that slimdeer would make much smaller at about the same visual quality, on the line of code that uses them. slimdeer's engine, now developed upstream as [slimdeer](https://github.com/heydeer/slimdeer), ships in this package as WebAssembly: images are measured on your machine and never uploaded.
+Flags PNGs and JPEGs that slimdeer would make much smaller at about the same visual quality, on the line of code that uses them. HeyDeer's [slimdeer](https://github.com/heydeer/slimdeer) engine ships in this package as WebAssembly: images are measured on your machine and never uploaded.
 
 [What it flags](#what-it-flags) · [No warnings?](#no-warnings) · [`--check`](#check-images-without-changing-them) · [`--review`](#review-images-before-and-after) · [How to fix it](#how-to-fix-it) · [Job summaries](#github-actions-job-summaries) · [Options](#options) · [Excluding images](#scan-scope-and-exclusions) · [ESLint setup](#eslint-setup) · [Settings](#settings) · [The cache](#the-cache) · [Upgrading](#upgrading) · [What it skips](#what-it-skips) · [Turning it off](#turning-it-off) · [When not to use it](#when-not-to-use-it)
 
@@ -22,7 +22,7 @@ export const Photo = () => <img src="/my%20photo.png" />; // ⚠ public/my photo
 Not flagged:
 
 ```jsx
-import icon from "./icon.png"; // already small, or already slimdeer's output
+import icon from "./icon.png"; // already small, or already shrunk by the command
 const remote = "https://cdn.example.com/hero.png"; // not a local file
 const page = `/images/${name}.png`; // built at runtime
 const bg = `url(/bg.png?v=${version})`; // a url() that runs into an expression, even only in its query
@@ -410,20 +410,20 @@ oxlint-plugin-slimdeer: no list of flagged images here: lint in this folder firs
 src/assets/crystal-ball.png: changed since the last lint here; left as is (lint again to check it)
 ```
 
-An image slimdeer itself wrote since the lint says `already slimdeer's; left as is` instead. Several images run in parallel, one engine per core, 8 at most. Each image is shrunk once, however it's spelled: `Logo.png` and `logo.png` are one image on macOS and Windows. An image that changes while it is being compressed is left as it is, and so is a read-only one:
+An image the command itself wrote since the lint says `already shrunk by this command; left as is` instead. Several images run in parallel, one engine per core, 8 at most. Each image is shrunk once, however it's spelled: `Logo.png` and `logo.png` are one image on macOS and Windows. An image that changes while it is being compressed is left as it is, and so is a read-only one:
 
 ```
 public/locked.png: permission denied
 ```
 
-The command exits `0` when every image was shrunk or left as it is for a reason it gives (`already slimdeer's`, say), `1` when an image failed (missing, read-only, changed meanwhile or since the lint) or `--flagged` found no list, and `2` on a mistake in the arguments. The other images are still done.
+The command exits `0` when every image was shrunk or left as it is for a reason it gives (`already shrunk by this command`, say), `1` when an image failed (missing, read-only, changed meanwhile or since the lint) or `--flagged` found no list, and `2` on a mistake in the arguments. The other images are still done.
 
 Use one quality target for code that shares an image. When several references use fixed targets, `--flagged` uses the highest one only if its measurement warrants a warning. If a stricter reference produces no warning, or references mix automatic and fixed targets, the image is left out of bulk compression and the summary explains why. Constraints from enabled references also count when their measurements are missing or their thresholds produce no warning.
 
 On Windows, the commands slimdeer prints write paths and `--exclude` patterns with `/`, even ones typed with `\`, so they run from cmd.exe and PowerShell alike. Commands for unusual file or folder names are labeled `Run in PowerShell`. They use literal arguments and invoke Node with the installed plugin's executable directly, avoiding expansion of `$`, backticks or `%` by PowerShell or npm's batch shim. Paste those commands into PowerShell. Common paths keep the shorter `npx` command, and so do paths with an `@` after the first character, like `public/logo@2x.png`; only a path that starts with `@`, like `@brand/logo.png`, needs PowerShell. `--flagged` reads image paths directly from its list.
 
 - **Images keep their color profile and EXIF orientation.** Everything else is dropped: the rest of EXIF (GPS included), XMP and IPTC, so copyright and captions too. A profile that only says sRGB goes as well, since browsers assume sRGB.
-- **The mark is a short text tag** (`slimdeer <size>`, in a PNG `tEXt` chunk or a JPEG comment), so a fixed file stays fixed on every machine. Metadata strippers (`oxipng --strip`, ImageOptim) remove it, and images shrunk by slimdeer's own web app or command aren't marked: the rule measures those again and may flag them. The tag checks file size, so an edit that preserves both the tag and the byte count is still treated as optimized. Don't shrink an image twice, as each lossy pass costs quality.
+- **The mark is a short text tag** (`pngdeer <size>`, the name this package had until 0.5.0, in a PNG `tEXt` chunk or a JPEG comment), so a fixed file stays fixed on every machine. Metadata strippers (`oxipng --strip`, ImageOptim) remove it, and images shrunk by slimdeer's own web app or command aren't marked: the rule measures those again and may flag them. The tag checks file size, so an edit that preserves both the tag and the byte count is still treated as optimized. Don't shrink an image twice, as each lossy pass costs quality.
 - **Images another tool already compressed can still be flagged,** because slimdeer compares with the file you have, not the original. Look at those on the review page before shrinking them.
 
 ## GitHub Actions job summaries
@@ -592,10 +592,10 @@ The memory budget applies to each batch. Concurrent lints of different packages 
 
 ### Upgrading
 
-From 0.5.0, the engine and the cache format are the same, so results carry over. Only automatic-target results that scored below 70 are measured again, once, because of the [quality floor](#the-quality-floor); every other result, explicit targets included, is reused. The first lint or `--check` that measures copies them without measuring them again. On tanstack.com's 148 images, the first `--check` after upgrading measured again only the 7 whose 0.5.0 result was below 70.
+From 0.5.0, the engine and the cache format are the same, so results in a committed `cacheDir` carry over. The local cache moved to `node_modules/.cache/slimdeer`, and the folder 0.5.0 used isn't read, so the first lint on each machine measures every image again. In a `cacheDir`, only automatic-target results that scored below 70 are measured again, once, because of the [quality floor](#the-quality-floor); every other result, explicit targets included, is reused. The first lint or `--check` that measures copies them without measuring them again. On tanstack.com's 148 images, with a cache folder 0.5.0 had filled, the first `--check` after upgrading measured again only the 7 whose 0.5.0 result was below 70.
 
 - **A committed `cacheDir`:** that first run writes new entry files for the automatic target. Commit them. 0.5.0's automatic-target entries stay, unread and harmless. To drop them, delete the folder before filling it again, at the cost of measuring again what your local cache doesn't hold.
-- **`measure: "never"`:** nothing measures, so nothing carries over by itself, and until the cache is filled again a lint reports no automatic-target results. Run `npx oxlint-plugin-slimdeer --check --cache-dir .slimdeer` once after upgrading (with the rule's `--target`, if it sets one) and commit the folder. Without a `cacheDir`, one lint without `"never"`, or a `--check`, fills the local cache.
+- **`measure: "never"`:** nothing measures, so nothing carries over by itself, and until the cache is filled again a lint reports no automatic-target results. Run `npx oxlint-plugin-slimdeer --check --cache-dir PATH` once after upgrading, with PATH your `cacheDir` (and the rule's `--target`, if it sets one), and commit the folder. Without a `cacheDir`, one lint without `"never"`, or a `--check`, fills the local cache.
 - **`--flagged`:** run the lint once before it. 0.5.0's list doesn't say which folder its lint ran in, so `--flagged` ignores it.
 - **Images 0.5.0 flagged below quality 70:** they are compressed again at 70. Those that reach it are still flagged, with a smaller saving; those that don't are no longer flagged. On tanstack.com, 3 of those 7 images were flagged again at quality 70 or 71, and 4 dropped out.
 - **`--check` in CI:** it now checks nested packages too, so a step that gates on its exit code can fail where 0.5.0 passed (test fixtures, examples, vendored packages). To check only the root package, as 0.5.0 did, leave out every folder with a package.json of its own. Where those are all in `packages/` and `examples/`, that is `npx oxlint-plugin-slimdeer --check --exclude 'packages/*' --exclude 'examples/*'`; add any others, like `apps/*` or `docs`. `--check --json` gives each listed image's `package`.

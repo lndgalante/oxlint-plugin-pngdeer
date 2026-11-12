@@ -234,14 +234,14 @@ test("--flagged and --review --flagged leave alone an image changed since the li
   assert.equal(run.stderr, `${ball}: changed since the last lint here; left as is (lint again to check it)\n`);
   assert.equal(run.stdout, "");
   assert.ok(readFileSync(join(dir, ball)).equals(other));
-  // a lint flags these bytes, and --flagged shrinks them; then they're slimdeer's, left as they are
+  // a lint flags these bytes, and --flagged shrinks them; then they're marked, left as they are
   oxlintSummary(dir);
   const shrunk = slimdeer(dir, "--flagged");
   assert.equal(shrunk.status, 0, shrunk.stderr);
   assert.match(shrunk.stdout, /^src\/assets\/crystal-ball\.png: 13 kB → /);
   const again = slimdeer(dir, "--flagged");
   assert.equal(again.status, 0, again.stderr);
-  assert.equal(again.stdout, `${ball}: already slimdeer's; left as is\n`);
+  assert.equal(again.stdout, `${ball}: already shrunk by this command; left as is\n`);
 });
 
 test("a list from 0.5.0, which doesn't say where its lint ran, isn't used", () => {
