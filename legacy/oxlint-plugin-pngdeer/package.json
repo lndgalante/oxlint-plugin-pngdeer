@@ -1,0 +1,12 @@
+{
+  "name": "oxlint-plugin-pngdeer",
+  "version": "0.6.0",
+  "description": "Renamed to oxlint-plugin-slimdeer.",
+  "license": "MIT",
+  "type": "module",
+  "exports": "./index.js",
+  "bin": { "oxlint-plugin-pngdeer": "bin.js" },
+  "files": ["index.js", "bin.js"],
+  "homepage": "https://github.com/lndgalante/oxlint-plugin-slimdeer#moving-from-oxlint-plugin-pngdeer",
+  "repository": { "type": "git", "url": "git+https://github.com/lndgalante/oxlint-plugin-slimdeer.git" }
+}
