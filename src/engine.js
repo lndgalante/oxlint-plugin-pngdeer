@@ -1,12 +1,14 @@
-// slimdeer's wasm engine (engine/), started on first use: one instance per thread.
+// slimdeer, HeyDeer's engine (engine/), started on first use: one instance per thread.
 import { readFileSync } from "node:fs";
-import { compress as compressPng, compress_jpeg as compressJpeg, initSync } from "../engine/pngdeer_wasm.js";
+import { compress as compressPng, compress_avif as compressAvif, compress_jpeg as compressJpeg, compress_webp as compressWebp, initSync } from "../engine/slimdeer_wasm.js";
 import { belowFloor, FLOOR } from "./cache.js";
 import { kind } from "./images.js";
 
 let started = false;
 // A panic skips the engine's cleanup, so what it held for that image stays allocated for good
 let panicked = false;
+
+const BUG = " (a bug in HeyDeer's slimdeer engine: please report it at https://github.com/heydeer/slimdeer/issues)";
 
 /**
  * slimdeer's file for a PNG or JPEG, its outcome ("hit", "miss" when no file reaches the target,
@@ -28,16 +30,57 @@ export function compress(bytes, target) {
   }
 }
 
+/**
+ * The image (a PNG or JPEG) as WebP or AVIF ("webp", "avif") at `target`, a score the caller always
+ * gives: no floor and no retry. { output, outcome, score, target (as the engine rounded it, to 2
+ * decimals), mode (WebP's "lossy" or "lossless", never shown as "lossless"; AVIF has none) }. WebP
+ * reports no outcome: it is a hit when its score reaches `target`, not the rounded one the engine
+ * reports. A PNG that eXIf turns comes out unturned, so callers leave such PNGs out. Throws an Error
+ * with `refused` set when the engine turns the image down (its own words), and a bug error, as
+ * compress() does, on a panic.
+ */
+export function convert(bytes, format, target) {
+  if (format !== "webp" && format !== "avif") throw new TypeError(`convert() writes "webp" or "avif", not ${format}`);
+  // the engine's search never ends at a NaN target
+  if (!Number.isFinite(target)) throw new TypeError(`convert() needs a target score, not ${target}`);
+  start();
+  const webp = format === "webp";
+  let out;
+  try {
+    out = webp ? compressWebp(bytes, target) : compressAvif(bytes, target);
+  } catch (error) {
+    if (error instanceof WebAssembly.RuntimeError) {
+      panicked = true;
+      throw new Error(`slimdeer couldn't write this image as ${webp ? "WebP" : "AVIF"}: ${error.message}${BUG}`);
+    }
+    // the engine turns an image down with a plain Error in its own words; anything else is a mistake in the call
+    if (error.constructor !== Error) throw error;
+    throw Object.assign(new Error(error.message), { refused: true });
+  }
+  try {
+    // each getter copies out of the engine's memory, so each is read once
+    const output = webp ? out.webp : out.avif;
+    const report = JSON.parse(out.report);
+    const outcome = webp ? (report.score >= target ? "hit" : "miss") : report.outcome;
+    return { output, outcome, score: report.score, target: report.target, mode: report.mode };
+  } finally {
+    out.free();
+  }
+}
+
 /** Whether this thread's engine has panicked: it then holds memory it can't free (worker.js). */
 export function trapped() {
   return panicked;
 }
 
+function start() {
+  if (started) return;
+  initSync({ module: readFileSync(new URL("../engine/slimdeer_wasm_bg.wasm", import.meta.url)) });
+  started = true;
+}
+
 function run(bytes, target) {
-  if (!started) {
-    initSync({ module: readFileSync(new URL("../engine/pngdeer_wasm_bg.wasm", import.meta.url)) });
-    started = true;
-  }
+  start();
   const jpeg = kind(bytes) === "jpeg";
   let out;
   try {
@@ -46,7 +89,7 @@ function run(bytes, target) {
     // a panic inside the engine surfaces as a bare "unreachable"
     const bug = error instanceof WebAssembly.RuntimeError;
     if (bug) panicked = true;
-    throw new Error(`slimdeer couldn't compress this image: ${error.message}${bug ? " (a bug in HeyDeer's slimdeer engine: please report it at https://github.com/heydeer/slimdeer/issues)" : ""}`);
+    throw new Error(`slimdeer couldn't compress this image: ${error.message}${bug ? BUG : ""}`);
   }
   const output = jpeg ? out.jpeg : out.png;
   const { outcome, score } = JSON.parse(out.report);

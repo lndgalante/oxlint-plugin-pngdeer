@@ -1,12 +1,16 @@
-// The engine writes the same files as 0.5.0's did: these hashes were recorded from that build.
+// The engine writes the same PNG and JPEG files as 0.5.0's did: these hashes were recorded from that
+// build. The WebP and AVIF rows were recorded from slimdeer 0.3.1, 0.6.0's engine: conversions' cache
+// keys hold ENGINE too, so other WebP or AVIF bytes need a new ENGINE as well.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { ENGINE } from "../src/cache.js";
-import { compress } from "../src/engine.js";
+import { compress, convert } from "../src/engine.js";
 
-const MOVED = "the engine now writes other files than 0.5.0's: set ENGINE in src/cache.js to the new wasm's first 16 hex digits (every cache is then measured again), and record these hashes again";
+const NEXT = "set ENGINE in src/cache.js and outputIdentity in engine/provenance.json to the new wasm's first 16 hex digits (every cache is then measured again), and record these hashes again";
+const MOVED = `the engine now writes other files than 0.5.0's: ${NEXT}`;
+const CONVERTED = `the engine now writes other WebP or AVIF files than slimdeer 0.3.1's: ${NEXT}`;
 
 // image, target (undefined is automatic), sha256 of the output, outcome, score
 const rows = [
@@ -22,7 +26,9 @@ const rows = [
   ["src/assets/heart.png", 80, "d9d0a0754e49f3c585b1ca5ba90d2f3309877fc92a7fc5d4ba83dc908811a67f", "hit", 81.863],
 ];
 
-test("the engine is the one 0.5.0 shipped", () => {
+test("the cache's identity is the one these rows were recorded under", () => {
+  const { outputIdentity } = JSON.parse(readFileSync(new URL("../engine/provenance.json", import.meta.url), "utf8"));
+  assert.equal(outputIdentity, ENGINE, "engine/provenance.json's outputIdentity and ENGINE in src/cache.js name the same output");
   assert.equal(ENGINE, "ad2351d25459d45c", MOVED);
 });
 
@@ -32,5 +38,24 @@ for (const [image, target, sha, outcome, score] of rows) {
     assert.equal(createHash("sha256").update(result.output).digest("hex"), sha, MOVED);
     assert.equal(result.outcome, outcome, MOVED);
     assert.equal(result.score.toFixed(3), score.toFixed(3), MOVED);
+  });
+}
+
+// image, format, target, size, sha256 of the output, score, mode, the target as the engine reports it
+// (both hits; AVIF is slow, so it has one row)
+const conversions = [
+  ["src/assets/crystal-ball.png", "webp", 86.895, 4760, "4a78a858f4b05d8324cf99b37bf5466e7982589d9a2b5f1e0ca630025bf7912c", 87.05, "lossy", 86.89],
+  ["src/assets/crystal-ball.png", "avif", 86.895, 2785, "54038b8bff69820e119e8d5474c5ef51338c5ae33b4b442795e65869ce37daff", 86.896, undefined, 86.89],
+];
+
+for (const [image, format, target, size, sha, score, mode, reported] of conversions) {
+  test(`${image} as ${format} at ${target} comes out as before`, () => {
+    const result = convert(readFileSync(new URL(`../example/${image}`, import.meta.url)), format, target);
+    assert.equal(result.output.length, size, CONVERTED);
+    assert.equal(createHash("sha256").update(result.output).digest("hex"), sha, CONVERTED);
+    assert.equal(result.outcome, "hit", CONVERTED);
+    assert.equal(result.score.toFixed(3), score.toFixed(3), CONVERTED);
+    assert.equal(result.mode, mode, CONVERTED);
+    assert.equal(result.target, reported, CONVERTED);
   });
 }

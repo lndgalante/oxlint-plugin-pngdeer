@@ -1,24 +1,23 @@
 {
   "source": {
-    "repository": "https://github.com/heydeer/pngdeer.git",
-    "revision": "a8e88267ba02cbaf66e746db93ed04242dca8450",
-    "cargoLockSha256": "ffd950e512f4e9ba2054afcb546e597e0a2fb6da3c3acdf51fad1252a071c652"
+    "repository": "https://github.com/heydeer/slimdeer.git",
+    "revision": "38ce560d4ac3016118799db8499487433bfd5d9b",
+    "tag": "v0.3.1",
+    "cargoLockSha256": "a1677c50177002121d238f5e5ec48e576a93aa4282994bbf890d5e619955c57e",
+    "note": "heydeer/slimdeer main at eafae5e, which heydeer.ai deploys, compiles the same WebAssembly sources from the same Cargo.lock."
   },
-  "verification": {
-    "runUrl": "https://github.com/lndgalante/oxlint-plugin-pngdeer/actions/runs/41345502071",
-    "recipeRevision": "30604a565b3c1694351be5f97c6deeb070bbb248",
-    "cleanBuilds": 2,
-    "matchesVendored": true
-  },
+  "build": { "package": "slimdeer-wasm", "features": ["avif"] },
+  "outputIdentity": "ad2351d25459d45c",
+  "verification": { "runUrl": "https://github.com/lndgalante/oxlint-plugin-slimdeer/actions/runs/43150215691", "recipeRevision": "53e821b088f6a9a84128659fe9fbe9ac8aeb18a2", "cleanBuilds": 2, "matchesVendored": true },
   "observedProducers": {
     "rustc": "1.99.1 (58cf8f9c3 2026-10-13)",
-    "clang": "15.0.7 (AWS 15.0.7-3.amzn2023.0.4)",
+    "clang": "23.1.0-wasi-sdk (https://github.com/llvm/llvm-project 895aa2c896ada719451be2e3673c83da8ddf1141)",
     "walrus": "0.27.2",
     "wasm-bindgen": "0.2.129 (165586f85)"
   },
   "files": {
-    "pngdeer_wasm_bg.wasm": "ad2351d25459d45c84a22b847c932b01dfa31cfea1f9ca4b89d5139bff72cd8e",
-    "pngdeer_wasm.js": "9e990aa28b18e2ea58dcaf31a4d091db8dd5ce4a2ba13c579c31a127dc4aa21f",
-    "THIRD_PARTY_LICENSES.txt": "cd98a6db03e5fc16035627dccc4e1c916faf3b09958f423bc75899476f198116"
+    "slimdeer_wasm_bg.wasm": "42eac0c5b6eaada24c0137b6fa180d4c8dc53752dee01c3faef745c00f16a0a9",
+    "slimdeer_wasm.js": "4e7d7b2fa503072522e64d535ed107a170e3b50a3276ceb522d714cbe5467274",
+    "THIRD_PARTY_LICENSES.txt": "c87ddc19882afc2246fded2d13cdb27565079635f8787b46a0b1b7bea7aec8be"
   }
 }

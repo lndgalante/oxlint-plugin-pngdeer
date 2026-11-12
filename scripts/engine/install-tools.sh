@@ -26,6 +26,13 @@ echo '82d12bb940e2d4e72e0d5605387fc1b8ca179044e012b620f0ce4e7440e8320e  bindgen.
 mkdir -p /opt/bindgen
 tar -xf bindgen.tar.gz
 cp wasm-bindgen-0.2.129-x86_64-unknown-linux-musl/wasm-bindgen /opt/bindgen/
+# clang and llvm-ar that target wasm32, for the C code (libdeflate, libwebp, mozjpeg, libaom): the
+# LLVM 23 that slimdeer's own build uses (web/vercel-build.sh). Upstream says Amazon Linux's clang 15
+# builds libaom's SIMD into code that writes other AVIF files.
+curl --fail --location --retry 3 --proto '=https' --tlsv1.2 \
+  https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-34/wasi-sdk-34.0-x86_64-linux.tar.gz -o wasi-sdk.tar.gz
+echo 'b761e3a0721dbae9c09a0059e5fdb2bf917d1b4a8a7b430fb3b5aafb0984b2c4  wasi-sdk.tar.gz' | sha256sum -c -
+tar -xzf wasi-sdk.tar.gz -C /opt
 /opt/rust/bin/rustc --version
 /opt/bindgen/wasm-bindgen --version
-clang --version
+/opt/wasi-sdk-34.0-x86_64-linux/bin/clang --version

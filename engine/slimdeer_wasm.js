@@ -44,6 +44,53 @@ export class Compressed {
 }
 if (Symbol.dispose) Compressed.prototype[Symbol.dispose] = Compressed.prototype.free;
 
+export class CompressedAvif {
+    static __wrap(ptr) {
+        const obj = Object.create(CompressedAvif.prototype);
+        obj.__wbg_ptr = ptr;
+        CompressedAvifFinalization.register(obj, obj.__wbg_ptr, obj);
+        return obj;
+    }
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        CompressedAvifFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_compressedavif_free(ptr, 0);
+    }
+    /**
+     * The AVIF file.
+     * @returns {Uint8Array}
+     */
+    get avif() {
+        const ret = wasm.compressedavif_avif(this.__wbg_ptr);
+        var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v1;
+    }
+    /**
+     * JSON: target, setting, quality, score, tries, rounds, outcome, the speed-8 search's file,
+     * bytes, and a time breakdown.
+     * @returns {string}
+     */
+    get report() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.compressedavif_report(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+}
+if (Symbol.dispose) CompressedAvif.prototype[Symbol.dispose] = CompressedAvif.prototype.free;
+
 export class CompressedJpeg {
     static __wrap(ptr) {
         const obj = Object.create(CompressedJpeg.prototype);
@@ -140,7 +187,7 @@ if (Symbol.dispose) CompressedWebp.prototype[Symbol.dispose] = CompressedWebp.pr
 /**
  * Compresses one PNG file to the smallest palette PNG scoring at least `target` (SSIMULACRA2), or
  * with no target at a quality picked per image (auto mode). Images over `preview_pixels` (default
- * pngdeer::PREVIEW_PIXELS, as on the command line) are searched on a downscaled preview and checked
+ * slimdeer::PREVIEW_PIXELS, as on the command line) are searched on a downscaled preview and checked
  * at full size; 0 searches at full size, several times slower on big images.
  * @param {Uint8Array} input
  * @param {number | null} [target]
@@ -158,7 +205,24 @@ export function compress(input, target, preview_pixels) {
 }
 
 /**
- * Compresses one JPEG file to the lowest quality JPEG scoring at least `target` (pngdeer::compress_jpeg),
+ * Compresses a PNG or a JPEG to AVIF (slimdeer::compress_avif): libaom's lowest quality whose file,
+ * as Chrome shows it, scores at least `target`; with no target, about TinyPNG's AVIF's quality.
+ * @param {Uint8Array} input
+ * @param {number | null} [target]
+ * @returns {CompressedAvif}
+ */
+export function compress_avif(input, target) {
+    const ptr0 = passArray8ToWasm0(input, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.compress_avif(ptr0, len0, !isLikeNone(target), isLikeNone(target) ? 0 : target);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return CompressedAvif.__wrap(ret[0]);
+}
+
+/**
+ * Compresses one JPEG file to the lowest quality JPEG scoring at least `target` (slimdeer::compress_jpeg),
  * never bigger than the input; with no target, at a quality picked per image.
  * @param {Uint8Array} input
  * @param {number | null} [target]
@@ -175,7 +239,7 @@ export function compress_jpeg(input, target) {
 }
 
 /**
- * Compresses one PNG file to WebP (pngdeer::compress_webp): the smaller of its palette image stored
+ * Compresses one PNG file to WebP (slimdeer::compress_webp): the smaller of its palette image stored
  * losslessly and the lowest lossy quality reaching the target; with no target, TinyPNG's WebP
  * quality for the image. `preview_pixels` as for `compress`. A JPEG becomes lossy WebP, at JPEG
  * output's automatic quality.
@@ -219,13 +283,16 @@ function __wbg_get_imports() {
     };
     return {
         __proto__: null,
-        "./pngdeer_wasm_bg.js": import0,
+        "./slimdeer_wasm_bg.js": import0,
     };
 }
 
 const CompressedFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_compressed_free(ptr, 1));
+const CompressedAvifFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_compressedavif_free(ptr, 1));
 const CompressedJpegFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_compressedjpeg_free(ptr, 1));
@@ -365,7 +432,7 @@ async function __wbg_init(module_or_path) {
     }
 
     if (module_or_path === undefined) {
-        module_or_path = new URL('pngdeer_wasm_bg.wasm', import.meta.url);
+        module_or_path = new URL('slimdeer_wasm_bg.wasm', import.meta.url);
     }
     const imports = __wbg_get_imports();
 

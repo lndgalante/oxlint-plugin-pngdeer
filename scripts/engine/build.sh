@@ -10,6 +10,6 @@ export CARGO_TARGET_DIR=/target
 # The shipped WASM embeds dependency paths under /rust/registry.
 export RUSTFLAGS="--remap-path-prefix=$build=/src --remap-path-prefix=/opt/cargo=/rust"
 export CFLAGS_wasm32_unknown_unknown="-ffile-prefix-map=$build=/src -ffile-prefix-map=/opt/cargo=/rust"
-cargo build --frozen --release --target wasm32-unknown-unknown -p pngdeer-wasm
-wasm-bindgen --target web --no-typescript --out-dir /output /target/wasm32-unknown-unknown/release/pngdeer_wasm.wasm
+cargo build --frozen --release --target wasm32-unknown-unknown -p slimdeer-wasm --features avif
+wasm-bindgen --target web --no-typescript --out-dir /output /target/wasm32-unknown-unknown/release/slimdeer_wasm.wasm
 cp web/THIRD_PARTY_LICENSES.txt /output/

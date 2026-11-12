@@ -9,7 +9,7 @@ for (const [file, expected] of Object.entries(provenance.files)) {
   assert.equal(actual, expected, `${file}: update provenance only after reviewing the engine change`);
   console.log(`${actual}  ${file}`);
 }
-const wasm = new WebAssembly.Module(readFileSync(new URL("pngdeer_wasm_bg.wasm", dir)));
+const wasm = new WebAssembly.Module(readFileSync(new URL("slimdeer_wasm_bg.wasm", dir)));
 const producers = WebAssembly.Module.customSections(wasm, "producers").map((section) => Buffer.from(section).toString()).join("");
 for (const [tool, version] of Object.entries(provenance.observedProducers)) {
   assert.ok(producers.includes(version), `the WASM producers section must identify ${tool} ${version}`);

@@ -9,12 +9,13 @@ import { marked } from "./marker.js";
 
 const keys = new Map(); // image path -> file metadata and content key, so images aren't re-read on every keystroke
 
-// The engine's identity: the first 16 hex digits of the wasm's SHA-256 (a few ms for 2 MB). A new
-// engine invalidates every entry.
-export const ENGINE = createHash("sha256")
-  .update(readFileSync(new URL("../engine/pngdeer_wasm_bg.wasm", import.meta.url)))
-  .digest("hex")
-  .slice(0, 16);
+// Which engine output the entries describe: the first 16 hex digits of the SHA-256 of the build whose
+// PNG and JPEG bytes they were measured from. 0.1.0 to 0.5.0 shipped that build; 0.6.0's engine
+// (slimdeer 0.3.1) writes the same PNG and JPEG bytes, so those results carry over. Conversions
+// (convertKey) name it too. An engine that writes any other PNG, JPEG, WebP or AVIF file needs the
+// new wasm's first 16 hex digits here and in engine/provenance.json, and every image is then measured
+// again: test/engine-output.test.js checks a sample, and engine/README.md says how to compare more.
+export const ENGINE = "ad2351d25459d45c";
 
 export function cacheDir(cwd) {
   return join(cwd, "node_modules", ".cache", "slimdeer");
@@ -37,6 +38,11 @@ export function key(bytes, target) {
 /** The key 0.5.0 gave an image's bytes at the automatic target, before FLOOR: batch.js carries over what FLOOR doesn't change. */
 export function legacyKey(bytes) {
   return hash(bytes, "auto");
+}
+
+/** The cache key of an image's bytes as WebP or AVIF (`format`) at `target`, a resolved score. */
+export function convertKey(bytes, target, format) {
+  return createHash("sha256").update(bytes).update(`\0${ENGINE}\0${target}\0${FORMAT}\0${format}`).digest("hex");
 }
 
 function hash(bytes, target) {

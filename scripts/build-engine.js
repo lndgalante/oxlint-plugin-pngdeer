@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 
 const args = process.argv.slice(2);
 if (args.includes("--help")) {
-  console.log("usage: node scripts/build-engine.js [--output NEW_DIRECTORY]\nRequires Docker with linux/amd64 support. Builds twice; never replaces engine/.");
+  console.log("usage: node scripts/build-engine.js [--output NEW_DIRECTORY]\nRequires Docker with linux/amd64 support. Builds twice and fails unless both builds equal the shipped files; never replaces engine/.");
   process.exit(0);
 }
 assert.ok(args.length === 0 || (args.length === 2 && args[0] === "--output"), "use --output NEW_DIRECTORY or no arguments");
@@ -39,14 +39,16 @@ const results = files.map((file) => {
   const matchesVendored = first === provenance.files[file];
   const message = `${file}: ${first}; repeatable=${repeatable}; matches vendored=${matchesVendored}`;
   console.log(message);
-  if (process.env.GITHUB_ACTIONS) console.log(`::${repeatable ? "notice" : "error"} title=Engine build::${message}`);
+  if (process.env.GITHUB_ACTIONS) console.log(`::${repeatable && matchesVendored ? "notice" : "error"} title=Engine build::${message}`);
   return { file, first, second, repeatable, matchesVendored };
 });
 writeFileSync(join(output, "results.json"), `${JSON.stringify({ source: provenance.source, results }, null, 2)}\n`);
 console.log(`Build outputs and comparison: ${output}`);
 assert.ok(results.every((result) => result.repeatable), "the two clean builds differ; inspect results.json");
-if (results.some((result) => !result.matchesVendored)) {
-  console.log("The source build is repeatable but differs from the vendored engine. engine/ is unchanged; source correspondence remains unverified.");
+const differ = results.filter((result) => !result.matchesVendored).map((result) => result.file);
+if (differ.length) {
+  console.error(`The build is repeatable but doesn't match the shipped engine (${differ.join(", ")}); engine/ is unchanged. Compare the files in ${output}.`);
+  process.exitCode = 1;
 }
 
 function run(args) {

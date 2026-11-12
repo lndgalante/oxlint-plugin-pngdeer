@@ -1,7 +1,6 @@
 FROM --platform=linux/amd64 amazonlinux:2023@sha256:b156298161e9ab6392cda59081d016866601f7213a28ec21270d3a75c72f2170
 
 RUN dnf --releasever=2023.12.20261021 install -y \
-      clang-15.0.7-3.amzn2023.0.4 llvm-15.0.7-3.amzn2023.0.1 \
       gcc gcc-c++ glibc-devel git tar gzip xz findutils \
     && dnf clean all
 
@@ -9,8 +8,8 @@ COPY install-tools.sh /install-tools.sh
 RUN sh /install-tools.sh
 ENV PATH="/opt/rust/bin:/opt/bindgen:${PATH}" \
     CARGO_HOME=/opt/cargo \
-    CC_wasm32_unknown_unknown=/usr/bin/clang \
-    AR_wasm32_unknown_unknown=/usr/bin/llvm-ar \
+    CC_wasm32_unknown_unknown=/opt/wasi-sdk-34.0-x86_64-linux/bin/clang \
+    AR_wasm32_unknown_unknown=/opt/wasi-sdk-34.0-x86_64-linux/bin/llvm-ar \
     SOURCE_DATE_EPOCH=1793333636 \
     TZ=UTC \
     LC_ALL=C
