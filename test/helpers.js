@@ -8,6 +8,10 @@ import { after } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { crc32, deflateSync } from "node:zlib";
 
+// the tests' own lints mustn't write into the job summary of the CI run testing them
+delete process.env.GITHUB_STEP_SUMMARY;
+delete process.env.GITHUB_WORKSPACE;
+
 export const plugin = fileURLToPath(new URL("..", import.meta.url));
 const example = join(plugin, "example");
 const dirs = [];

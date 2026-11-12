@@ -12,7 +12,7 @@ export function App() {
       <img src={crystalBall} alt="" />
       <img src={heart} alt="" />
       <figure style={{ backgroundImage: `url(${banner})` }} />
-      <img src="/photo.jpg" alt="A red door" />
+      <img src="/photo.jpg" alt="Motocross riders at a starting line" />
       <img src="/missing.png" alt="" />
     </main>
   );

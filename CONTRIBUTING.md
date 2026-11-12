@@ -10,8 +10,9 @@ npm ci
 
 | Command | What it does | Time |
 |---|---|---|
-| `npm test` | every test | about 80 s |
-| `node --test test/tsconfig.test.js` | one test file | under a second; files that lint a project take longer, like `test/rule.test.js` at about 75 s |
+| `npm test` | every test | about 100 s |
+| `node --test test/tsconfig.test.js` | one test file | under a second; files that lint a project take longer, like `test/rule.test.js` at about 100 s |
+| `node --test test/review.test.js` | `--review` and its page | about 30 s |
 | `node --test test/lsp.test.js` | oxlint's language server, started as the Oxc extensions start it | about a second |
 | `npm run lint` | oxlint on the repo's own code, failing on any warning | under a second |
 | `npm run check:package` | packs the package and runs it in a fresh app with oxlint and ESLint | a few seconds |
@@ -22,13 +23,13 @@ Those times are from a 16-core M3 Max. The tests compress real images with up to
 
 CI runs the tests on Linux, macOS and Windows with Node 20, 22, 24 and 26, and on Linux with Node 20.19.0, the oldest supported. It tests oxlint 1.60 (the oldest supported), 1.89 (which Vite+ 1.4 brings), 1.90 and the newest, and ESLint 9.0 and 10. It also runs weekly, for new oxlint releases.
 
-To run your clone's command, use node: `node bin/pngdeer.js --check example` from the root, or `node ../bin/pngdeer.js` inside `example/`. There, `npx oxlint-plugin-pngdeer` runs the published version instead, because `example/` has its own package.json.
+To run your clone's command, use node: `node bin/pngdeer.js --check example` from the root, or `node ../bin/pngdeer.js` inside `example/`. There, `npx oxlint-plugin-pngdeer` runs the published version instead, because `example/` has its own package.json. To look at the review page while you work on it, run `node bin/pngdeer.js --review example --open` from the root: it writes the page to the root's `node_modules/.cache/pngdeer/review/index.html` and opens it. Without `--open`, it prints the page's address.
 
-When behavior or options change, update README.md, docs/rules/compressible-image.md, src/index.d.ts and the `--help` text in bin/pngdeer.js.
+When behavior or options change, update README.md, docs/rules/compressible-image.md, skills/pngdeer/SKILL.md, src/index.d.ts and the `--help` text in bin/pngdeer.js.
 
 ## The engine
 
-Don't edit `engine/` by hand. It is pngdeer's WebAssembly build, rebuilt from pinned source: see [engine/README.md](engine/README.md#build-and-compare). A new engine measures every image again, so say so in the release notes.
+Don't edit `engine/` by hand. It is pngdeer's WebAssembly build (upstream is now called [slimdeer](https://github.com/heydeer/slimdeer)), rebuilt from pinned source: see [engine/README.md](engine/README.md#build-and-compare). A new engine measures every image again, so say so in the release notes.
 
 ## Releasing
 

@@ -3,8 +3,8 @@
 // linted code names. Folders are skipped by name, not by reading .gitignore: dot folders,
 // dependencies, build output, and test output such as visual-regression snapshots, which are images
 // too but never shipped. A folder with its own package.json is another project, with its own cache,
-// and is left to it.
-import { readdirSync, statSync } from "node:fs";
+// and is left to it, unless the caller walks every project below a folder (--check).
+import { readdirSync, realpathSync, statSync } from "node:fs";
 import { dirname, extname, join, relative, sep } from "node:path";
 import { EXTENSIONS } from "./images.js";
 
@@ -15,6 +15,9 @@ const SKIP = new Set([
 ]);
 const patterns = new Map();
 const roots = new Map();
+// macOS and Windows don't tell letter case apart in file names, so there an exclusion doesn't either
+// (nor does .gitignore): "public/originals" leaves out the folder public/Originals
+const CASELESS = process.platform === "darwin" || process.platform === "win32";
 
 /** The nearest directory with a package.json, from `dir` up; `fallback` if none has one. */
 export function projectRoot(dir, fallback) {
@@ -43,19 +46,39 @@ export function excluded(root, file, exclude = []) {
   });
 }
 
-/**
- * Project images above `minSize`; options.base anchors exclusions, options.onError reports failures
- * and options.onPackage hears of each nested package left out.
- */
+/** Project images above `minSize`, with projectFiles()'s options. */
 export function projectImages(root, minSize = 0, exclude = [], options = {}) {
   return projectFiles(root, EXTENSIONS, minSize, Infinity, exclude, options);
 }
 
-/** The project's files with one of `extensions`, from `minSize` to `maxSize` bytes. */
-export function projectFiles(root, extensions, minSize = 0, maxSize = Infinity, exclude = [], { base = root, onError = () => {}, onPackage = () => {} } = {}) {
+/**
+ * The project's files with one of `extensions`, from `minSize` to `maxSize` bytes. Exclusions match a
+ * path from options.base, or from options.top too when given; options.onError reports failures. A
+ * folder with its own package.json is left out, or with options.nested walked too, its own folder
+ * then anchoring exclusions in place of base, as each project's exclusions start at its own folder.
+ */
+export function projectFiles(root, extensions, minSize = 0, maxSize = Infinity, exclude = [], { base = root, top, nested = false, onError = () => {} } = {}) {
   const found = [];
-  const walk = (dir) => {
-    if (excluded(base, dir, exclude)) return;
+  const anchors = (from) => (top === undefined ? [from] : [from, top]);
+  const out = (from, path) => anchors(from).some((anchor) => excluded(anchor, path, exclude));
+  const real = new Map(); // each anchor as the filesystem spells it, read once a link needs it
+  // A linked file is also left out when an exclusion matches where it leads, as the rule's own check
+  // does (rule.js): else a command printed for it would rewrite an excluded file.
+  const leadsOut = (from, path) => {
+    if (exclude.length === 0) return false;
+    try {
+      const target = realpathSync.native(path);
+      return anchors(from).some((anchor) => {
+        if (!real.has(anchor)) real.set(anchor, physical(anchor));
+        return excluded(real.get(anchor), target, exclude);
+      });
+    } catch {
+      // a broken link: reported when its size is read
+      return false;
+    }
+  };
+  const walk = (dir, from) => {
+    if (out(from, dir)) return;
     let entries;
     try {
       entries = readdirSync(dir, { withFileTypes: true });
@@ -64,24 +87,37 @@ export function projectFiles(root, extensions, minSize = 0, maxSize = Infinity, 
       return;
     }
     if (dir !== root && entries.some((entry) => entry.name === "package.json" && entry.isFile())) {
-      onPackage(dir);
-      return;
+      if (!nested) return;
+      from = dir;
     }
     for (const entry of entries) {
       if (entry.name.startsWith(".")) continue;
       const path = join(dir, entry.name);
-      if (excluded(base, path, exclude)) continue;
+      if (out(from, path)) continue;
       if (entry.isDirectory()) {
         // Playwright keeps a test's snapshots in "<test file>-snapshots"
-        if (!SKIP.has(entry.name) && !entry.name.endsWith("-snapshots")) walk(path);
+        if (!SKIP.has(entry.name) && !entry.name.endsWith("-snapshots")) walk(path, from);
       } else if ((entry.isFile() || entry.isSymbolicLink()) && extensions.includes(extname(entry.name).toLowerCase())) {
+        if (entry.isSymbolicLink() && leadsOut(from, path)) continue;
         const bytes = size(path, onError);
         if (bytes >= minSize && bytes <= maxSize) found.push(path);
       }
     }
   };
-  walk(root);
+  walk(root, base);
   return found;
+}
+
+/**
+ * A path as the filesystem spells it (links resolved, its own letter case and Unicode form: code may
+ * name Logo.png as logo.png where the filesystem doesn't tell them apart), or as given if it can't be read.
+ */
+export function physical(path) {
+  try {
+    return realpathSync.native(path);
+  } catch {
+    return path;
+  }
 }
 
 /** Small path globs: * and ? stay in one segment; ** crosses directory boundaries. */
@@ -101,7 +137,7 @@ function glob(pattern) {
     else if (char === "?") source += "[^/]";
     else source += char.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
-  return new RegExp(`^${source}(?:/|$)`);
+  return new RegExp(`^${source}(?:/|$)`, CASELESS ? "i" : "");
 }
 
 function size(path, onError) {

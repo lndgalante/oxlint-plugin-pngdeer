@@ -1,7 +1,8 @@
 // Making one image smaller on disk: what the command does to each image it's given, in its own
 // thread for one image or on the pool's engines for several (worker.js).
-import { chmodSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { accessSync, chmodSync, constants, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
+import { floored, key } from "./cache.js";
 import { compress } from "./engine.js";
 import { unsupported } from "./images.js";
 import { keepOrientation, mark, marked } from "./marker.js";
@@ -9,9 +10,11 @@ import { looks, size, smaller } from "./text.js";
 
 /**
  * Writes `input` made smaller to `output`, marked as pngdeer's: { text } saying what happened, plus
- * { original, written } sizes when it wrote a smaller file. Throws when it can't read or compress.
+ * { original, written } sizes when it wrote a smaller file. Throws when it can't read or compress, or
+ * with `lint` ({ key, target }, an entry of a lint's list) when the image holds other bytes than the
+ * ones that lint measured.
  */
-export function shrink(input, output, target) {
+export function shrink(input, output, target, lint) {
   input = realpathSync(input);
   try {
     // Atomic replacement must update a symlink's target, preserving the link itself.
@@ -21,21 +24,34 @@ export function shrink(input, output, target) {
   }
   const bytes = readFileSync(input);
   const unchanged = (note) => {
-    if (output !== input) save(output, bytes);
-    return { text: `${note}; left as is` };
+    if (output === input) return { text: `${note}; left as is` };
+    // -o still writes its file, so a script always finds one; the line says it's a copy, or a
+    // preview of the original would pass for pngdeer's result
+    save(output, bytes);
+    return { text: `${note}; copied as is` };
   };
   if (marked(bytes)) return unchanged("already pngdeer's");
+  // --flagged compares the list with the images as it starts (summary.js), but a long run leaves a
+  // branch switch or an export time to land before an image's turn: these are the bytes it compresses
+  if (lint?.key && key(bytes, lint.target) !== lint.key) throw new Error("changed since the last lint here; left as is (lint again to check it)");
   const why = unsupported(bytes);
   if (why) throw new Error(why);
 
   const { output: compressed, outcome, score } = compress(bytes, target);
   if (outcome === "miss") {
+    // rounded down: a miss's best is below its target, and 90.5 shown as 91 would reach --target 91
+    const best = `the best reaches quality ${Math.floor(score)}/100`;
+    // the automatic target found only results that look visibly different (engine.js)
+    if (floored({ outcome, score }, target)) return unchanged(`pngdeer can't make it smaller without a visible difference (${best})`);
     const wanted = target === undefined ? "the automatic quality" : `--target ${target}`;
-    return unchanged(`no smaller file reaches ${wanted} (the best reaches quality ${Math.round(score)}/100)`);
+    return unchanged(`no smaller file reaches ${wanted} (${best})`);
   }
   // the mark costs a few dozen bytes, more than pngdeer saves on some tiny files
   const result = outcome === "original" ? null : mark(keepOrientation(bytes, compressed));
   if (!result || result.length >= bytes.length) return unchanged("pngdeer can't make it smaller");
+  // Compressing took seconds, and the image may have changed meanwhile (a re-export, a branch
+  // switch): written in place, the old picture made smaller would replace the new one.
+  if (output === input && !readFileSync(input).equals(bytes)) throw new Error("changed while shrinking; left as is");
   save(output, result);
   const quality = outcome === "hit" ? `quality ${Math.round(score)}/100: looks ${looks(score)}` : "lossless: looks identical";
   const text = `${size(bytes.length)} → ${size(result.length)} (${smaller(bytes.length, result.length)}% smaller, ${quality})`;
@@ -52,6 +68,13 @@ export function plain(error) {
 
 /** Writes a whole new file or nothing: the image is often written over itself. */
 function save(path, bytes) {
+  // The rename below needs only the folder to be writable: a read-only image (chmod 444, a Perforce
+  // workspace) is left as it is, as cp and eslint --fix leave a read-only file.
+  try {
+    accessSync(path, constants.W_OK);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
   // unique per writer: the pool's engines share the process, and one image may come twice
   const tmp = join(dirname(path), `.${basename(path)}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`);
   try {

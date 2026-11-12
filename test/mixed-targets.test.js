@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { pathToFileURL } from "node:url";
 import { cacheDir, key, write } from "../src/cache.js";
 import { readFlagged } from "../src/summary.js";
-import { eslintSummary, oxlintSummary, plugin, project } from "./helpers.js";
+import { eslintSummary, oxlintSummary, plugin, pngdeer, project } from "./helpers.js";
 
 function mixed({ strict = 95, entry = "miss", minSavedBytes = 4096, files = 2 } = {}) {
   const dir = project({ images: ["src/assets/crystal-ball.png"], options: { measure: "never", scan: "referenced", target: 70 } });
@@ -66,6 +66,16 @@ for (const [name, lint] of [["oxlint", oxlintSummary], ["ESLint", eslintSummary]
     assert.deepEqual(readFlagged(automatic.dir), []);
   });
 }
+
+test("--review --flagged after a lint that held its only flagged image back says the list is empty, not that nothing was flagged", () => {
+  const { dir } = mixed({ strict: "auto", entry: "hit" });
+  const stderr = oxlintSummary(dir, "src");
+  assert.match(stderr, /left 1 shared image out of --flagged/);
+  assert.deepEqual(readFlagged(dir), []);
+  const review = pngdeer(dir, "--review", "--flagged");
+  assert.equal(review.status, 0, review.stderr);
+  assert.equal(review.stdout, "pngdeer: the last lint here left no images to review with --flagged.\n");
+});
 
 const [major, minor] = JSON.parse(readFileSync(join(plugin, "node_modules/eslint/package.json"), "utf8")).version.split(".").map(Number);
 test("ESLint concurrency shares non-reporting target constraints with the summary", { skip: major < 9 || (major === 9 && minor < 34) }, () => {

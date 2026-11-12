@@ -1,16 +1,24 @@
 import { relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-/** A file size as people read it: decimal kB and MB. */
+/** A file size as people read it: decimal kB, MB and GB. */
 export function size(bytes) {
   if (bytes < 1000) return `${bytes} B`;
-  if (bytes < 1e6) return `${(bytes / 1000).toFixed(bytes < 1e4 ? 1 : 0)} kB`;
-  return `${(bytes / 1e6).toFixed(1)} MB`;
+  // the unit and decimals go by the number as it's printed, so 999,600 bytes read 1.0 MB, not 1000 kB
+  const kB = bytes / 1000;
+  if (Number(kB.toFixed(1)) < 10) return `${kB.toFixed(1)} kB`;
+  if (Number(kB.toFixed(0)) < 1000) return `${kB.toFixed(0)} kB`;
+  if (Number((bytes / 1e6).toFixed(1)) < 1000) return `${(bytes / 1e6).toFixed(1)} MB`;
+  return `${(bytes / 1e9).toFixed(1)} GB`;
 }
 
-/** How much smaller `after` bytes are than `before`, in whole percent. */
+/**
+ * How much smaller `after` bytes are than `before`, in whole percent: 100 only for nothing left, and
+ * 0 only for no saving, as rounding would say of a file that keeps 0.3% of its bytes or saves 0.3%.
+ */
 export function smaller(before, after) {
-  return Math.round(100 - (100 * after) / before);
+  const percent = Math.round(100 - (100 * after) / before);
+  return after > 0 && after < before ? Math.min(99, Math.max(1, percent)) : percent;
 }
 
 /** `file` as typed from `cwd`, with forward slashes on every platform. */
@@ -32,9 +40,20 @@ export function looks(score) {
   return "visibly different";
 }
 
+/** What the quality numbers mean, in looks()'s words, for a table that shows the numbers alone. */
+export const LEGEND = "quality is SSIMULACRA2, out of 100: 90+ looks identical, 80+ the same side by side, 70+ close, with differences you might spot side by side, below 70 visibly different";
+
 /** "1 image", "5 images". */
 export function count(n, noun) {
   return `${n} ${noun}${n === 1 ? "" : "s"}`;
+}
+
+/**
+ * A line for a terminal, with each control character in it (a file name's escape sequence or line
+ * break, which would restyle the terminal or break the line) as U+FFFD, a character as wide.
+ */
+export function printable(text) {
+  return text.replace(/\p{Cc}/gu, "\uFFFD");
 }
 
 /** A path as a shell argument, for the shell of the platform it's printed on. */
@@ -44,7 +63,20 @@ export function quote(arg, platform = process.platform) {
 
 /** Any text as a shell argument, as quote() writes it. */
 function literal(arg, platform) {
-  const safe = platform === "win32" ? /^[\w+=:./-]+$/ : /^[\w@+=:,./-]+$/;
+  // A control character would print as U+FFFD (printable()) and so name another file, maybe one left
+  // out on purpose: each run of them goes as its bytes in $'\x..', which bash, zsh and ksh read (\x, as
+  // the bash 3.2 macOS ships has no \u). Windows allows none below U+0020 in a name.
+  if (platform !== "win32" && /\p{Cc}/u.test(arg)) {
+    return arg.split(/(\p{Cc}+)/u).map((part, i) => (i % 2 ? `$'${Buffer.from(part).toString("hex").replace(/../g, "\\x$&")}'` : part && literal(part, platform))).join("");
+  }
+  // Windows takes / for \ in a path, and so do --exclude's patterns (scan.js): one typed with
+  // backslashes then needs no quotes, and no quoted one ends in a \, which Windows PowerShell 5.1
+  // passes on as escaping the quote it adds. No name there holds a \, so one typed there is a separator
+  // in a command it prints for a POSIX shell too (a Windows runner's job summary).
+  if (platform === "win32" || process.platform === "win32") arg = arg.replaceAll("\\", "/");
+  // PowerShell reads an @ only at an argument's start, and cmd.exe never: logo@2x.png needs no
+  // quotes. zsh reads an = there as a command's path (=x.png: "x.png not found").
+  const safe = platform === "win32" ? /^[\w+=:./-][\w@+=:./-]*$/ : /^[\w@+:,./-][\w@+=:,./-]*$/;
   if (safe.test(arg)) return arg;
   return platform === "win32" ? `'${arg.replace(/['\u2018-\u201b]/g, "$&$&")}'` : `'${arg.replace(/'/g, `'\\''`)}'`;
 }
@@ -55,17 +87,26 @@ export function shrinkCommand(files, target, platform = process.platform) {
 }
 
 /**
- * The command that checks `dirs`, run the same way, with the check's options: the ones that differ
- * from the defaults, as given (exclude patterns and the cache folder are relative to each package).
+ * The command that checks `paths` (files or folders), run the same way, with the check's options: the
+ * ones that differ from the defaults, as given, as the check runs again from the same folder.
  */
-export function checkCommand(dirs, { target, exclude = [], cacheDir, minSavedBytes = 4096, minSavedPercent = 10 } = {}, platform = process.platform) {
+export function checkCommand(paths, settings = {}, platform = process.platform) {
+  return measuring(["--check"], paths, settings, platform);
+}
+
+/** The command that writes the review page (review.js) for `paths`, with the options as checkCommand() writes them. */
+export function reviewCommand(paths, settings = {}, platform = process.platform) {
+  return measuring(["--review"], paths, settings, platform);
+}
+
+function measuring(flags, paths, { target, exclude = [], cacheDir, minSavedBytes = 4096, minSavedPercent = 10 }, platform) {
   const options = [
     ...exclude.map((pattern) => ["--exclude", pattern]),
     ...(cacheDir === undefined ? [] : [["--cache-dir", cacheDir]]),
     ...(minSavedBytes === 4096 ? [] : [["--min-saved-bytes", String(minSavedBytes)]]),
     ...(minSavedPercent === 10 ? [] : [["--min-saved-percent", String(minSavedPercent)]]),
   ];
-  return command(["--check"], dirs, target, platform, options);
+  return command(flags, paths, target, platform, options);
 }
 
 function command(flags, files, target, platform, options = []) {

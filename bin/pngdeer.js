@@ -1,40 +1,52 @@
 #!/usr/bin/env node
 // Checks or shrinks images with the same engine and targets as the lint rule.
-import { readFileSync, realpathSync, statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { peakOf, pool } from "../src/batch.js";
+import { fileKey } from "../src/cache.js";
+import { physical } from "../src/scan.js";
 import { plain, shrink } from "../src/shrink.js";
-import { physical, readFlagged } from "../src/summary.js";
-import { count, pathFrom, quote, size } from "../src/text.js";
+import { readFlagged } from "../src/summary.js";
+import { count, pathFrom, printable, quote, size } from "../src/text.js";
 
 const HELP = `usage: oxlint-plugin-pngdeer IMAGE... [--target auto|T]
-       oxlint-plugin-pngdeer --flagged [--target auto|T]
        oxlint-plugin-pngdeer IMAGE -o OUT [--target auto|T]
-       oxlint-plugin-pngdeer --check [IMAGE|DIR...] [options]
+       oxlint-plugin-pngdeer --flagged [--target auto|T]
+       oxlint-plugin-pngdeer --check [PATH...] [--json] [options]
+       oxlint-plugin-pngdeer --review [PATH...] [--open] [options]
+       oxlint-plugin-pngdeer --review --flagged [--open] [--target auto|T] [--cache-dir PATH]
 
 Makes PNGs and JPEGs smaller with pngdeer, in place, at about the same visual quality.
-pngdeer is lossy: the picture looks the same, the bytes don't, so commit first.
-Use --check to measure savings without changing images.
+pngdeer is lossy: the picture looks about the same, the bytes don't, so commit first.
 
-  --check       check files or directories (default: this directory); warms the cache;
-                skips nested packages (folders with a package.json) unless named
-  --flagged     images from the last lint run here, at their measured targets;
+  -o OUT        write to OUT instead of in place, to preview the result (one image only)
+  --flagged     the images the last lint here flagged, each at the target it was measured at;
                 shared images with conflicting quality targets are left out
-  -o OUT        write to OUT instead of in place (one image only)
-  --target T    the SSIMULACRA2 score to keep, 0-100 (90 looks identical at 1:1);
-                auto (the default) picks one per image, about TinyPNG's quality
-  --min-saved-bytes N    minimum saving to report in --check (default: 4096)
-  --min-saved-percent N  minimum percentage to report in --check (default: 10)
-  --exclude PATTERN     exclude a project-relative file, directory or glob in --check;
-                        supports *, ** and ?; repeat this option for more exclusions
-  --cache-dir PATH      cache directory relative to each project root, for --check
+  --check       measure, changing no image: files and folders (default: this folder), with
+                the packages inside them; warms the lint's cache
+  --json        with --check, print one JSON document on stdout instead of lines
+  --review      write previews and a page to compare them with the originals; changes no image
+  --open        with --review, open the page in a browser
+  --target T    the SSIMULACRA2 score to keep, 0-100 (90 looks identical at 1:1); auto
+                (the default) picks one per image, about TinyPNG's quality, never below 70
+
+Options for --check and --review:
+  --min-saved-bytes N    the smallest saving to list, in bytes (default: 4096)
+  --min-saved-percent N  the smallest saving to list, in percent (default: 10)
+  --exclude PATTERN      leave out a file, folder or glob (*, **, ?), as a path from the
+                         image's package or from this folder; repeat for more
+  --cache-dir PATH       the cache folder, from each package (default: node_modules/.cache/pngdeer)
+
   --            treat all remaining arguments as image paths
   -v, --version
   -h, --help
 
---check exits 0 when clean, 1 when savings meet both thresholds, and 2 on errors
-or when it found no images outside the nested packages it skipped.
-It uses explicit options, without reading linter configuration.
+An option's value can follow it or an = sign: --target 80 or --target=80.
+--check exits 0 when no image clears both thresholds, 1 when one does, and 2 on a mistake
+or when an image or folder couldn't be checked. It reads no linter configuration.
+--review exits 0 when it wrote the page or found nothing to review, and 2 on a mistake,
+when --flagged finds no list, or when an image or folder couldn't be checked or previewed.
+Like --check, it reads no linter configuration; with --flagged, it shows what the lint flagged.
 Files it writes are marked as pngdeer's, so the lint rule doesn't flag them again.`;
 
 const CHECK_OPTIONS = {
@@ -43,21 +55,49 @@ const CHECK_OPTIONS = {
   "--exclude": "exclude",
   "--cache-dir": "cacheDir",
 };
+// the options that take a value, and those that take none
+const VALUED = new Set(["-o", "--target", ...Object.keys(CHECK_OPTIONS)]);
+const FLAGS = new Set(["--check", "--flagged", "--json", "--review", "--open", "--help", "--version"]);
+// What --flagged finds where no lint left a list: none ran here (or one ran in a folder above), eslint
+// ran with --cache, or a lint here flagged nothing and had no cache folder to leave an empty list in.
+const NO_LIST = "no list of flagged images here: lint in this folder first (npx oxlint, or eslint without --cache); if a lint here flagged no image, there is nothing to do";
+
+// A reader that stops early (| head) closes the pipe: the printing stops there, but the work goes on.
+// Each image is written whole, one by one, and a list shrunk halfway without a word would be worse.
+// The exit code is still the work's. (Windows says EOF where others say EPIPE.)
+for (const stream of [process.stdout, process.stderr]) {
+  stream.on("error", (error) => {
+    if (error.code !== "EPIPE" && error.code !== "EOF") throw error;
+  });
+}
 
 async function main(args) {
+  // run bare, it says what it does
+  if (args.length === 0) {
+    console.error(`oxlint-plugin-pngdeer: no image given\n\n${HELP}`);
+    return 2;
+  }
   const inputs = [];
   let output;
   let target;
   let targeted = false;
   let fromLint = false;
   let checking = false;
+  let json = false;
+  let reviewing = false;
+  let open = false;
   const checkOptions = {};
   for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
+    let arg = args[i];
+    let value;
     if (arg === "--") {
       inputs.push(...args.slice(i + 1));
       break;
     }
+    // --target=80, as linters take their options
+    const joined = /^(--[a-z-]+)=(.*)$/s.exec(arg);
+    if (joined && FLAGS.has(joined[1])) return fail(`${joined[1]} takes no value`);
+    if (joined && VALUED.has(joined[1])) [, arg, value] = joined;
     if (arg === "-h" || arg === "--help") {
       console.log(HELP);
       return 0;
@@ -68,16 +108,23 @@ async function main(args) {
     }
     if (arg === "--flagged") fromLint = true;
     else if (arg === "--check") checking = true;
-    else if (arg === "-o" || arg === "--target" || Object.hasOwn(CHECK_OPTIONS, arg)) {
-      const value = args[++i];
-      if (value === undefined || value.startsWith("--") || ["-h", "-v", "-o"].includes(value)) return fail(`${arg} needs a value`);
+    else if (arg === "--json") json = true;
+    else if (arg === "--review") reviewing = true;
+    else if (arg === "--open") open = true;
+    else if (VALUED.has(arg)) {
+      if (value === undefined) {
+        value = args[++i];
+        if (value === undefined || value.startsWith("--") || ["-h", "-v", "-o"].includes(value)) return fail(`${arg} needs a value`);
+      }
+      // empty either way, as a script's unset variable gives it (-o "$OUT"): else -o "" blames the image
+      if (value === "") return fail(`${arg} needs a value`);
       if (arg === "-o") output = value;
       else if (arg === "--target") {
         targeted = true;
         target = value === "auto" ? undefined : Number(value);
         if (target !== undefined && !(value.trim() !== "" && target >= 0 && target <= 100)) return fail(`--target must be auto or a number from 0 to 100, not ${value}`);
       } else if (arg === "--exclude" || arg === "--cache-dir") {
-        if (!value.trim() || value.startsWith("--")) return fail(`${arg} needs a nonempty value`);
+        if (!value.trim() || value.startsWith("--")) return fail(`${arg} needs a value`);
         if (arg === "--exclude") (checkOptions.exclude ??= []).push(value);
         else checkOptions.cacheDir = value;
       } else {
@@ -90,17 +137,44 @@ async function main(args) {
     } else if (arg.startsWith("-") && arg !== "-") return fail(`unknown option ${arg}`);
     else inputs.push(arg);
   }
+  if (reviewing) {
+    if (checking || output !== undefined || json) return fail("--review cannot be combined with --check, -o or --json");
+    let flagged;
+    if (fromLint) {
+      if (inputs.length) return fail("--flagged takes no images and no -o");
+      // the lint chose the images by its own thresholds and exclusions
+      if (["exclude", "minSavedBytes", "minSavedPercent"].some((option) => option in checkOptions)) return fail("--review --flagged cannot be combined with --exclude, --min-saved-bytes or --min-saved-percent");
+      const list = readFlagged(process.cwd());
+      if (!list) {
+        console.error(`oxlint-plugin-pngdeer: ${NO_LIST}`);
+        return 2;
+      }
+      // a --target given here wins over the lint's, as with --flagged, and so does a --cache-dir over
+      // the folder the lint measured into
+      flagged = list.map(({ file, target: own, cacheDir, changed }) => ({ file, target: targeted ? target : own, cacheDir: checkOptions.cacheDir ?? cacheDir, changed }));
+    }
+    try {
+      // the review page (review.js) loads only when asked for
+      const { review } = await import("../src/review.js");
+      return await review(inputs.length ? inputs : ["."], { ...checkOptions, target, open, flagged });
+    } catch (error) {
+      console.error(printable(`oxlint-plugin-pngdeer: ${plain(error)}`));
+      return 2;
+    }
+  }
+  if (open) return fail("--open requires --review");
   if (checking) {
     if (fromLint || output !== undefined) return fail("--check cannot be combined with --flagged or -o");
     try {
       const { check } = await import("../src/check.js");
-      return await check(inputs.length ? inputs : ["."], { ...checkOptions, target });
+      return await check(inputs.length ? inputs : ["."], { ...checkOptions, target, json });
     } catch (error) {
-      console.error(`oxlint-plugin-pngdeer: ${plain(error)}`);
+      console.error(printable(`oxlint-plugin-pngdeer: ${plain(error)}`));
       return 2;
     }
   }
-  if (Object.keys(checkOptions).length) return fail("--min-saved-bytes, --min-saved-percent, --exclude and --cache-dir require --check");
+  if (json) return fail("--json requires --check");
+  if (Object.keys(checkOptions).length) return fail("--min-saved-bytes, --min-saved-percent, --exclude and --cache-dir require --check or --review");
   if (fromLint && (inputs.length || output !== undefined)) return fail("--flagged takes no images and no -o");
   if (!fromLint && inputs.length === 0) return fail("no image given");
   if (output !== undefined && inputs.length > 1) return fail("-o takes one image; without it, each image is written in place");
@@ -109,38 +183,48 @@ async function main(args) {
     const example = join(output, basename(inputs[0])).split(sep).join("/");
     return fail(`-o ${output} is a folder: give the file to write${physical(output) === physical(dirname(resolve(inputs[0]))) ? "" : `, like -o ${quote(example)}`}`);
   }
+  // -o is for a new file: the image itself, through a link or in another letter case (macOS,
+  // Windows), would be written over, and its in-place checks skipped (shrink.js)
+  if (output !== undefined && physical(resolve(output)) === physical(resolve(inputs[0]))) {
+    return fail(`-o ${output} is ${inputs[0]} itself: give another name, or leave out -o to shrink it in place`);
+  }
 
   const flagged = fromLint ? readFlagged(process.cwd()) : null;
   if (fromLint && !flagged) {
-    // eslint --cache leaves no list (summary.js)
-    console.error("oxlint-plugin-pngdeer: no list of flagged images here yet: run npx oxlint, or eslint without --cache, in this folder first");
+    console.error(`oxlint-plugin-pngdeer: ${NO_LIST}`);
     return 1;
   }
   if (fromLint && flagged.length === 0) {
     console.log("the last lint here left no images to shrink with --flagged");
     return 0;
   }
-  // each image, the path to show for it, and its target: a --target given here wins over the lint's
+  // an image changed since the lint isn't the one it flagged (summary.js): left as it is
+  const changed = fromLint ? flagged.filter((image) => image.changed) : [];
+  for (const { file } of changed) console.error(printable(`${pathFrom(process.cwd(), file)}: changed since the last lint here; left as is (lint again to check it)`));
+  // each image, the path to show for it, and its target: a --target given here wins over the lint's.
+  // From a lint's list, also the key of the bytes readFlagged() just found there, the ones the lint
+  // measured: the shrink checks them again when the image's turn comes (shrink.js).
   const jobs = once(
     fromLint
-      ? flagged.map((image) => ({ input: pathFrom(process.cwd(), image.file), target: targeted ? target : image.target }))
+      ? flagged.filter((image) => !image.changed).map((image) => ({ input: pathFrom(process.cwd(), image.file), target: targeted ? target : image.target, lint: { key: fileKey(image.file, image.target)?.key, target: image.target } }))
       : inputs.map((input) => ({ input, target })),
   );
+  if (jobs.length === 0) return 1;
 
   // one image runs here; several run on a pool of engines, one per core, each line printed as it lands
   if (jobs.length === 1) {
-    const [{ input, target }] = jobs;
+    const [{ input, target, lint }] = jobs;
     try {
       // with -o, say where it wrote, so a preview doesn't read like an in-place write
-      console.log(`${output === undefined ? input : `${input} → ${output}`}: ${shrink(input, output ?? input, target).text}`);
-      return 0;
+      console.log(printable(`${output === undefined ? input : `${input} → ${output}`}: ${shrink(input, output ?? input, target, lint).text}`));
+      return changed.length ? 1 : 0;
     } catch (error) {
-      console.error(`${input}: ${plain(error)}`);
+      console.error(printable(`${input}: ${plain(error)}`));
       return 1;
     }
   }
   console.error(`pngdeer: shrinking ${count(jobs.length, "image")} in place (lossy; commit first so you can undo)`);
-  let status = 0;
+  let status = changed.length ? 1 : 0;
   let finished = 0;
   let original = 0;
   let compressed = 0;
@@ -148,11 +232,11 @@ async function main(args) {
   const report = (input, result) => {
     const step = `[${++finished}/${jobs.length}] ${input}`;
     if (result.error) {
-      console.error(`${step}: ${result.error}`);
+      console.error(printable(`${step}: ${result.error}`));
       status = 1;
       return;
     }
-    console.log(`${step}: ${result.text}`);
+    console.log(printable(`${step}: ${result.text}`));
     if (result.written) {
       shrunk++;
       original += result.original;
@@ -160,7 +244,7 @@ async function main(args) {
     }
   };
   const work = [];
-  for (const { input, target } of jobs) {
+  for (const { input, target, lint } of jobs) {
     let bytes;
     try {
       bytes = readFileSync(input);
@@ -168,12 +252,13 @@ async function main(args) {
       report(input, { error: plain(error) });
       continue;
     }
-    work.push({ input, peak: peakOf(bytes), message: { file: input, target, out: input } });
+    // the pool goes by file size, the best guess of an image's time (batch.js)
+    work.push({ input, size: bytes.length, peak: peakOf(bytes), message: { file: input, target, out: input, lint } });
   }
   try {
     await pool(work, { done: (job, result) => report(job.input, result) });
   } catch (error) {
-    console.error(`oxlint-plugin-pngdeer: ${plain(error)}`);
+    console.error(printable(`oxlint-plugin-pngdeer: ${plain(error)}`));
     return 1;
   }
   if (shrunk) {
@@ -186,12 +271,9 @@ async function main(args) {
 function once(jobs) {
   const seen = new Set();
   return jobs.filter(({ input }) => {
-    let path = input;
-    try {
-      path = realpathSync(input);
-    } catch {
-      // a missing file is reported when it's read
-    }
+    // as the filesystem spells it, so Logo.png and logo.png are one image on macOS and Windows; a
+    // missing file is reported when it's read
+    const path = physical(resolve(input));
     if (seen.has(path)) return false;
     seen.add(path);
     return true;
@@ -207,8 +289,9 @@ function folder(path) {
   }
 }
 
+/** A mistake in the arguments: said in one line, which the usage would scroll away. */
 function fail(message) {
-  console.error(`oxlint-plugin-pngdeer: ${message}\n\n${HELP}`);
+  console.error(`oxlint-plugin-pngdeer: ${printable(message)}\nRun npx oxlint-plugin-pngdeer --help to see every option.`);
   return 2;
 }
 

@@ -5,7 +5,7 @@ import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rm
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { pathToFileURL } from "node:url";
-import { editor } from "../src/rule.js";
+import { editor, floorLine } from "../src/rule.js";
 import { eslintSummary, fade, handled, names, oxlint, oxlintSummary, plugin, pngdeer, project } from "./helpers.js";
 
 test("warns on each reference to a compressible image, with the command that fixes it", () => {
@@ -35,7 +35,7 @@ test("says what the first run is doing, and what the warnings add up to", () => 
   // one command for all the flagged images
   const rows = stderr.split("\n").filter((line) => line.startsWith("  ")).map((line) => line.trim().split(/\s+/)[0]);
   assert.deepEqual(rows, ["image", "public/hero.png", "src/assets/diagram.png", "public/photo.jpg", "src/assets/crystal-ball.png", "public/unused-fire.png"]);
-  assert.match(stderr, /^pngdeer: also 1 image that no linted JS or TS names could be 5\.\d kB smaller:$/m);
+  assert.match(stderr, /^pngdeer: also 1 image with no warning could be 5\.\d kB smaller \(named only where this run can't warn, or nowhere\):$/m);
   assert.match(stderr, /^  public\/unused-fire\.png .* mentioned in (README|SOURCES)\.md$/m);
   assert.match(stderr, /^pngdeer: to shrink it too, run: npx oxlint-plugin-pngdeer public\/unused-fire\.png$/m);
   assert.match(stderr, /^pngdeer: quality is SSIMULACRA2, out of 100: 90\+ looks identical, .*, below 70 visibly different$/m);
@@ -56,7 +56,7 @@ test("the summary says where an image no JS or TS names is used, or that nothing
   const dir = project({ files, images: ["public/hero.png", "public/photo.jpg"] });
   oxlint(dir);
   const stderr = oxlintSummary(dir);
-  assert.match(stderr, /^pngdeer: no warnings, but 2 images that no linted JS or TS names could be \d+ kB smaller:$/m);
+  assert.match(stderr, /^pngdeer: no warnings, but 2 images could be \d+ kB smaller \(named only where this run can't warn, or nowhere\):$/m);
   assert.match(stderr, /^  public\/hero\.png .* used in src\/styles\.css$/m);
   assert.match(stderr, /^  public\/photo\.jpg .* nothing names it$/m);
   assert.match(stderr, /^pngdeer: to shrink them in place \(lossy, so commit first\), run: npx oxlint-plugin-pngdeer public\/hero\.png public\/photo\.jpg$/m);
@@ -114,7 +114,7 @@ test("an image whose warning a comment turns off is left out of the summary and 
 
 test("--flagged shrinks what the last lint flagged, at the target it measured", () => {
   const dir = project({ options: { target: 70 } });
-  assert.match(pngdeer(dir, "--flagged").stderr, /^oxlint-plugin-pngdeer: no list of flagged images here yet: run npx oxlint, or eslint without --cache, in this folder first$/m);
+  assert.match(pngdeer(dir, "--flagged").stderr, /^oxlint-plugin-pngdeer: no list of flagged images here: lint in this folder first \(npx oxlint, or eslint without --cache\); if a lint here flagged no image, there is nothing to do$/m);
   oxlint(dir);
   const run = pngdeer(dir, "--flagged");
   assert.equal(run.status, 0, run.stderr);
@@ -123,6 +123,22 @@ test("--flagged shrinks what the last lint flagged, at the target it measured", 
   assert.match(run.stderr, /^pngdeer: 4 images, 1\.0 MB → \d+ kB \(\d+ kB smaller\)\. Lint again to check\.$/m);
   assert.deepEqual(oxlint(dir).found, []);
   assert.equal(pngdeer(dir, "--flagged").stdout.trim(), "the last lint here left no images to shrink with --flagged");
+});
+
+test("--flagged after a first lint that measured images but flagged none says there's nothing to shrink", () => {
+  const dir = project({ options: { minSavedPercent: 90 }, images: ["public/photo.jpg"], files: { "src/App.jsx": 'export const a = <img src="/photo.jpg" />;\n' } });
+  assert.deepEqual(oxlint(dir).found, []);
+  const run = pngdeer(dir, "--flagged");
+  assert.equal(run.status, 0, run.stderr);
+  assert.equal(run.stdout.trim(), "the last lint here left no images to shrink with --flagged");
+  // a lint that measured nothing makes no cache folder just for an empty list, so --flagged finds
+  // none, and says what's true either way
+  const bare = project({ images: [], files: { "src/App.jsx": "export const a = 1;\n" } });
+  oxlint(bare);
+  assert.equal(existsSync(join(bare, "node_modules")), false);
+  const none = pngdeer(bare, "--flagged");
+  assert.equal(none.status, 1);
+  assert.equal(none.stderr, "oxlint-plugin-pngdeer: no list of flagged images here: lint in this folder first (npx oxlint, or eslint without --cache); if a lint here flagged no image, there is nothing to do\n");
 });
 
 test("files fixed with the command aren't flagged again, even on a fresh clone", () => {
@@ -223,7 +239,40 @@ test("editors are told apart by the linter's script, not by the project's folder
   for (const script of commands) assert.equal(editor(["node", script], {}), false, script);
 });
 
-test("an unreadable image is skipped, not an error", { skip: process.platform === "win32" }, () => {
+test("an editor that waits for measuring still leaves a core to the editor", () => {
+  const files = {
+    "src/App.jsx": 'import ball from "./assets/crystal-ball.png";\n',
+    // says how many cores each batch the lint starts leaves free
+    "spy.mjs": [
+      'import { writeSync } from "node:fs";',
+      'import { syncBuiltinESMExports } from "node:module";',
+      'import threads from "node:worker_threads";',
+      "const { Worker } = threads;",
+      "threads.Worker = class extends Worker {",
+      "  constructor(url, options) {",
+      "    const request = options?.workerData?.request;",
+      "    if (request) writeSync(2, `spare ${request.spare}\\n`);",
+      "    super(url, options);",
+      "  }",
+      "};",
+      "syncBuiltinESMExports();",
+    ].join("\n"),
+  };
+  const dir = project({ files, images: ["src/assets/crystal-ball.png"], options: { measure: "always" } });
+  const args = ["--import", pathToFileURL(join(dir, "spy.mjs")).href, join(plugin, "node_modules", "oxlint", "bin", "oxlint"), "--format", "json", "src"];
+  // ESLint's language server in VS Code, as editor() tells it
+  const run = spawnSync(process.execPath, args, { cwd: dir, encoding: "utf8", env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" } });
+  assert.equal(run.status, 0, run.stderr);
+  assert.deepEqual(names({ found: JSON.parse(run.stdout).diagnostics.filter((d) => d.code.includes("compressible-image")) }), ["crystal-ball.png"]);
+  assert.deepEqual(run.stderr.match(/^spare .*$/gm), ["spare 1"]);
+  // the oxlint command, which has nothing else to do meanwhile, uses every core
+  rmSync(join(dir, "node_modules"), { recursive: true, force: true });
+  const command = spawnSync(process.execPath, args, { cwd: dir, encoding: "utf8", env: { ...process.env, ELECTRON_RUN_AS_NODE: "" } });
+  assert.deepEqual(command.stderr.match(/^spare .*$/gm), ["spare 0"]);
+});
+
+// chmod keeps neither Windows nor root out
+test("an unreadable image is skipped, not an error", { skip: process.platform === "win32" || process.getuid?.() === 0 }, () => {
   const files = { "src/App.jsx": 'import a from "./assets/crystal-ball.png";\nimport b from "./assets/diagram.png";\n' };
   const dir = project({ files, images: ["src/assets/crystal-ball.png", "src/assets/diagram.png"] });
   chmodSync(join(dir, "src/assets/diagram.png"), 0o000);
@@ -245,8 +294,94 @@ test("an image pngdeer can't take is named on stderr, not silently skipped", () 
   const dir = project({ files, options: { target: 90 }, images: [] });
   const { found, stderr } = oxlint(dir);
   assert.deepEqual(found, []);
-  assert.match(stderr, /^pngdeer: src\/assets\/fade\.png: pngdeer couldn't compress this image: unreachable \(a bug in pngdeer/m);
+  // upstream's new name, said so a user who knows the engine as pngdeer's isn't lost
+  assert.match(stderr, /^pngdeer: src\/assets\/fade\.png: pngdeer couldn't compress this image: unreachable \(a bug in pngdeer's engine, now named slimdeer: please report it at https:\/\/github\.com\/heydeer\/slimdeer\/issues\)$/m);
   assert.match(stderr, /^pngdeer: skipped src\/assets\/fake\.png: not a PNG or JPEG$/m);
+});
+
+test("the lint says once, as it measures them, how many images the quality floor kept from being reported", () => {
+  // fade.png's best at the automatic target looks visibly different (59), and nothing reaches 70
+  const files = { "src/App.jsx": 'import fade from "./assets/fade.png";\nimport ball from "./assets/crystal-ball.png";\n', "src/assets/fade.png": fade() };
+  const dir = project({ files, images: ["src/assets/crystal-ball.png"], options: { scan: "referenced" } });
+  const first = oxlintSummary(dir);
+  assert.match(first, /^pngdeer: measured 2 images in \d+\.\d s; later runs read the cache\npngdeer: 1 of them can't be made smaller without a visible difference \(its best quality is below 70\), so it isn't reported; npx oxlint-plugin-pngdeer --check names it$/m);
+  assert.match(first, /^pngdeer: 1 flagged image could be/m);
+  // and so it does
+  assert.match(pngdeer(dir, "--check", "src").stdout, /^pngdeer: 1 image can't be made smaller without a visible difference \(its best quality is below 70\), so it isn't listed; /m);
+  // later runs read the cache, and say nothing more
+  assert.doesNotMatch(oxlintSummary(dir), /visible difference/);
+  // a batch of that one image alone, which no code names (the project scan measures it for the
+  // summary's table, where it isn't either), with the lint's own thresholds and cache folder: the
+  // --check the line gives names it, from what the lint measured
+  const alone = project({ files: { "src/App.jsx": "export const a = 1;\n", "public/fade.png": fade() }, images: [], options: { minSavedPercent: 5 } });
+  const configFile = join(alone, ".oxlintrc.json");
+  writeFileSync(configFile, JSON.stringify({ ...JSON.parse(readFileSync(configFile, "utf8")), settings: { pngdeer: { cacheDir: ".pngdeer" } } }));
+  const line = /^pngdeer: measured 1 image in \d+\.\d s; later runs read the cache\npngdeer: it can't be made smaller without a visible difference \(its best quality is below 70\), so it isn't reported; npx oxlint-plugin-pngdeer (--check --cache-dir \.pngdeer --min-saved-percent 5) names it$/m.exec(oxlintSummary(alone));
+  assert.ok(line);
+  const named = pngdeer(alone, ...line[1].split(" "));
+  assert.doesNotMatch(named.stderr, /measuring/);
+  assert.match(named.stdout, /^pngdeer: 1 image can't be made smaller without a visible difference /m);
+  // thresholds it wouldn't clear anyway: the floor isn't why it gets no warning
+  const quiet = project({ files: { "src/App.jsx": 'import fade from "./assets/fade.png";\n', "src/assets/fade.png": fade() }, images: [], options: { minSavedPercent: 95 } });
+  assert.doesNotMatch(oxlintSummary(quiet), /visible difference/);
+  // the other forms; the --check that names them is the one with the lint's thresholds and cache folder
+  assert.equal(floorLine(5, 4), "4 of them can't be made smaller without a visible difference (their best quality is below 70), so they aren't reported; npx oxlint-plugin-pngdeer --check names them");
+  assert.equal(floorLine(3, 3, { minSavedBytes: 4096, minSavedPercent: 5 }), "none of them can be made smaller without a visible difference (their best quality is below 70), so they aren't reported; npx oxlint-plugin-pngdeer --check --min-saved-percent 5 names them");
+  assert.equal(floorLine(2, 1, { cacheDir: ".pngdeer" }), "1 of them can't be made smaller without a visible difference (its best quality is below 70), so it isn't reported; npx oxlint-plugin-pngdeer --check --cache-dir .pngdeer names it");
+  // a folder only PowerShell takes as typed would need "run in PowerShell": the plain --check names them too
+  const platform = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", { ...platform, value: "win32" });
+  try {
+    assert.match(floorLine(1, 1, { cacheDir: "my cache" }), /; npx oxlint-plugin-pngdeer --check names it$/);
+  } finally {
+    Object.defineProperty(process, "platform", platform);
+  }
+  assert.match(floorLine(1, 1, { cacheDir: "my cache" }), process.platform === "win32" ? /--check names it$/ : /; npx oxlint-plugin-pngdeer --check --cache-dir 'my cache' names it$/);
+});
+
+test("the --check the floor line gives looks where the lint's batch did: in the project's folder, without what the rule leaves out", () => {
+  // two copies of fade.png, whose best looks visibly different: the rule leaves one out
+  const files = { "src/App.jsx": 'export const logo = "/logo.png";\n', "public/logo.png": fade(), "public/old/fade.png": fade() };
+  const dir = project({ files, images: [], options: { exclude: ["public/old"] } });
+  // a lint run below the project's folder, with its configuration
+  const src = join(dir, "src");
+  const line = /^pngdeer: it can't be made smaller .*; npx oxlint-plugin-pngdeer (--check \.\. --exclude public\/old) names it$/m.exec(oxlintSummary(src, "-c", "../.oxlintrc.json"));
+  assert.ok(line);
+  // run there, it names that one image, from what the lint measured
+  const named = pngdeer(src, ...line[1].split(" "));
+  assert.doesNotMatch(named.stderr, /measuring/);
+  assert.match(named.stdout, /^pngdeer: checked 1 image; 0 measured, 1 cached, /m);
+  assert.match(named.stdout, /^pngdeer: 1 image can't be made smaller without a visible difference .* --check \.\.\/public\/logo\.png /m);
+  // and from a folder beside the project, or a monorepo's root, where a bare --check would find none,
+  // or walk every package: it names that package's folder
+  const packages = { "tools/notes.txt": "" };
+  for (const name of ["a", "b"]) Object.assign(packages, { [`packages/${name}/package.json`]: "{}", [`packages/${name}/src/App.jsx`]: 'export const logo = "/logo.png";\n', [`packages/${name}/public/logo.png`]: fade() });
+  const monorepo = project({ files: packages, images: [] });
+  const tools = join(monorepo, "tools");
+  const beside = /^pngdeer: it can't be made smaller .*; npx oxlint-plugin-pngdeer (--check \.\.\/packages\/a) names it$/m.exec(oxlintSummary(tools, "-c", "../.oxlintrc.json", join(monorepo, "packages/a/src")));
+  assert.ok(beside);
+  assert.match(pngdeer(tools, ...beside[1].split(" ")).stdout, /^pngdeer: checked 1 image; 0 measured, 1 cached, /m);
+  const root = /^pngdeer: it can't be made smaller .*; npx oxlint-plugin-pngdeer (--check packages\/b) names it$/m.exec(oxlintSummary(monorepo));
+  assert.ok(root);
+  assert.match(pngdeer(monorepo, ...root[1].split(" ")).stdout, /^pngdeer: checked 1 image; 0 measured, 1 cached, /m);
+  // a folder or pattern only PowerShell takes as typed: the plain --check from the project's folder
+  const platform = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", { ...platform, value: "win32" });
+  try {
+    assert.match(floorLine(1, 1, { paths: [".."], exclude: ["old *"] }), /; npx oxlint-plugin-pngdeer --check \.\. names it$/);
+    // a package's folder whose name needs quotes there: the plain --check, which walks it too
+    assert.match(floorLine(1, 1, { paths: ["packages/my app"] }), /; npx oxlint-plugin-pngdeer --check names it$/);
+  } finally {
+    Object.defineProperty(process, "platform", platform);
+  }
+});
+
+test("an explicit target has no quality floor, and the lint says nothing of one", () => {
+  const files = { "src/App.jsx": 'import fade from "./assets/fade.png";\n', "src/assets/fade.png": fade() };
+  const dir = project({ files, images: [], options: { target: 60 } });
+  const stderr = oxlintSummary(dir);
+  assert.match(stderr, /^pngdeer: measured 1 image in /m);
+  assert.doesNotMatch(stderr, /visible difference/);
 });
 
 test("aliases resolve, including subpath imports that start with #", () => {
@@ -376,7 +511,7 @@ test("a lint waiting for another one's batch says so", { timeout: 60_000 }, asyn
   await new Promise((resolve) => setTimeout(resolve, 1500));
   other.kill();
   assert.equal(await exit, 0, stderr);
-  assert.match(stderr, /^pngdeer: waiting for another lint measuring this project \(if none is running, delete .+measuring\.lock\)$/m);
+  assert.match(stderr, /^pngdeer: waiting for another lint measuring this project \(if none is running, this one goes on within a minute\)$/m);
   // the time it gives is the measuring alone, without the wait
   const seconds = Number(/^pngdeer: measured 1 image in (\d+\.\d) s/m.exec(stderr)?.[1]);
   assert.ok(seconds + 1.5 <= (performance.now() - start) / 1000, stderr);

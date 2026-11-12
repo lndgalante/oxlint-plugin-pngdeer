@@ -57,7 +57,8 @@ function drain() {
   queued.delete(group);
   running = true;
   const files = [...batch.files];
-  const worker = startWorker(new URL("./fill-worker.js", import.meta.url), { workerData: { request: { ...batch, files } } });
+  // a core stays free for the language server, which keeps linting meanwhile
+  const worker = startWorker(new URL("./fill-worker.js", import.meta.url), { workerData: { request: { ...batch, files, spare: 1 } } });
   // read now: by its exit, a worker's threadId is -1
   const thread = worker.threadId;
   // an error thrown here would take the whole language server down with it

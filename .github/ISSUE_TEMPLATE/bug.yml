@@ -1,5 +1,5 @@
 name: Bug report
-description: The rule or the command did something wrong
+description: The rule or the command did something wrong. No warnings at all? Go through the checklist at https://github.com/lndgalante/oxlint-plugin-pngdeer/blob/main/docs/rules/compressible-image.md#no-warnings first.
 labels: ["bug"]
 body:
   - type: textarea
@@ -25,4 +25,4 @@ body:
     id: image
     attributes:
       label: The image
-      description: If you can share it, attach the image involved. If pngdeer itself fails on it ("a bug in pngdeer"), report it at https://github.com/heydeer/pngdeer/issues as well.
+      description: If you can share it, attach the image involved. If pngdeer's engine itself fails on it ("a bug in pngdeer's engine"), report it at https://github.com/heydeer/slimdeer/issues as well (upstream now names the engine slimdeer).

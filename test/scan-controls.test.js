@@ -26,7 +26,7 @@ for (const [name, lint, summary] of [["oxlint", oxlint, oxlintSummary], ["ESLint
 
     const bytes = readFileSync(join(dir, photo));
     write(cacheDir(dir), key(bytes), { original: bytes.length, compressed: 1000, outcome: "hit", score: 90 });
-    assert.doesNotMatch(summary(dir, "src/app.js"), /photo\.jpg|no linted JS or TS names/);
+    assert.doesNotMatch(summary(dir, "src/app.js"), /photo\.jpg|named only where this run can't warn/);
   });
 
   test(`${name}: exclusions apply to references, scans, cached summaries and --flagged`, () => {
@@ -69,7 +69,7 @@ test("project summaries retain configurations with different exclusions", async 
   let stderr = "";
   t.mock.method(process.stderr, "write", (text) => { stderr += text; return true; });
   summary.summarize(dir);
-  assert.match(stderr, /2 images that no linted JS or TS names/);
+  assert.match(stderr, /^pngdeer: no warnings, but 2 images could be .* smaller \(named only where this run can't warn, or nowhere\):$/m);
   assert.match(stderr, /photo\.jpg/);
   assert.match(stderr, /crystal-ball\.png/);
 });

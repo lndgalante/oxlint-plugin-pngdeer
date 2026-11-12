@@ -10,16 +10,24 @@ export interface CompressibleImageOptions {
   measure?: "auto" | "always" | "never";
   /** Measure all project images or only images named by linted files. Default "project". */
   scan?: "project" | "referenced";
-  /** Excluded image files or directories, relative to the project root; supports *, ** and ?. Default []. */
+  /**
+   * Excluded image files or directories, relative to the project root; supports *, ** and ?. Default [].
+   * In a project that depends on gatsby, public/ (its build output) is excluded too, unless
+   * settings.pngdeer.publicDirs includes "public".
+   */
   exclude?: string[];
 }
 
 /** `settings.pngdeer`, shared by every file. */
 export interface PngdeerSettings {
-  /** Folders where "/x.png" paths are looked up. Default ["public", "static"]. */
+  /**
+   * Folders where "/x.png" paths are looked up: in the linted file's folder and each folder above it,
+   * nearest first, up to the project root, then in the root. Default ["public", "static"], or
+   * ["static"] in a project that depends on gatsby.
+   */
   publicDirs?: string[];
   /** Path prefixes and the folders they stand for. Default: the project's tsconfig/jsconfig paths, else { "@/": "src/", "~/": "src/" }. */
-  aliases?: Record<string, string>;
+  aliases?: Record<string, string | string[]>;
   /** Where results are kept, relative to the project root: a folder you can commit. Default node_modules/.cache/pngdeer. */
   cacheDir?: string;
 }

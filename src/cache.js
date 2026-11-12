@@ -4,6 +4,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { dimensions, kind } from "./images.js";
 import { marked } from "./marker.js";
 
 const keys = new Map(); // image path -> file metadata and content key, so images aren't re-read on every keystroke
@@ -23,19 +24,42 @@ export function cacheDir(cwd) {
 // PNGs with a color profile, and counts the eXIf a turned PNG now keeps.
 const FORMAT = 3;
 
-/** The cache key of an image's bytes for a given target (undefined: automatic quality). */
+// The lowest quality the automatic target settles for: below it the warning would say "visibly
+// different" (looks() in text.js), so engine.js compresses such an image again at FLOOR. The
+// automatic target's key names it, so changing it measures those results again.
+export const FLOOR = 70;
+
+/** The cache key of an image's bytes for a given target (undefined: automatic quality, at least FLOOR). */
 export function key(bytes, target) {
-  return createHash("sha256").update(bytes).update(`\0${ENGINE}\0${target ?? "auto"}\0${FORMAT}`).digest("hex");
+  return hash(bytes, target ?? `auto${FLOOR}`);
+}
+
+/** The key 0.5.0 gave an image's bytes at the automatic target, before FLOOR: batch.js carries over what FLOOR doesn't change. */
+export function legacyKey(bytes) {
+  return hash(bytes, "auto");
+}
+
+function hash(bytes, target) {
+  return createHash("sha256").update(bytes).update(`\0${ENGINE}\0${target}\0${FORMAT}`).digest("hex");
+}
+
+/** Whether a result is a saving that would look visibly different: under FLOOR as people see the score, rounded. */
+export function belowFloor({ outcome, score }) {
+  return outcome === "hit" && Math.round(score) < FLOOR;
 }
 
 /**
- * { original, compressed, outcome, score, ms }, compressed counting the mark the command adds;
+ * { original, compressed, outcome, score }, compressed counting the mark the command adds;
  * { skipped } (with failed: true if pngdeer itself failed); { outcome: "output" } for bytes pngdeer
  * wrote; or null if not cached yet.
  */
 export function read(dir, k) {
   try {
-    return JSON.parse(readFileSync(join(dir, `${k}.json`), "utf8"));
+    const entry = JSON.parse(readFileSync(join(dir, `${k}.json`), "utf8"));
+    // 0.5.0 also kept how long measuring took, which differs on every machine: without it, an entry
+    // copied into a committed cache folder (rule.js, check.js) is the same file wherever it's made
+    delete entry.ms;
+    return entry;
   } catch {
     return null;
   }
@@ -50,6 +74,22 @@ export function readFirst(k, ...dirs) {
   return null;
 }
 
+/** Whether `entry` is a measurement as write() stores one, of an image of `original` bytes: one edited by hand may not be. */
+export function valid(entry, original) {
+  if (entry.outcome === "output") return Number.isFinite(entry.original) && entry.original > 0;
+  return ["hit", "miss", "exact", "lossless", "original"].includes(entry.outcome) && entry.original === original && Number.isFinite(entry.compressed) && entry.compressed >= 0 && Number.isFinite(entry.score);
+}
+
+/**
+ * Whether the quality floor turned an image down at the automatic target (engine.js): the best it
+ * found looks visibly different. With `thresholds`, only one whose best would otherwise be reported,
+ * the floor alone keeping it from a warning: what --check names, and the lint counts as it measures.
+ */
+export function floored(entry, target, thresholds) {
+  if (target !== undefined || entry?.outcome !== "miss" || Math.round(entry.score) >= FLOOR) return false;
+  return !thresholds || reportable({ ...entry, outcome: "hit" }, thresholds);
+}
+
 /** Whether an entry is a saving the rule reports: smaller at the target, by both thresholds. */
 export function reportable(entry, { minSavedBytes, minSavedPercent }) {
   if (!entry || entry.skipped || !["hit", "exact", "lossless"].includes(entry.outcome)) return false;
@@ -57,7 +97,7 @@ export function reportable(entry, { minSavedBytes, minSavedPercent }) {
   return saved > 0 && saved >= minSavedBytes && (100 * saved) / entry.original >= minSavedPercent;
 }
 
-/** An image's size, the cache key of its current bytes and whether pngdeer wrote it; null if it can't be read. */
+/** An image's size, the cache key of its current bytes, whether pngdeer wrote it and its frame count; null if it can't be read. */
 export function fileKey(file, target) {
   try {
     const { size, mtimeMs, ctimeMs, dev, ino } = statSync(file);
@@ -65,7 +105,8 @@ export function fileKey(file, target) {
     // Copy tools can preserve mtime; an atomic replacement can also keep the same size.
     if (memo && memo.size === size && memo.mtimeMs === mtimeMs && memo.ctimeMs === ctimeMs && memo.dev === dev && memo.ino === ino && memo.target === target) return memo;
     const bytes = readFileSync(file);
-    const image = { size, mtimeMs, ctimeMs, dev, ino, target, key: key(bytes, target), marked: marked(bytes) };
+    const frames = kind(bytes) === "png" ? dimensions(bytes, "png")[2] : 1;
+    const image = { size, mtimeMs, ctimeMs, dev, ino, target, key: key(bytes, target), marked: marked(bytes), frames };
     keys.set(file, image);
     return image;
   } catch {

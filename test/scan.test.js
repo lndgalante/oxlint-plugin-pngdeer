@@ -24,6 +24,49 @@ test("the project scan skips test output, nested packages and files too small to
   assert.deepEqual(found, ["public/b.jpg", "src/a.png"]);
 });
 
+test("a nested walk enters nested packages, with exclusions from each package's folder or from the top", () => {
+  const png = "x".repeat(5000);
+  const files = {
+    "package.json": "{}",
+    "packages/a/package.json": "{}",
+    "packages/a/src/a.png": png,
+    "packages/a/fixtures/f.png": png,
+    "packages/a/node_modules/dep/d.png": png,
+    "packages/a/dist/built.png": png,
+    "packages/b/package.json": "{}",
+    "packages/b/public/b.png": png,
+    "packages/b/fixtures/g.png": png,
+    "tools/fixtures/t.png": png,
+  };
+  const dir = project({ files, images: [] });
+  const found = (exclude, options) => projectImages(dir, 0, exclude, options).map((file) => relative(dir, file).split(sep).join("/")).sort();
+  // dependencies and build output stay skipped inside each package
+  assert.deepEqual(found([], { nested: true }), ["packages/a/fixtures/f.png", "packages/a/src/a.png", "packages/b/fixtures/g.png", "packages/b/public/b.png", "tools/fixtures/t.png"]);
+  // "fixtures" starts at each package's own folder, as the rule's option does, and at the root's
+  assert.deepEqual(found(["fixtures", "public"], { nested: true }), ["packages/a/src/a.png", "tools/fixtures/t.png"]);
+  // from the top, a path as typed there: one package's folder, or a glob across packages
+  assert.deepEqual(found(["packages/*/fixtures", "packages/b"], { nested: true, top: dir }), ["packages/a/src/a.png", "tools/fixtures/t.png"]);
+  // without nested, as the lint scans: the packages are another project's
+  assert.deepEqual(found([]), ["tools/fixtures/t.png"]);
+});
+
+test("a linked file is left out when an exclusion matches where it leads", (t) => {
+  const dir = project({ images: [], files: { "design/mark.png": "mark", "public/keep.png": "keep" } });
+  try {
+    symlinkSync(join(dir, "design/mark.png"), join(dir, "public/mark.png"));
+    symlinkSync(join(dir, "design/missing.png"), join(dir, "public/broken.png"));
+  } catch (error) {
+    if (process.platform === "win32" && error.code === "EPERM") return t.skip("symlinks require Windows Developer Mode");
+    throw error;
+  }
+  const errors = [];
+  const found = (exclude) => projectImages(join(dir, "public"), 0, exclude, { base: dir, onError: (path) => errors.push(relative(dir, path).split(sep).join("/")) }).map((file) => relative(dir, file).split(sep).join("/")).sort();
+  assert.deepEqual(found([]), ["public/keep.png", "public/mark.png"]);
+  assert.deepEqual(found(["design"]), ["public/keep.png"]);
+  // a broken link is reported, excluded or not
+  assert.deepEqual(errors, ["public/broken.png", "public/broken.png"]);
+});
+
 test("exclusions match root-relative files, directories and simple globs", () => {
   const root = project({ images: [] });
   const matches = (path, pattern) => excluded(root, join(root, path), [pattern]);

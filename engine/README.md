@@ -1,6 +1,6 @@
 # engine
 
-pngdeer's single-threaded WebAssembly build and its wasm-bindgen glue (`web/build.sh`'s `web/pkg`), as deployed at heydeer.ai/open-source/pngdeer on October 30, 2026. Its source revision is [heydeer/pngdeer at a8e88267ba02cbaf66e746db93ed04242dca8450](https://github.com/heydeer/pngdeer/tree/a8e88267ba02cbaf66e746db93ed04242dca8450) (0.2.1, plus JPEG input and output), the last commit to touch its code before that deploy. The shipped files were originally downloaded. Two independent clean builds now reproduce all three files byte for byte, as verified below.
+pngdeer's single-threaded WebAssembly build and its wasm-bindgen glue (`web/build.sh`'s `web/pkg`), as deployed at heydeer.ai/open-source/pngdeer on October 30, 2026. The upstream project is now called [slimdeer](https://github.com/heydeer/slimdeer) (formerly pngdeer), and heydeer.ai/open-source/pngdeer redirects to heydeer.ai/open-source/slimdeer; the build here is unchanged. Its source revision is [heydeer/pngdeer at a8e88267ba02cbaf66e746db93ed04242dca8450](https://github.com/heydeer/pngdeer/tree/a8e88267ba02cbaf66e746db93ed04242dca8450) (0.2.1, plus JPEG input and output), the last commit to touch its code before that deploy. The shipped files were originally downloaded. Two independent clean builds now reproduce all three files byte for byte, as verified below.
 
 | File | SHA-256 |
 |---|---|

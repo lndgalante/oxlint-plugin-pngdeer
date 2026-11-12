@@ -6,7 +6,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { pathToFileURL } from "node:url";
-import { flaggedList } from "../src/summary.js";
+import { flaggedList, readFlagged } from "../src/summary.js";
 import { eslint, eslintSummary, handled, names, oxlint, plugin, pngdeer, project } from "./helpers.js";
 
 test("ESLint gives the same warnings as oxlint, and waits for a cold cache the same way", () => {
@@ -46,6 +46,8 @@ test("ESLint owns suppression so used disable comments are not reported as unuse
   const unsuppressed = eslint(dir, "--no-inline-config", "src");
   assert.deepEqual(names(unsuppressed), ["hero.png"]);
   assert.match(unsuppressed.found[0].message, /quality \d+\/100/);
+  // the warning shows, but the comment still says to keep the image, so --flagged leaves it alone
+  assert.deepEqual(readFlagged(dir) ?? [], []);
 });
 
 test("lintText without a filename resolves images from ESLint's cwd", () => {
