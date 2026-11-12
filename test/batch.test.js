@@ -1,15 +1,16 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cpSync, readFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import os from "node:os";
 import { join, sep } from "node:path";
 import { test } from "node:test";
 import { pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
-import { fill, fillAll, pool } from "../src/batch.js";
-import { key, read } from "../src/cache.js";
-import { fade, plugin, project } from "./helpers.js";
+import { fill, fillAll, fillConversions, lock, peakOf, pool } from "../src/batch.js";
+import { convertKey, key, read } from "../src/cache.js";
+import { convert } from "../src/engine.js";
+import { animate, fade, gradient, plugin, project } from "./helpers.js";
 
 const batch = JSON.stringify(pathToFileURL(join(plugin, "src", "batch.js")).href);
 
@@ -371,4 +372,104 @@ test("progress hears which image finished and what it could save, by the request
   assert.deepEqual(files.map((file) => heard.get(file)?.saved), [ball.original - ball.compressed, 0]);
   // and the request it came with, so --check can tell which project's image it was
   assert.ok(files.every((file) => heard.get(file).request === request));
+});
+
+test("an engine is expected to need more memory for an AVIF than for a PNG, JPEG or WebP", () => {
+  const png = gradient(32);
+  assert.equal(peakOf(png), 50e6 + 32 * 32 * 125);
+  assert.equal(peakOf(png, "webp"), peakOf(png));
+  assert.equal(peakOf(png, "avif"), 70e6 + 32 * 32 * 150);
+  // every frame
+  assert.equal(peakOf(animate(png), "avif"), 70e6 + 32 * 32 * 2 * 150);
+});
+
+test("WebP and AVIF results go into the local cache once, under the lock, and the next run finds them", async () => {
+  const png = gradient(32);
+  const moving = animate(png);
+  const dir = project({ images: [], files: { "a.png": png, "copy.png": png, "moving.png": moving } });
+  const cache = join(dir, "cache");
+  const preview = join(dir, "preview.avif");
+  const requests = [
+    { failures: cache, format: "webp", jobs: ["a.png", "copy.png", "moving.png"].map((name) => ({ file: join(dir, name), target: 50 })) },
+    { failures: cache, format: "avif", jobs: [{ file: join(dir, "a.png"), target: 80, out: preview }] },
+  ];
+  const started = [];
+  const counts = [];
+  const batch = () => fillConversions(requests, (done, total) => counts.push(`${done}/${total}`), (total) => started.push(total));
+  // two at once: the one that waits for the other's lock finds everything cached, and says nothing
+  const [first, second] = await Promise.all([batch(), batch()]);
+  assert.deepEqual(started, [3]);
+  assert.deepEqual(counts, ["1/3", "2/3", "3/3"]);
+  assert.deepEqual([first.computed, first.cached, first.skipped, first.failed, first.errors.size], [2, 1, 1, 0, 0]);
+  assert.deepEqual([second.computed, second.cached, second.skipped, second.failed], [0, 4, 0, 0]);
+  const entry = (format, target) => {
+    const copy = convert(png, format, target);
+    return { format, original: png.length, compressed: copy.output.length, outcome: copy.outcome, score: copy.score, target: copy.target };
+  };
+  assert.deepEqual(read(cache, convertKey(png, 50, "webp")), entry("webp", 50));
+  assert.deepEqual(read(cache, convertKey(png, 80, "avif")), entry("avif", 80));
+  assert.deepEqual(readFileSync(preview), Buffer.from(convert(png, "avif", 80).output));
+  // turned down by the engine, in its own words
+  assert.deepEqual(read(cache, convertKey(moving, 50, "webp")), { format: "webp", original: moving.length, skipped: "animated PNGs can't be written as WebP yet" });
+  // nothing else: no entry the lint reads, and no lock
+  assert.deepEqual(readdirSync(cache).sort(), [convertKey(png, 50, "webp"), convertKey(png, 80, "avif"), convertKey(moving, 50, "webp")].map((k) => `${k}.json`).sort());
+  assert.equal(read(cache, key(png)), null);
+});
+
+test("a conversion an engine panics on is kept as a failure, and one whose image changed is kept nowhere", async (t) => {
+  const png = gradient(32);
+  const other = gradient(16);
+  const dir = project({ images: [], files: { "fade.png": fade(), "changing.png": png } });
+  const changing = join(dir, "changing.png");
+  // the image changes once it's queued, before its engine reads it (a re-export, a branch switch)
+  const postMessage = Worker.prototype.postMessage;
+  t.mock.method(Worker.prototype, "postMessage", function (message) {
+    if (message.file === changing) writeFileSync(changing, other);
+    return postMessage.call(this, message);
+  });
+  const cache = join(dir, "cache");
+  // fade() makes the engine panic at 70 as WebP (a bug upstream)
+  const result = await fillConversions([{ failures: cache, format: "webp", jobs: [{ file: join(dir, "fade.png"), target: 70 }, { file: changing, target: 70 }] }]);
+  assert.deepEqual([result.computed, result.cached, result.skipped, result.failed], [0, 0, 0, 2]);
+  const panic = "slimdeer couldn't write this image as WebP: unreachable (a bug in HeyDeer's slimdeer engine: please report it at https://github.com/heydeer/slimdeer/issues)";
+  const fadeKey = convertKey(readFileSync(join(dir, "fade.png")), 70, "webp");
+  assert.deepEqual(read(cache, fadeKey), { format: "webp", skipped: panic, failed: true });
+  assert.deepEqual(readdirSync(cache), [`${fadeKey}.json`]);
+});
+
+test("a conversion whose cache can't be written is left out, and the others are measured", async () => {
+  const png = gradient(32);
+  const dir = project({ images: [], files: { "a.png": png } });
+  const jobs = [{ file: join(dir, "a.png"), target: 50 }];
+  // a cache folder inside a file can't be created, on any platform
+  const broken = { failures: join(dir, "package.json", "cache"), format: "webp", jobs };
+  const result = await fillConversions([{ failures: join(dir, "cache"), format: "webp", jobs }, broken]);
+  assert.equal(result.computed, 1);
+  assert.deepEqual([...result.errors.keys()], [broken]);
+  assert.ok(result.errors.get(broken) instanceof Error);
+});
+
+test("measuring WebP and AVIF copies holds a lock of its own: a lint never waits for it", async () => {
+  const png = gradient(32);
+  const dir = project({ images: [], files: { "a.png": png } });
+  const cache = join(dir, "cache");
+  mkdirSync(cache);
+  // what a batch finds measured, or "waited" if it waits for the other's lock
+  const soon = (batch) => Promise.race([batch.then((result) => result.computed), new Promise((resolve) => setTimeout(resolve, 30_000, "waited").unref())]);
+  // a run measuring copies here, which as AVIF can take minutes
+  const converting = await lock(cache, "converting");
+  try {
+    assert.equal(await soon(fillAll([{ dir: cache, target: 50, files: [join(dir, "a.png")] }])), 1);
+    assert.ok(existsSync(join(cache, "converting.lock")));
+  } finally {
+    converting();
+  }
+  assert.ok(!existsSync(join(cache, "converting.lock")));
+  // and the copies wait for nothing a lint holds
+  const measuring = await lock(cache);
+  try {
+    assert.equal(await soon(fillConversions([{ failures: cache, format: "webp", jobs: [{ file: join(dir, "a.png"), target: 50 }] }])), 1);
+  } finally {
+    measuring();
+  }
 });

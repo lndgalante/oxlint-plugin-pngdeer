@@ -40,8 +40,8 @@ const DOCS = [".md"];
 // lint-staged, a parse error, an ignore pattern), or a path the rule doesn't resolve (bare, built at
 // runtime, another package's)
 const SOURCES = [".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts"];
-const ORDER = [...PAGES, ...SOURCES, ...DOCS];
-const PAGE_BYTES = 1e6; // bigger ones are build output or lockfiles, not where people name images
+export const ORDER = [...PAGES, ...SOURCES, ...DOCS];
+export const PAGE_BYTES = 1e6; // bigger ones are build output or lockfiles, not where people name images
 // Next.js serves these from app/ by file name alone
 const NEXT_METADATA = /^(?:src[\\/])?app[\\/](?:.+[\\/])?(?:opengraph-image|twitter-image|icon|apple-icon)\d*\.(?:png|jpe?g)$/i;
 
@@ -541,7 +541,7 @@ function namedIn(imageRoot, image, publicDirs = []) {
 }
 
 /** Whether `text` holds `path` whole, not as the end of a longer name (my-logo.png for logo.png). */
-function holds(text, path) {
+export function holds(text, path) {
   for (let at = text.indexOf(path); at >= 0; at = text.indexOf(path, at + 1)) {
     if (at === 0 || !/[\w.-]/.test(text[at - 1])) return true;
   }
@@ -549,7 +549,7 @@ function holds(text, path) {
 }
 
 /** A Next.js app/ metadata image (opengraph-image.png, icon.png), in a project that depends on next. */
-function nextMetadata(file, root) {
+export function nextMetadata(file, root) {
   if (!NEXT_METADATA.test(relative(root, file))) return false;
   if (!nexts.has(root)) {
     try {

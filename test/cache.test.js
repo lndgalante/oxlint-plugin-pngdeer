@@ -4,7 +4,7 @@ import { mkdirSync, readFileSync, renameSync, rmSync, utimesSync, writeFileSync 
 import { join } from "node:path";
 import { test } from "node:test";
 import { fill } from "../src/batch.js";
-import { cacheDir, ENGINE, fileKey, key, legacyKey, read, reportable, write } from "../src/cache.js";
+import { cacheDir, convertKey, ENGINE, fileKey, key, legacyKey, read, reportable, write } from "../src/cache.js";
 import { oxlintSummary, slimdeer, project } from "./helpers.js";
 
 test("a same-size replacement with preserved mtime gets a new content key", () => {
@@ -118,4 +118,15 @@ test("explicit targets keep 0.5.0's keys, and the automatic target's names its f
   assert.equal(key(bytes, 0), old(0));
   assert.equal(legacyKey(bytes), old("auto"));
   assert.notEqual(key(bytes), old("auto"));
+});
+
+test("a WebP or AVIF result's key names the engine, the target asked for, the cache format and the image format", () => {
+  const bytes = Buffer.from("image");
+  // a change here measures every conversion again
+  assert.equal(convertKey(bytes, 86.895, "webp"), "7dfa595440dfd4d325519d5d231cf8bb4102ddec8dbcc421cbc5482ea7a779c4");
+  assert.equal(convertKey(bytes, 86.895, "webp"), createHash("sha256").update(bytes).update(`\0${ENGINE}\0${86.895}\0${3}\0webp`).digest("hex"));
+  // the target asked for, not the engine's rounded report of it; never a same-format key
+  assert.notEqual(convertKey(bytes, 86.895, "webp"), convertKey(bytes, 86.89, "webp"));
+  assert.notEqual(convertKey(bytes, 80, "webp"), convertKey(bytes, 80, "avif"));
+  assert.notEqual(convertKey(bytes, 80, "webp"), key(bytes, 80));
 });

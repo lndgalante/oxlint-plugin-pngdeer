@@ -5,43 +5,11 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { pathToFileURL } from "node:url";
-import { deflateSync } from "node:zlib";
 import { convert } from "../src/engine.js";
-import { chunk, fade, plugin, project } from "./helpers.js";
+import { animate, fade, gradient, plugin, project } from "./helpers.js";
 
 const SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-const SIDE = 32;
-const header = Buffer.alloc(13);
-header.writeUInt32BE(SIDE, 0);
-header.writeUInt32BE(SIDE, 4);
-header.set([8, 2], 8); // 8-bit RGB
-const raw = Buffer.alloc((SIDE * 3 + 1) * SIDE);
-for (let y = 0; y < SIDE; y++) {
-  for (let x = 0; x < SIDE; x++) raw.set([x * 8, y * 8, 128], y * (SIDE * 3 + 1) + 1 + x * 3);
-}
-const pixels = deflateSync(raw);
-const end = chunk("IEND", Buffer.alloc(0));
-
-// A 32 × 32 RGB gradient: small enough for AVIF to take well under a second
-const png = Buffer.concat([SIGNATURE, chunk("IHDR", header), chunk("IDAT", pixels), end]);
-
-/** The gradient as an APNG of two frames. */
-function animated() {
-  const control = (sequence) => {
-    const fields = Buffer.alloc(26);
-    fields.writeUInt32BE(sequence, 0);
-    header.copy(fields, 4, 0, 8); // the whole canvas
-    fields.writeUInt16BE(1, 20); // shown for 1/10 s
-    fields.writeUInt16BE(10, 22);
-    return chunk("fcTL", fields);
-  };
-  const frames = Buffer.alloc(8);
-  frames.writeUInt32BE(2, 0);
-  const sequence = Buffer.alloc(4);
-  sequence.writeUInt32BE(2, 0);
-  const frame = chunk("fdAT", Buffer.concat([sequence, pixels]));
-  return Buffer.concat([SIGNATURE, chunk("IHDR", header), chunk("acTL", frames), control(0), chunk("IDAT", pixels), control(1), frame, end]);
-}
+const png = gradient(32);
 
 test("WebP and AVIF come out as files of their format", () => {
   const webp = Buffer.from(convert(png, "webp", 80).output);
@@ -61,7 +29,7 @@ test("a WebP is a hit exactly when its score reaches the target asked for", () =
 
 test("an animated PNG is turned down in the engine's words", () => {
   for (const [format, name] of [["webp", "WebP"], ["avif", "AVIF"]]) {
-    assert.throws(() => convert(animated(), format, 80), { refused: true, message: `animated PNGs can't be written as ${name} yet` });
+    assert.throws(() => convert(animate(png), format, 80), { refused: true, message: `animated PNGs can't be written as ${name} yet` });
   }
 });
 

@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { cacheDir, key, read } from "../src/cache.js";
 import { readFlagged } from "../src/summary.js";
-import { chunk, eslint, names, oxlint, oxlintSummary, project } from "./helpers.js";
+import { animate, eslint, names, oxlint, oxlintSummary, project } from "./helpers.js";
 
 const ball = new URL("../example/src/assets/crystal-ball.png", import.meta.url);
 const fire = new URL("../example/public/unused-fire.png", import.meta.url);
@@ -19,26 +19,6 @@ function place(dir, image, ...paths) {
     mkdirSync(dirname(join(dir, path)), { recursive: true });
     cpSync(image, join(dir, path));
   }
-}
-
-/** `png` (one IDAT chunk) as an APNG that shows its image twice: an animation, to Next.js's optimizer. */
-function animate(png) {
-  const idat = png.indexOf("IDAT") - 4;
-  const end = idat + 12 + png.readUInt32BE(idat);
-  const control = (sequence) => {
-    const fields = Buffer.alloc(26);
-    fields.writeUInt32BE(sequence, 0);
-    png.copy(fields, 4, 16, 24); // the whole canvas: the IHDR's width and height
-    fields.writeUInt16BE(1, 20); // shown for 1/10 s
-    fields.writeUInt16BE(10, 22);
-    return chunk("fcTL", fields);
-  };
-  const frames = Buffer.alloc(8);
-  frames.writeUInt32BE(2, 0);
-  const sequence = Buffer.alloc(4);
-  sequence.writeUInt32BE(2, 0);
-  const frame = chunk("fdAT", Buffer.concat([sequence, png.subarray(idat + 8, end - 4)]));
-  return Buffer.concat([png.subarray(0, 33), chunk("acTL", frames), png.subarray(33, idat), control(0), png.subarray(idat, end), control(1), frame, png.subarray(end)]);
 }
 
 /** The cached result for the image at `path` in `dir`, or null if it was never measured. */

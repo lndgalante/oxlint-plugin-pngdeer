@@ -43,6 +43,16 @@ export function keepOrientation(input, output) {
   return afterHeader(output, "eXIf", Buffer.from([0x4d, 0x4d, 0, 42, 0, 0, 0, 8, 0, 1, 0x01, 0x12, 0, 3, 0, 0, 0, 1, 0, orientation, 0, 0, 0, 0, 0, 0]));
 }
 
+/**
+ * Whether an eXIf chunk before the image data turns the PNG `bytes` (orientation 2 to 8), as
+ * keepOrientation() reads it: the engine's WebP and AVIF files can't carry that, and would show it unturned.
+ */
+export function turned(bytes) {
+  const exif = kind(bytes) === "png" && pngChunk(bytes, "eXIf");
+  const orientation = exif ? exifOrientation(exif) : 1;
+  return orientation >= 2 && orientation <= 8;
+}
+
 /** The Orientation tag in an eXIf chunk's TIFF data (IFD0's 0x0112, in either byte order), or 1. */
 function exifOrientation(tiff) {
   const order = String.fromCharCode(tiff[0], tiff[1]);

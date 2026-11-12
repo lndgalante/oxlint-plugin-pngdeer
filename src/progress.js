@@ -26,6 +26,16 @@ export function startLine(total) {
   say(isatty(2) ? unwrapped(line) : `${line}\n`);
 }
 
+/**
+ * fillConversions()'s onStart: how many images go to the engine as `name` ("WebP", "AVIF"), and how
+ * slow AVIF is, as its first run can take many minutes. On a terminal the count then rewrites this line.
+ */
+export function convertLine(total, name) {
+  const slow = name === "AVIF" ? "; AVIF is slow: about half a minute per image on a 16-core laptop" : "";
+  const line = `slimdeer: measuring ${count(total, "image")} as ${name} at the same quality${slow}...`;
+  say(isatty(2) ? unwrapped(line) : `${line}\n`);
+}
+
 // A batch's count, for fill()'s progress, with what the images measured so far could save: rewrites
 // its line on a terminal; elsewhere (CI logs), a line every 30 s, so a long first run doesn't look
 // hung or trip a no-output limit (CircleCI's is 10 minutes). Written straight to stderr, as the

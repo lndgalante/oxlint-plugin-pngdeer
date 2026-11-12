@@ -1,29 +1,40 @@
 #!/usr/bin/env node
-// Checks or shrinks images with the same engine and targets as the lint rule.
+// Checks or shrinks images with the same engine and targets as the lint rule, or writes WebP and AVIF
+// copies of them (copies.js).
 import { readFileSync, statSync } from "node:fs";
-import { basename, dirname, join, resolve, sep } from "node:path";
+import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { peakOf, pool } from "../src/batch.js";
 import { fileKey } from "../src/cache.js";
+import { FORMATS, sibling } from "../src/convert.js";
+import { clash, writeCopies } from "../src/copies.js";
+import { kind } from "../src/images.js";
 import { physical } from "../src/scan.js";
 import { plain, shrink } from "../src/shrink.js";
 import { readFlagged } from "../src/summary.js";
 import { count, pathFrom, printable, quote, size } from "../src/text.js";
 
-const HELP = `usage: oxlint-plugin-slimdeer IMAGE... [--target auto|T]
+const HELP = `usage: oxlint-plugin-slimdeer IMAGE... [--target auto|T] [--format webp|avif]
        oxlint-plugin-slimdeer IMAGE -o OUT [--target auto|T]
        oxlint-plugin-slimdeer --flagged [--target auto|T]
-       oxlint-plugin-slimdeer --check [PATH...] [--json] [options]
-       oxlint-plugin-slimdeer --review [PATH...] [--open] [options]
-       oxlint-plugin-slimdeer --review --flagged [--open] [--target auto|T] [--cache-dir PATH]
+       oxlint-plugin-slimdeer --check [PATH...] [--format webp|avif] [--json] [options]
+       oxlint-plugin-slimdeer --review [PATH...] [--format webp|avif] [--open] [options]
+       oxlint-plugin-slimdeer --review --flagged [--format webp|avif] [--open] [--target auto|T] [--cache-dir PATH]
 
-Makes PNGs and JPEGs smaller with slimdeer, in place, at about the same visual quality.
-slimdeer is lossy: the picture looks about the same, the bytes don't, so commit first.
+Makes PNGs and JPEGs smaller with slimdeer, in place, at about the same visual quality, or
+writes a WebP or AVIF copy of each next to it. slimdeer is lossy: the picture looks about the
+same, the bytes don't, so commit first.
 
-  -o OUT        write to OUT instead of in place, to preview the result (one image only)
+  -o OUT        write to OUT instead of in place (one image only): OUT named like the image
+                (.png, .jpg) previews the shrink; OUT ending in .webp or .avif gets that format
+  --format F    webp or avif: write each image as a new file next to it (hero.png ->
+                hero.webp), at the quality its PNG or JPEG shrink would have, only where that
+                file is smaller than both. It never replaces a file and keeps the original:
+                code that names an image must change to use the new file. AVIF is slow
   --flagged     the images the last lint here flagged, each at the target it was measured at;
                 shared images with conflicting quality targets are left out
   --check       measure, changing no image: files and folders (default: this folder), with
-                the packages inside them; warms the lint's cache
+                the packages inside them; warms the lint's cache. With --format, it compares
+                each image as WebP or AVIF with its PNG or JPEG shrink at the same quality
   --json        with --check, print one JSON document on stdout instead of lines
   --review      write previews and a page to compare them with the originals; changes no image
   --open        with --review, open the page in a browser
@@ -31,8 +42,10 @@ slimdeer is lossy: the picture looks about the same, the bytes don't, so commit 
                 (the default) picks one per image, about TinyPNG's quality, never below 70
 
 Options for --check and --review:
-  --min-saved-bytes N    the smallest saving to list, in bytes (default: 4096)
-  --min-saved-percent N  the smallest saving to list, in percent (default: 10)
+  --min-saved-bytes N    the smallest saving to list, in bytes (default: 4096); with
+                         --format, the saving beyond the PNG or JPEG shrink
+  --min-saved-percent N  the smallest saving to list, in percent (default: 10); with
+                         --format, of the PNG or JPEG shrink's size
   --exclude PATTERN      leave out a file, folder or glob (*, **, ?), as a path from the
                          image's package or from this folder; repeat for more
   --cache-dir PATH       the cache folder, from each package (default: node_modules/.cache/slimdeer)
@@ -47,7 +60,11 @@ or when an image or folder couldn't be checked. It reads no linter configuration
 --review exits 0 when it wrote the page or found nothing to review, and 2 on a mistake,
 when --flagged finds no list, or when an image or folder couldn't be checked or previewed.
 Like --check, it reads no linter configuration; with --flagged, it shows what the lint flagged.
-PNGs and JPEGs it writes are marked, so the lint rule doesn't flag them again.`;
+With --format, the command exits 0 when each image was written or left out for a reason it
+names, 1 when one failed or another file was in the way, and 2 on a mistake. With an OUT
+ending in .webp or .avif, it exits 0 only when it wrote OUT.
+PNGs and JPEGs it writes are marked, so the lint rule doesn't flag them again. WebP and AVIF
+files aren't marked: the rule doesn't measure those formats.`;
 
 const CHECK_OPTIONS = {
   "--min-saved-bytes": "minSavedBytes",
@@ -56,8 +73,10 @@ const CHECK_OPTIONS = {
   "--cache-dir": "cacheDir",
 };
 // the options that take a value, and those that take none
-const VALUED = new Set(["-o", "--target", ...Object.keys(CHECK_OPTIONS)]);
+const VALUED = new Set(["-o", "--target", "--format", ...Object.keys(CHECK_OPTIONS)]);
 const FLAGS = new Set(["--check", "--flagged", "--json", "--review", "--open", "--help", "--version"]);
+// The format an -o file's extension names: the image's own (a preview of its shrink), or a copy's
+const NAMED = { ".png": "png", ".apng": "png", ".jpg": "jpeg", ".jpeg": "jpeg", ".webp": "webp", ".avif": "avif" };
 // What --flagged finds where no lint left a list: none ran here (or one ran in a folder above), eslint
 // ran with --cache, or a lint here flagged nothing and had no cache folder to leave an empty list in.
 const NO_LIST = "no list of flagged images here: lint in this folder first (npx oxlint, or eslint without --cache); if a lint here flagged no image, there is nothing to do";
@@ -79,6 +98,7 @@ async function main(args) {
   }
   const inputs = [];
   let output;
+  let format;
   let target;
   let targeted = false;
   let fromLint = false;
@@ -119,7 +139,10 @@ async function main(args) {
       // empty either way, as a script's unset variable gives it (-o "$OUT"): else -o "" blames the image
       if (value === "") return fail(`${arg} needs a value`);
       if (arg === "-o") output = value;
-      else if (arg === "--target") {
+      else if (arg === "--format") {
+        format = value.toLowerCase();
+        if (!Object.hasOwn(FORMATS, format)) return fail(`--format must be webp or avif, not ${value} (without --format, each image keeps its own format)`);
+      } else if (arg === "--target") {
         targeted = true;
         target = value === "auto" ? undefined : Number(value);
         if (target !== undefined && !(value.trim() !== "" && target >= 0 && target <= 100)) return fail(`--target must be auto or a number from 0 to 100, not ${value}`);
@@ -156,7 +179,7 @@ async function main(args) {
     try {
       // the review page (review.js) loads only when asked for
       const { review } = await import("../src/review.js");
-      return await review(inputs.length ? inputs : ["."], { ...checkOptions, target, open, flagged });
+      return await review(inputs.length ? inputs : ["."], { ...checkOptions, target, open, flagged, format });
     } catch (error) {
       console.error(printable(`oxlint-plugin-slimdeer: ${plain(error)}`));
       return 2;
@@ -167,26 +190,46 @@ async function main(args) {
     if (fromLint || output !== undefined) return fail("--check cannot be combined with --flagged or -o");
     try {
       const { check } = await import("../src/check.js");
-      return await check(inputs.length ? inputs : ["."], { ...checkOptions, target, json });
+      return await check(inputs.length ? inputs : ["."], { ...checkOptions, target, json, format });
     } catch (error) {
       console.error(printable(`oxlint-plugin-slimdeer: ${plain(error)}`));
       return 2;
     }
   }
+  // each copy needs its own change in the code, which the review page lets a person choose
+  if (fromLint && format) return fail(`--flagged --format would write a new file for every image the lint flagged, and each one needs a change in the code: review them first with npx oxlint-plugin-slimdeer --review --flagged --format ${format}, and run the command the page gives`);
   if (json) return fail("--json requires --check");
   if (Object.keys(checkOptions).length) return fail("--min-saved-bytes, --min-saved-percent, --exclude and --cache-dir require --check or --review");
   if (fromLint && (inputs.length || output !== undefined)) return fail("--flagged takes no images and no -o");
   if (!fromLint && inputs.length === 0) return fail("no image given");
-  if (output !== undefined && inputs.length > 1) return fail("-o takes one image; without it, each image is written in place");
+  if (output !== undefined && inputs.length > 1) return fail(`-o takes one image; without it, ${format ? `each image's ${FORMATS[format].name} copy is written next to it` : "each image is written in place"}`);
   if (output !== undefined && folder(output)) {
-    // the same name in the image's own folder (however it's spelled or linked) would write over it
-    const example = join(output, basename(inputs[0])).split(sep).join("/");
-    return fail(`-o ${output} is a folder: give the file to write${physical(output) === physical(dirname(resolve(inputs[0]))) ? "" : `, like -o ${quote(example)}`}`);
+    // with --format, the copy's name; else the image's, which in its own folder (however it's spelled
+    // or linked) would write over it
+    const example = join(output, basename(format ? sibling(inputs[0], format) : inputs[0])).split(sep).join("/");
+    const own = !format && physical(output) === physical(dirname(resolve(inputs[0])));
+    return fail(`-o ${output} is a folder: give the file to write${own ? "" : `, like -o ${quote(example)}`}`);
   }
   // -o is for a new file: the image itself, through a link or in another letter case (macOS,
   // Windows), would be written over, and its in-place checks skipped (shrink.js)
   if (output !== undefined && physical(resolve(output)) === physical(resolve(inputs[0]))) {
     return fail(`-o ${output} is ${inputs[0]} itself: give another name, or leave out -o to shrink it in place`);
+  }
+  if (output !== undefined) {
+    // OUT's extension says what to write, so a PNG never lands under a JPEG's name
+    const named = NAMED[extname(output).toLowerCase()];
+    if (format && named && named !== format) return fail(`--format ${format} and -o ${output} name different formats: give one of them`);
+    if (Object.hasOwn(FORMATS, named)) format = named;
+    else {
+      const type = kindOf(inputs[0]);
+      if (type && type !== named) return fail(`-o ${output}: ${inputs[0]} is a ${type === "png" ? "PNG, so OUT must end in .png" : "JPEG, so OUT must end in .jpg or .jpeg"}, or in .webp or .avif to write that format`);
+    }
+  }
+  if (format) {
+    const images = once(inputs.map((input) => ({ input }))).map(({ input }) => input);
+    const mistake = output === undefined && clash(images, format);
+    if (mistake) return fail(mistake);
+    return writeCopies(images, { format, target, output });
   }
 
   const flagged = fromLint ? readFlagged(process.cwd()) : null;
@@ -278,6 +321,15 @@ function once(jobs) {
     seen.add(path);
     return true;
   });
+}
+
+/** "png", "jpeg", or null for a file that is neither or can't be read, which the work then says. */
+function kindOf(path) {
+  try {
+    return kind(readFileSync(path));
+  } catch {
+    return null;
+  }
 }
 
 function folder(path) {

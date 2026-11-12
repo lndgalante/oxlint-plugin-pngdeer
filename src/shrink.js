@@ -67,7 +67,7 @@ export function plain(error) {
 }
 
 /** Writes a whole new file or nothing: the image is often written over itself. */
-function save(path, bytes) {
+export function save(path, bytes) {
   // The rename below needs only the folder to be writable: a read-only image (chmod 444, a Perforce
   // workspace) is left as it is, as cp and eslint --fix leave a read-only file.
   try {

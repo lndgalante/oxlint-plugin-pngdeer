@@ -81,14 +81,18 @@ function literal(arg, platform) {
   return platform === "win32" ? `'${arg.replace(/['\u2018-\u201b]/g, "$&$&")}'` : `'${arg.replace(/'/g, `'\\''`)}'`;
 }
 
-/** A runnable fix command; unusual Windows paths use PowerShell and bypass npm's batch shim. */
-export function shrinkCommand(files, target, platform = process.platform) {
-  return command([], files, target, platform);
+/**
+ * A runnable fix command, or with `format` ("webp", "avif") the one that writes copies in that format;
+ * unusual Windows paths use PowerShell and bypass npm's batch shim.
+ */
+export function shrinkCommand(files, target, platform = process.platform, format) {
+  return command([], files, { target, format }, platform);
 }
 
 /**
  * The command that checks `paths` (files or folders), run the same way, with the check's options: the
- * ones that differ from the defaults, as given, as the check runs again from the same folder.
+ * ones that differ from the defaults, as given, as the check runs again from the same folder; last,
+ * --target and --format, if given.
  */
 export function checkCommand(paths, settings = {}, platform = process.platform) {
   return measuring(["--check"], paths, settings, platform);
@@ -99,21 +103,22 @@ export function reviewCommand(paths, settings = {}, platform = process.platform)
   return measuring(["--review"], paths, settings, platform);
 }
 
-function measuring(flags, paths, { target, exclude = [], cacheDir, minSavedBytes = 4096, minSavedPercent = 10 }, platform) {
+function measuring(flags, paths, { target, format, exclude = [], cacheDir, minSavedBytes = 4096, minSavedPercent = 10 }, platform) {
   const options = [
     ...exclude.map((pattern) => ["--exclude", pattern]),
     ...(cacheDir === undefined ? [] : [["--cache-dir", cacheDir]]),
     ...(minSavedBytes === 4096 ? [] : [["--min-saved-bytes", String(minSavedBytes)]]),
     ...(minSavedPercent === 10 ? [] : [["--min-saved-percent", String(minSavedPercent)]]),
   ];
-  return command(flags, paths, target, platform, options);
+  return command(flags, paths, { target, format }, platform, options);
 }
 
-function command(flags, files, target, platform, options = []) {
+function command(flags, files, { target, format }, platform, options = []) {
   const args = [...files.map((file) => quote(file, platform)), ...options.flatMap(([option, value]) => [option, literal(value, platform)])];
   const powershell = platform === "win32" && args.some((arg) => arg.startsWith("'"));
   // npx.cmd adds a cmd.exe parsing pass, which expands percent signs even inside quotes.
   const binary = fileURLToPath(new URL("../bin/slimdeer.js", import.meta.url));
   const runner = powershell ? `& ${quote(process.execPath, platform)} ${quote(binary, platform)}` : "npx oxlint-plugin-slimdeer";
-  return { text: `${[runner, ...flags, ...args].join(" ")}${target === undefined ? "" : ` --target ${target}`}`, shell: powershell ? " in PowerShell" : "" };
+  const last = `${target === undefined ? "" : ` --target ${target}`}${format === undefined ? "" : ` --format ${format}`}`;
+  return { text: `${[runner, ...flags, ...args].join(" ")}${last}`, shell: powershell ? " in PowerShell" : "" };
 }

@@ -1,18 +1,19 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { Worker } from "node:worker_threads";
 import { deflateSync } from "node:zlib";
 import { fill, peakOf, pool } from "../src/batch.js";
-import { key, read } from "../src/cache.js";
-import { compress, trapped } from "../src/engine.js";
+import { convertKey, key, read } from "../src/cache.js";
+import { convertImage } from "../src/convert.js";
+import { compress, convert, trapped } from "../src/engine.js";
 import { shrink } from "../src/shrink.js";
-import { chunk, fade, project } from "./helpers.js";
+import { animate, chunk, fade, gradient, project } from "./helpers.js";
 
 /** A 320 × 240 RGB gradient as a PNG: its automatic result looks visibly different (62), and target 70 reaches 72. */
-function gradient() {
+function wide() {
   const [width, height] = [320, 240];
   const raw = Buffer.alloc((width * 3 + 1) * height);
   for (let y = 0; y < height; y++) {
@@ -27,7 +28,7 @@ function gradient() {
 }
 
 test("the automatic target settles for no less than 70: below, it compresses again at 70", () => {
-  const bytes = gradient();
+  const bytes = wide();
   const automatic = compress(bytes);
   assert.equal(automatic.outcome, "hit");
   assert.ok(Math.round(automatic.score) >= 70, `scored ${automatic.score}`);
@@ -76,6 +77,59 @@ test("--flagged shrinks only the bytes the lint measured, checked again when an 
   // the bytes it measured are shrunk
   writeFileSync(file, measured);
   assert.match(shrink(file, file, undefined, lint).text, /^35 kB → 11 kB /);
+});
+
+test("an engine measures an image as WebP or AVIF, and writes a hit where it's asked to", async () => {
+  const png = gradient(32);
+  const dir = project({ images: [], files: { "tiny.png": png, "moving.png": animate(png) } });
+  const file = join(dir, "tiny.png");
+  const preview = join(dir, "missing", "hit.webp");
+  const messages = [
+    { file, target: 50, format: "webp", out: join(dir, "hit.webp") },
+    // the gradient reaches 50 as WebP, not 80
+    { file, target: 80, format: "webp", out: join(dir, "miss.webp") },
+    { file, target: 80, format: "avif" },
+    { file, target: 50, format: "webp", out: preview },
+    { file: join(dir, "moving.png"), target: 80, format: "avif" },
+    { file: join(dir, "gone.png"), target: 80, format: "webp" },
+  ];
+  const replies = new Map();
+  await pool(messages.map((message) => ({ peak: 1e6, message })), { done: (job, reply) => replies.set(job.message, reply) });
+  const measured = (target, format) => {
+    const copy = convert(png, format, target);
+    return { input: convertKey(png, target, format), original: png.length, compressed: copy.output.length, outcome: copy.outcome, score: copy.score, target: copy.target };
+  };
+  assert.deepEqual(replies.get(messages[0]), measured(50, "webp"));
+  assert.deepEqual(readFileSync(join(dir, "hit.webp")), Buffer.from(convert(png, "webp", 50).output));
+  assert.deepEqual(replies.get(messages[1]), measured(80, "webp"));
+  assert.equal(replies.get(messages[1]).outcome, "miss");
+  assert.equal(existsSync(join(dir, "miss.webp")), false);
+  assert.deepEqual(replies.get(messages[2]), measured(80, "avif"));
+  // the measurement stands when its preview can't be written, with why
+  assert.deepEqual(replies.get(messages[3]), { ...measured(50, "webp"), error: `can't write ${preview}: its folder doesn't exist` });
+  assert.deepEqual(replies.get(messages[4]), { input: convertKey(animate(png), 80, "avif"), error: "animated PNGs can't be written as AVIF yet", refused: true });
+  assert.deepEqual(replies.get(messages[5]), { input: null, error: "no such file or folder" });
+});
+
+test("an engine writes an image as WebP or AVIF as the command does", async () => {
+  const png = gradient(32);
+  const dir = project({ images: [], files: { "tiny.png": png } });
+  const file = join(dir, "tiny.png");
+  const write = async (message) => {
+    const replies = [];
+    await pool([{ peak: 1e6, message }], { done: (job, reply) => replies.push(reply) });
+    return replies[0];
+  };
+  const written = await write({ file, target: 50, format: "webp", out: join(dir, "tiny.webp"), mode: "sibling" });
+  assert.deepEqual(written, convertImage(file, join(dir, "here.webp"), { format: "webp", target: 50, mode: "sibling" }));
+  assert.equal(written.status, "written");
+  assert.deepEqual(readFileSync(join(dir, "tiny.webp")), readFileSync(join(dir, "here.webp")));
+  assert.deepEqual(await write({ file, target: 50, format: "webp", out: join(dir, "tiny.webp"), mode: "sibling" }), { status: "already" });
+  assert.equal((await write({ file, target: 50, format: "webp", out: join(dir, "tiny.webp"), mode: "named" })).status, "written");
+  // at the automatic target, slimdeer's best PNG of the gradient looks visibly different
+  assert.match((await write({ file, format: "avif", out: join(dir, "tiny.avif"), mode: "sibling" })).reason, /^shrunk as PNG it doesn't reach quality 70, so there is no quality to match; /);
+  assert.deepEqual(await write({ file: join(dir, "gone.png"), target: 50, format: "webp", out: join(dir, "gone.webp"), mode: "sibling" }), { error: "no such file or folder" });
+  assert.deepEqual(readFileSync(file), png);
 });
 
 // fade() makes the engine panic at target 70 (a bug upstream), so these come last: a panic leaves

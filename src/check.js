@@ -3,13 +3,14 @@
 // same way.
 import { readFileSync, realpathSync, statSync } from "node:fs";
 import { basename, dirname, extname, join, resolve, sep } from "node:path";
-import { fillAll } from "./batch.js";
-import { cacheDir, FLOOR, floored, key, read, readFirst, reportable, valid, write } from "./cache.js";
+import { fillAll, fillConversions } from "./batch.js";
+import { cacheDir, convertKey, FLOOR, floored, key, read, readFirst, reportable, valid, write } from "./cache.js";
 import { oldCacheLines } from "./compat.js";
+import { baseOf, equalTarget, FORMATS, leftOut, sibling, there } from "./convert.js";
 import { kind, unsupported } from "./images.js";
 import { appendJobSummary, block, capital, code, inCheckout, prose, table } from "./markdown.js";
 import { marked } from "./marker.js";
-import { progressLine, startLine } from "./progress.js";
+import { convertLine, progressLine, startLine } from "./progress.js";
 import { excluded, physical, projectImages, projectRoot } from "./scan.js";
 import { plain } from "./shrink.js";
 import { checkCommand, count, LEGEND, looks, pathFrom, printable, quote, reviewCommand, shrinkCommand, size, smaller } from "./text.js";
@@ -107,8 +108,30 @@ function settingsOf({ cwd, target, minSavedBytes = 4096, minSavedPercent = 10, e
  * - counts: { checked, measured, cached, skipped, packages };
  * - builds: [{ path, images }], Gatsby build folders left out, and how many images they hold.
  * An error that running it again may clear names `again`, the run to repeat (--review's, say).
+ *
+ * With `format` ("webp", "avif"), each image is then measured as that format at its equal target
+ * (convert.js), the results kept in its project's local cache folder alone; with `previewDir` too (a
+ * folder the caller made, not a link), each copy measured that reaches its target is also written
+ * there, named by its cache key and the format's extension. Resolves { format, rows, notWorthIt,
+ * leftOut, missed, declined, errors, counts, builds }, the last four as without `format`:
+ * - rows: [{ file, path, root, type, target, equal, original, compressed, score, sameFormat, base,
+ *   output, outputExists, preview }], the copies smaller than their base by both thresholds, the
+ *   smallest saving beyond it first. `type` is the image's own ("png", "jpeg"), `target` the one
+ *   given, `equal` the copy's (equalTarget()), `compressed` and `score` the copy's, `sameFormat`
+ *   { compressed, outcome, score } the image's own shrink, mark included, `base` what the image weighs
+ *   shrunk in place (that shrink's size when it's smaller, else its own), `output` the sibling's full
+ *   path, `outputExists` whether anything is there, `preview` its path in previewDir, else null (one
+ *   read from the cache may not be there);
+ * - notWorthIt: [{ file, path, root, type, original, compressed, score, sameFormat, base }], the other
+ *   copies that reach their target;
+ * - leftOut: [{ file, path, kind, reason }], images not measured as `format`, as leftOut() says (the
+ *   command's own output only when big enough to list), or turned down by the engine in its own words
+ *   (kind "refused");
+ * - missed: [{ file, path, type, original, score, equal }], images for which no copy reaches `equal`,
+ *   with the best score found.
+ * slimdeer's own output without the mark (cache.js "output") is in none of them, as without `format`.
  */
-export async function measureAll(inputs, { cwd = process.cwd(), target, minSavedBytes = 4096, minSavedPercent = 10, exclude = [], cacheDir: customCacheDir, onError, again = "--check" } = {}) {
+export async function measureAll(inputs, { cwd = process.cwd(), target, minSavedBytes = 4096, minSavedPercent = 10, exclude = [], cacheDir: customCacheDir, onError, again = "--check", format, previewDir } = {}) {
   cwd = resolve(cwd);
   const errors = [];
   const failed = new Set();
@@ -123,6 +146,7 @@ export async function measureAll(inputs, { cwd = process.cwd(), target, minSaved
   const { files, builds } = collect(inputs, cwd, exclude, error);
   const counts = { checked: files.size, measured: 0, cached: 0, skipped: 0, packages: new Set([...files.values()].map(({ root }) => root)).size };
   const groups = new Map(); // project root -> its cache folders and its images
+  const left = []; // with `format`, the images not measured as that format, and why
 
   for (const { file, root } of files.values()) {
     try {
@@ -131,6 +155,8 @@ export async function measureAll(inputs, { cwd = process.cwd(), target, minSaved
       // whatever slimdeer would make of it; a file that isn't a PNG or JPEG is an error at any size
       if (kind(bytes) && (marked(bytes) || bytes.length < minSavedBytes)) {
         counts.skipped++;
+        // converting the command's output would be a second lossy pass; an image too small goes unlisted anyway
+        if (format && marked(bytes) && bytes.length >= minSavedBytes) left.push({ file, path: pathFrom(cwd, file), ...leftOut(bytes, file, format, root) });
         continue;
       }
       const why = pointer(bytes) ? LFS : unsupported(bytes);
@@ -156,12 +182,14 @@ export async function measureAll(inputs, { cwd = process.cwd(), target, minSaved
   const rows = [];
   const declined = [];
   const missed = [];
+  const copies = []; // with `format`, the images to measure as that format
   for (const [root, { dir, local, images, failure }] of groups) {
     for (const image of images) {
       const { file, k, original } = image;
       try {
+        const bytes = readFileSync(file);
         // A file changed during measurement must not receive a stale clean result.
-        if (key(readFileSync(file), target) !== k) {
+        if (key(bytes, target) !== k) {
           error(file, `changed while checking; run ${again} again`);
           continue;
         }
@@ -181,6 +209,22 @@ export async function measureAll(inputs, { cwd = process.cwd(), target, minSaved
         // --cache-dir can prepare a committed cache from results already measured locally.
         if (dir !== local && !read(dir, k)) write(dir, k, entry);
         const path = pathFrom(cwd, file);
+        if (format) {
+          // slimdeer's own output, which the lint takes as done, as without a format: it has no
+          // shrink to match, and converting it would be a second lossy pass
+          if (entry.outcome === "output") continue;
+          // before any conversion: one turned by eXIf would be measured unturned (engine.js)
+          const why = leftOut(bytes, file, format, root);
+          if (why) left.push({ file, path, ...why });
+          else if (floored(entry, target, { minSavedBytes, minSavedPercent })) declined.push({ file, path, original, score: entry.score });
+          else {
+            // none for a miss at the automatic target: nothing reached the floor, so there is no quality to match
+            const equal = equalTarget(target, entry);
+            const sameFormat = { compressed: entry.compressed, outcome: entry.outcome, score: entry.score };
+            if (equal !== null) copies.push({ file, path, root, local, type: kind(bytes), original, equal, k: convertKey(bytes, equal, format), sameFormat });
+          }
+          continue;
+        }
         if (floored(entry, target)) {
           // named when the floor alone keeps it off the list, as the lint counts them (cache.js); one
           // whose best would save too little goes unlisted at any target
@@ -198,7 +242,9 @@ export async function measureAll(inputs, { cwd = process.cwd(), target, minSaved
   }
   // smallest saving first, so the biggest end up next to the totals, where a long output ends
   rows.sort((a, b) => a.original - a.compressed - (b.original - b.compressed));
-  return { rows, declined, missed, errors, counts, builds };
+  if (!format) return { rows, declined, missed, errors, counts, builds };
+  const found = await measureCopies(copies, { format, target, minSavedBytes, minSavedPercent, previewDir, again }, error);
+  return { format, rows: found.rows, notWorthIt: found.notWorthIt, leftOut: [...left, ...found.refused], missed: found.missed, declined, errors, counts, builds };
 }
 
 /**
@@ -213,29 +259,93 @@ async function measure(groups, { target, minSavedBytes, minSavedPercent }, count
     if (pending.length) requests.set({ dir: group.dir, failures: group.local, target, files: pending.map(({ file }) => file), minSavedBytes, minSavedPercent }, group);
   }
   if (requests.size === 0) return;
-  let started = false;
   // the batch says it once it holds the locks, counting copies of one image once and leaving out what
   // another lint measured meanwhile (a closed stderr loses the line, nothing else: progress.js), after
   // any old cache folder beside the ones the results go into (compat.js)
-  const onStart = (total, folders) => {
-    started = true;
+  const result = await batch(requests, fillAll, (total, folders) => {
     oldCacheLines(folders, process.cwd());
     startLine(total);
-  };
+  });
+  counts.measured += result?.computed ?? 0;
+  counts.cached += result?.cached ?? 0;
+}
+
+/**
+ * measureAll()'s second part, with `format`: measures each of `copies` as that format at its equal
+ * target, what the local cache folders lack on one pool and one count, then sorts them into
+ * { rows, notWorthIt, refused, missed }, as measureAll() resolves them, `refused` for its leftOut. A
+ * committed cache folder never gets these: the lint doesn't read them.
+ */
+async function measureCopies(copies, { format, target, minSavedBytes, minSavedPercent, previewDir, again }, error) {
+  const { name, extension } = FORMATS[format];
+  const preview = ({ k }) => (previewDir === undefined ? undefined : join(previewDir, `${k}${extension}`));
+  const requests = new Map(); // local cache folder -> its request, which notes why it failed, if it does
+  for (const copy of copies) {
+    copy.entry = read(copy.local, copy.k);
+    if (copy.entry) continue;
+    const request = requests.get(copy.local) ?? { failures: copy.local, format, jobs: [] };
+    request.jobs.push({ file: copy.file, target: copy.equal, out: preview(copy) });
+    requests.set(copy.local, request);
+  }
+  if (requests.size) await batch(new Map([...requests.values()].map((request) => [request, request])), fillConversions, (total) => convertLine(total, name));
+
+  const rows = [];
+  const notWorthIt = [];
+  const refused = [];
+  const missed = [];
+  for (const copy of copies) {
+    const { file, path, root, local, type, original, equal, k, sameFormat } = copy;
+    try {
+      const entry = copy.entry ?? read(local, k);
+      if (!entry) {
+        const { failure } = requests.get(local);
+        error(file, convertKey(readFileSync(file), equal, format) !== k ? `changed while checking; run ${again} again` : failure ? `${NOT_MEASURED}${failure.message ?? failure}` : `could not measure this image; run ${again} again`);
+        continue;
+      }
+      if (entry.failed) error(file, entry.skipped);
+      else if (entry.skipped) refused.push({ file, path, kind: "refused", reason: entry.skipped });
+      else if (entry.outcome === "miss") missed.push({ file, path, type, original, score: entry.score, equal });
+      else {
+        const base = baseOf(sameFormat, original);
+        const { compressed, score } = entry;
+        if (reportable({ original: base, compressed, outcome: "hit" }, { minSavedBytes, minSavedPercent })) {
+          const output = sibling(file, format);
+          rows.push({ file, path, root, type, target, equal, original, compressed, score, sameFormat, base, output, outputExists: there(output), preview: preview(copy) ?? null });
+        } else notWorthIt.push({ file, path, root, type, original, compressed, score, sameFormat, base });
+      }
+    } catch (cause) {
+      error(file, cause);
+    }
+  }
+  // the smallest saving beyond the shrink first, so the biggest end up next to the totals
+  rows.sort((a, b) => a.base - a.compressed - (b.base - b.compressed));
+  return { rows, notWorthIt, refused, missed };
+}
+
+/**
+ * Runs `fill` (batch.js fillAll() or fillConversions()) on the requests `requests` maps, each to what
+ * notes why it failed, if it does, with the measuring count on stderr after `onStart`'s line. Says each
+ * reason once. Resolves the batch's result, or null if it rejected.
+ */
+async function batch(requests, fill, onStart) {
+  let started = false;
+  let result = null;
   try {
-    const result = await fillAll([...requests.keys()], progressLine(), onStart);
-    counts.measured += result.computed;
-    counts.cached += result.cached;
+    result = await fill([...requests.keys()], progressLine(), (...args) => {
+      started = true;
+      onStart(...args);
+    });
     for (const [request, cause] of result.errors) requests.get(request).failure = cause;
   } catch (cause) {
     // an engine died, or a cache folder failed once measuring had begun
-    for (const group of requests.values()) group.failure = cause;
+    for (const holder of requests.values()) holder.failure = cause;
   }
   // on a terminal the count rewrites one line: clear it
   if (started && process.stderr.isTTY) process.stderr.write("\r\x1b[K");
   // once each and in full: a cache folder it can't write fails every image there, and only this names the folder
   const reasons = new Set([...requests.values()].filter(({ failure }) => failure).map(({ failure }) => failure.message ?? String(failure)));
   for (const reason of reasons) console.error(printable(`slimdeer: measuring failed: ${reason}`));
+  return result;
 }
 
 /**

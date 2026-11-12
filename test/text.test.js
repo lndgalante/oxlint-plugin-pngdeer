@@ -82,6 +82,23 @@ test("the --review command it prints takes the paths and options as the --check 
   assert.match(windows.text, /^& .+ --review 'my app'$/);
 });
 
+test("the commands for WebP and AVIF copies end in --format, after the target, for each platform's shell", () => {
+  for (const platform of ["linux", "darwin", "win32"]) {
+    assert.deepEqual(shrinkCommand(["public/hero.png", "src/assets/diagram.png"], undefined, platform, "webp"), { text: "npx oxlint-plugin-slimdeer public/hero.png src/assets/diagram.png --format webp", shell: "" });
+    assert.equal(shrinkCommand(["public/hero.png"], 87, platform, "avif").text, "npx oxlint-plugin-slimdeer public/hero.png --target 87 --format avif");
+    assert.deepEqual(reviewCommand([], { format: "webp" }, platform), { text: "npx oxlint-plugin-slimdeer --review --format webp", shell: "" });
+    const options = { format: "avif", target: 80, exclude: ["public/originals"], minSavedBytes: 1000 };
+    assert.equal(checkCommand(["packages/web"], options, platform).text, "npx oxlint-plugin-slimdeer --check packages/web --exclude public/originals --min-saved-bytes 1000 --target 80 --format avif");
+    // without a format, as before
+    assert.equal(shrinkCommand(["public/hero.png"], 87, platform).text, "npx oxlint-plugin-slimdeer public/hero.png --target 87");
+  }
+  assert.equal(shrinkCommand(["public/my hero.png"], undefined, "linux", "webp").text, "npx oxlint-plugin-slimdeer 'public/my hero.png' --format webp");
+  for (const command of [shrinkCommand(["public/my hero.png"], undefined, "win32", "webp"), reviewCommand(["my app"], { format: "webp" }, "win32")]) {
+    assert.equal(command.shell, " in PowerShell");
+    assert.match(command.text, /^& .+ '(public\/my hero\.png|my app)' --format webp$/);
+  }
+});
+
 test("a line for a terminal shows each control character as one replacement character", () => {
   assert.equal(printable("public/a\x1b[31mred\x07\nline.png: ok"), "public/a\uFFFD[31mred\uFFFD\uFFFDline.png: ok");
   assert.equal(printable("tab\there"), "tab\uFFFDhere");

@@ -1,12 +1,12 @@
 // Fills the cache for a list of images, on a pool of worker threads (one wasm engine each, so all
-// cores work even though the engine itself is single-threaded), within a memory budget. The command
-// shrinks several images on the same pool.
+// cores work even though the engine itself is single-threaded), within a memory budget, and measures
+// them as WebP or AVIF. The command shrinks or converts several images on the same pool.
 import { readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { availableParallelism, totalmem } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { threadId } from "node:worker_threads";
-import { belowFloor, floored, key, legacyKey, read, readFirst, reportable, valid, write } from "./cache.js";
+import { belowFloor, convertKey, floored, key, legacyKey, read, readFirst, reportable, valid, write } from "./cache.js";
 import { dimensions, kind, unsupported } from "./images.js";
 import { marked } from "./marker.js";
 import { say } from "./progress.js";
@@ -48,6 +48,29 @@ export async function fill(request, progress = () => {}, onStart = () => {}) {
  * fill() does, if an engine dies, or if a cache folder fails after its probe (a disk filling up).
  */
 export async function fillAll(requests, progress = () => {}, onStart = () => {}) {
+  return locked(requests, (ready) => measure(ready, progress, onStart));
+}
+
+/**
+ * Measures images as WebP or AVIF, for each request { failures, format, jobs: [{ file, target, out }] }:
+ * the local cache folder, the format, and each image at a resolved target, with `out` where a hit's
+ * file is written too (the review's previews). Skips what `failures` holds already, and writes
+ * entries there alone, as a committed cache folder never holds them: { format, original, compressed,
+ * outcome, score, target (as the engine reports it) }; { format, original, skipped } for an image the
+ * engine turns down in its own words; { format, skipped, failed: true } when it fails. Under each
+ * folder's lock for copies, `onStart(total)` hears how many images go to the engine, if any, and
+ * `progress(done, total, { file, request })` each one finished. Resolves and rejects as fillAll() does.
+ */
+export async function fillConversions(requests, progress = () => {}, onStart = () => {}) {
+  // a lock of their own: a lint never waits on minutes of AVIF, and two runs still don't measure one copy twice
+  return locked(requests, (ready) => convertAll(ready, progress, onStart), "converting");
+}
+
+/**
+ * Runs `work` on the requests whose cache folders can be written, holding each folder's lock for
+ * `what` (lock()): its counts, with `ms` and `errors`, a Map from each request left out to the reason.
+ */
+async function locked(requests, work, what) {
   const errors = new Map();
   const ready = requests.filter((request) => {
     try {
@@ -63,10 +86,10 @@ export async function fillAll(requests, progress = () => {}, onStart = () => {})
   const folders = [...new Set(ready.map(({ dir, failures = dir }) => physical(resolve(failures))))].sort();
   const releases = [];
   try {
-    for (const folder of folders) releases.push(await lock(folder));
+    for (const folder of folders) releases.push(await lock(folder, what));
     // `ms` is the measuring alone, not the wait for another batch
     const start = performance.now();
-    const counts = await measure(ready, progress, onStart);
+    const counts = await work(ready);
     return { ...counts, ms: Math.round(performance.now() - start), errors };
   } finally {
     for (const release of releases) release();
@@ -77,7 +100,7 @@ export async function fillAll(requests, progress = () => {}, onStart = () => {})
 // probes with its own file, as ESLint's --concurrency threads probe at once.
 function probe({ dir, failures = dir }) {
   const name = `probe-${process.pid}-${threadId}`;
-  for (const folder of new Set([dir, failures])) {
+  for (const folder of new Set([dir ?? failures, failures])) {
     write(folder, name, {});
     rmSync(join(folder, `${name}.json`), { force: true });
   }
@@ -164,6 +187,71 @@ async function measure(requests, progress, onStart) {
       return true;
     },
     done: (job, result) => progress(++finished, total, { saved: record(job, result), file: job.file, request: job.request }),
+  });
+  return counts;
+}
+
+/** fillConversions() once it holds the locks: what's cached by then is skipped, the rest goes to one pool. */
+async function convertAll(requests, progress, onStart) {
+  const todo = [];
+  const queued = new Set(); // each job's folder and key: copies of one image are measured once
+  const counts = { computed: 0, cached: 0, skipped: 0, failed: 0 };
+  for (const request of requests) {
+    const { failures, format } = request;
+    for (const { file, target, out } of request.jobs) {
+      let bytes;
+      try {
+        bytes = readFileSync(file);
+      } catch {
+        continue;
+      }
+      const k = convertKey(bytes, target, format);
+      const id = `${failures}\0${k}`;
+      if (read(failures, k) || queued.has(id)) {
+        counts.cached++;
+        continue;
+      }
+      queued.add(id);
+      todo.push({ request, file, k, size: bytes.length, peak: peakOf(bytes, format), message: { file, target, format, out } });
+    }
+  }
+  if (todo.length) onStart(todo.length);
+
+  const record = ({ request: { failures, format }, k, size }, result) => {
+    // the file changed or went away after it was queued: cache nothing, the next run measures it again
+    if (result.input !== k) {
+      counts.failed++;
+      return;
+    }
+    // measured, though writing a preview may have failed (worker.js): the review writes it again
+    if (result.outcome !== undefined) {
+      const { original, compressed, outcome, score, target } = result;
+      write(failures, k, { format, original, compressed, outcome, score, target });
+      counts.computed++;
+    } else if (result.refused) {
+      write(failures, k, { format, original: size, skipped: result.error });
+      counts.skipped++;
+    } else {
+      // a panic, kept as fill() keeps one: measured again, it would panic again
+      write(failures, k, { format, skipped: result.error, failed: true });
+      counts.failed++;
+    }
+  };
+
+  const total = todo.length;
+  let finished = 0;
+  await pool(todo, {
+    // one folder spelled two ways queues an image twice: the second finds the first's entry
+    skip: (job) => {
+      if (!read(job.request.failures, job.k)) return false;
+      counts.cached++;
+      progress(++finished, total, { file: job.file, request: job.request });
+      return true;
+    },
+    done: (job, result) => {
+      record(job, result);
+      progress(++finished, total, { file: job.file, request: job.request });
+    },
   });
   return counts;
 }
@@ -262,13 +350,17 @@ export async function pool(jobs, { done, skip = () => false, spare = 0 }) {
   if (failure) throw failure;
 }
 
+// What each lock in a cache folder keeps to one batch at a time, as a batch waiting for it says
+const HOLDERS = { measuring: "another lint measuring this project", converting: "another run measuring this project's images as WebP or AVIF" };
+
 /**
  * Waits until no other batch measures in `folder`, then holds that until `release()`: ESLint's
  * --concurrency lints in several threads, and a command-line lint may start while an editor measures.
- * Whoever waits then finds most images cached.
+ * Whoever waits then finds most images cached. `what` is "measuring" (the images themselves) or
+ * "converting" (as WebP or AVIF), each with a lock of its own.
  */
-export async function lock(folder) {
-  const path = join(folder, "measuring.lock");
+export async function lock(folder, what = "measuring") {
+  const path = join(folder, `${what}.lock`);
   // the holder's pid and thread, so a process can remove the lock of a thread it stopped (sync.js)
   const mine = `${process.pid} ${threadId}`;
   let told = false;
@@ -281,7 +373,7 @@ export async function lock(folder) {
       }, HEARTBEAT_MS).unref();
       return () => {
         clearInterval(beat);
-        unlock(folder);
+        unlock(folder, threadId, what);
       };
     } catch (error) {
       // a folder where nothing can be locked: measure anyway
@@ -292,7 +384,7 @@ export async function lock(folder) {
     else if (!told && foreign(path)) {
       told = true;
       // a lock nothing refreshes goes stale within STALE_MS (a minute): no one needs to delete it
-      say("slimdeer: waiting for another lint measuring this project (if none is running, this one goes on within a minute)\n");
+      say(`slimdeer: waiting for ${HOLDERS[what]} (if none is running, this one goes on within a minute)\n`);
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
@@ -352,12 +444,12 @@ function holder(path) {
 }
 
 /**
- * Removes the lock in `folder` if this process's thread `thread` holds it: a batch's own when it
- * ends, or one a stopped thread left (sync.js), which this process would otherwise wait on until it
- * goes stale. Another batch's lock stays.
+ * Removes the lock for `what` in `folder` if this process's thread `thread` holds it: a batch's own
+ * when it ends, or one a stopped thread left (sync.js), which this process would otherwise wait on
+ * until it goes stale. Another batch's lock stays.
  */
-export function unlock(folder, thread = threadId) {
-  const path = join(folder, "measuring.lock");
+export function unlock(folder, thread = threadId, what = "measuring") {
+  const path = join(folder, `${what}.lock`);
   try {
     if (readFileSync(path, "utf8") === `${process.pid} ${thread}`) rmSync(path, { force: true });
   } catch {
@@ -365,10 +457,12 @@ export function unlock(folder, thread = threadId) {
   }
 }
 
-/** An engine's expected peak memory for an image (by its header), for the pool's budget. */
-export function peakOf(bytes) {
+/** An engine's expected peak memory for an image (by its header), written as `format` if given, for the pool's budget. */
+export function peakOf(bytes, format) {
   const type = kind(bytes);
   const [width, height, frames] = type ? dimensions(bytes, type) : [0, 0, 1];
+  // above every AVIF peak measured: 92 MB at 0.39 MP, 209 MB at 0.97, 388 MB at 2.43
+  if (format === "avif") return 70e6 + width * height * frames * 150;
   return peak(width * height * frames);
 }
 

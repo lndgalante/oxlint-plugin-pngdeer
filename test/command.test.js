@@ -222,12 +222,13 @@ test("--json, --review and --open go only with what they belong to", () => {
 test("the help covers every mode and option in 100 columns", () => {
   const help = slimdeer(plugin, "--help").stdout;
   for (const option of ["--check", "--json", "--review", "--open", "--flagged", "-o OUT", "--target", "--min-saved-bytes", "--min-saved-percent", "--exclude", "--cache-dir", "--target=80"]) assert.ok(help.includes(option), option);
-  assert.match(help, /looks about the same/);
+  assert.match(help, /looks about the\s+same/);
   assert.match(help, /warms the lint's cache/);
   // a page that ticks every image would offer to shrink what the rule's exclude keeps
   assert.match(help, /\nLike --check, it reads no linter configuration; with --flagged, it shows what the lint flagged\.\n/);
-  assert.ok(help.split("\n").every((line) => line.length <= 100), help);
-  assert.ok(help.split("\n").length <= 45);
+  // a usage line names every option its mode takes, so the longest runs past 100 columns
+  assert.ok(help.split("\n").every((line) => line.length <= 100 || line.startsWith("       oxlint-plugin-slimdeer --review --flagged ")), help);
+  assert.ok(help.split("\n").length <= 55);
 });
 
 /** The command's run in `cwd` with its stdout closed before it writes (with `both`, its stderr too), as `| head -1` closes it early. */
