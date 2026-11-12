@@ -11,7 +11,7 @@ after(() => dirs.forEach((dir) => rmSync(dir, { recursive: true, force: true }))
 
 /** A folder with these files, and the aliases of its project at `root` (a subfolder, or the folder). */
 function aliases(files, root = ".") {
-  const dir = mkdtempSync(join(tmpdir(), "pngdeer-tsconfig-"));
+  const dir = mkdtempSync(join(tmpdir(), "slimdeer-tsconfig-"));
   dirs.push(dir);
   for (const [path, text] of Object.entries(files)) {
     mkdirSync(dirname(join(dir, path)), { recursive: true });
@@ -62,7 +62,7 @@ test("later extends win, and ${configDir} is the project's own folder", () => {
 });
 
 test("a config edited since is read again", () => {
-  const dir = mkdtempSync(join(tmpdir(), "pngdeer-tsconfig-"));
+  const dir = mkdtempSync(join(tmpdir(), "slimdeer-tsconfig-"));
   dirs.push(dir);
   writeFileSync(join(dir, "tsconfig.json"), JSON.stringify({ compilerOptions: {} }));
   assert.equal(configAliases(dir), null);
@@ -72,7 +72,7 @@ test("a config edited since is read again", () => {
 });
 
 test("a newly created tsconfig takes precedence over the cached jsconfig", () => {
-  const dir = mkdtempSync(join(tmpdir(), "pngdeer-tsconfig-"));
+  const dir = mkdtempSync(join(tmpdir(), "slimdeer-tsconfig-"));
   dirs.push(dir);
   writeFileSync(join(dir, "jsconfig.json"), JSON.stringify({ compilerOptions: { paths: { "@/*": ["./old/*"] } } }));
   assert.deepEqual(configAliases(dir), { "@/": "old/" });
@@ -81,7 +81,7 @@ test("a newly created tsconfig takes precedence over the cached jsconfig", () =>
 });
 
 test("a missing extended config is read after a generator creates it", () => {
-  const dir = mkdtempSync(join(tmpdir(), "pngdeer-tsconfig-"));
+  const dir = mkdtempSync(join(tmpdir(), "slimdeer-tsconfig-"));
   dirs.push(dir);
   writeFileSync(join(dir, "tsconfig.json"), JSON.stringify({ extends: "./generated" }));
   assert.equal(configAliases(dir), null);

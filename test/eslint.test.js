@@ -7,20 +7,20 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { pathToFileURL } from "node:url";
 import { flaggedList, readFlagged } from "../src/summary.js";
-import { eslint, eslintSummary, handled, names, oxlint, plugin, pngdeer, project } from "./helpers.js";
+import { eslint, eslintSummary, handled, names, oxlint, plugin, slimdeer, project } from "./helpers.js";
 
 test("ESLint gives the same warnings as oxlint, and waits for a cold cache the same way", () => {
   const dir = project();
   const first = eslint(dir, "src");
   assert.deepEqual(names(first), ["crystal-ball.png", "diagram.png", "hero.png", "photo.jpg"]);
-  assert.match(first.stderr, /^pngdeer: measured 5 images in /m);
+  assert.match(first.stderr, /^slimdeer: measured 5 images in /m);
   assert.deepEqual(names(oxlint(dir)), names(first));
 });
 
 test("configs.recommended turns the rule on for the files the rest of the config lints", () => {
   const files = {
-    "eslint.config.js": `import pngdeer from ${JSON.stringify(pathToFileURL(join(plugin, "src", "index.js")).href)};
-export default [{ files: ["**/*.{js,jsx}"], languageOptions: { parserOptions: { ecmaFeatures: { jsx: true } } } }, pngdeer.configs.recommended];
+    "eslint.config.js": `import slimdeer from ${JSON.stringify(pathToFileURL(join(plugin, "src", "index.js")).href)};
+export default [{ files: ["**/*.{js,jsx}"], languageOptions: { parserOptions: { ecmaFeatures: { jsx: true } } } }, slimdeer.configs.recommended];
 `,
     // configs.recommended has no `files`, so ESLint skips this file, which the config can't parse
     "src/sizes.ts": "export const width: number = 320;\n",
@@ -32,12 +32,12 @@ export default [{ files: ["**/*.{js,jsx}"], languageOptions: { parserOptions: { 
 test("ESLint takes the rule's options", () => {
   const dir = project({ files: { "src/App.jsx": 'import ball from "./assets/crystal-ball.png";\n' }, options: { target: 70, minSavedPercent: 50 }, images: ["src/assets/crystal-ball.png"] });
   const [found] = eslint(dir, "src").found;
-  assert.match(found.message, / \(quality 7\d\/100\)\. Run: npx oxlint-plugin-pngdeer src\/assets\/crystal-ball\.png --target 70$/);
+  assert.match(found.message, / \(quality 7\d\/100\)\. Run: npx oxlint-plugin-slimdeer src\/assets\/crystal-ball\.png --target 70$/);
 });
 
 test("ESLint owns suppression so used disable comments are not reported as unused", () => {
   const dir = project({
-    files: { "src/App.jsx": '// eslint-disable-next-line pngdeer/compressible-image\nexport const hero = "/hero.png";\n' },
+    files: { "src/App.jsx": '// eslint-disable-next-line slimdeer/compressible-image\nexport const hero = "/hero.png";\n' },
     images: ["public/hero.png"],
   });
   const run = spawnSync(process.execPath, [join(plugin, "node_modules/eslint/bin/eslint.js"), "--format", "json", "--report-unused-disable-directives", "src"], { cwd: dir, encoding: "utf8", timeout: 300_000 });
@@ -68,7 +68,7 @@ test("a tool calling ESLint's Node API waits, and an editor's language server do
   // the same few lines, as a one-off script and as ESLint's language server would run them
   const script = `import { ESLint } from ${JSON.stringify(pathToFileURL(join(plugin, "node_modules", "eslint", "lib", "api.js")).href)};
 const results = await new ESLint({ cwd: process.argv[2] }).lintFiles(["src"]);
-console.log(results.flatMap((r) => r.messages).filter((m) => m.ruleId === "pngdeer/compressible-image").length);
+console.log(results.flatMap((r) => r.messages).filter((m) => m.ruleId === "slimdeer/compressible-image").length);
 `;
   const run = (name) => {
     writeFileSync(join(dir, name), script);
@@ -88,17 +88,17 @@ test("ESLint --concurrency: one summary, and --flagged still has the list", { sk
   const dir = project({ files, images: ["src/assets/crystal-ball.png", "public/photo.jpg"] });
   const stderr = eslintSummary(dir, "--concurrency", "2", "src");
   assert.equal(stderr.match(/flagged images? .*could be/g)?.length, 1, stderr);
-  assert.match(stderr, /^pngdeer: 2 flagged images \(16 warnings\) could be/m);
-  assert.deepEqual(handled(pngdeer(dir, "--flagged").stdout).sort(), ["public/photo.jpg", "src/assets/crystal-ball.png"]);
+  assert.match(stderr, /^slimdeer: 2 flagged images \(16 warnings\) could be/m);
+  assert.deepEqual(handled(slimdeer(dir, "--flagged").stdout).sort(), ["public/photo.jpg", "src/assets/crystal-ball.png"]);
 });
 
 test("eslint --cache: one notice instead of a summary, and --flagged keeps the last full run's list", () => {
   const files = { "src/App.jsx": 'import ball from "./assets/crystal-ball.png";\n', "src/util.js": "export const util = 1;\n" };
   const dir = project({ files, images: ["src/assets/crystal-ball.png"] });
-  assert.match(eslintSummary(dir, "src"), /^pngdeer: 1 flagged image could be/m);
+  assert.match(eslintSummary(dir, "src"), /^slimdeer: 1 flagged image could be/m);
   const list = readFileSync(flaggedList(dir), "utf8");
-  const said = (stderr) => stderr.split("\n").filter((line) => line.startsWith("pngdeer:"));
-  const notice = ["pngdeer: with eslint --cache, warnings can be stale and there is no summary; run without --cache to update both"];
+  const said = (stderr) => stderr.split("\n").filter((line) => line.startsWith("slimdeer:"));
+  const notice = ["slimdeer: with eslint --cache, warnings can be stale and there is no summary; run without --cache to update both"];
   assert.deepEqual(said(eslintSummary(dir, "--cache", "src")), notice);
   // ESLint replays App.jsx's warning, and runs the rule on util.js alone
   writeFileSync(join(dir, "src/util.js"), "export const util = 2;\n");
@@ -108,18 +108,18 @@ test("eslint --cache: one notice instead of a summary, and --flagged keeps the l
   assert.equal(readFileSync(flaggedList(dir), "utf8"), list);
   // --cache-location alone doesn't turn the cache on
   writeFileSync(join(dir, "src/util.js"), "export const util = 3;\n");
-  assert.match(eslintSummary(dir, "--cache-location", join(dir, "lint.cache"), "src"), /^pngdeer: 1 flagged image could be/m);
+  assert.match(eslintSummary(dir, "--cache-location", join(dir, "lint.cache"), "src"), /^slimdeer: 1 flagged image could be/m);
 });
 
 test("eslint --fix lints a file again, and its warning stays the full one", () => {
   const files = {
     "src/App.jsx": 'var x = 1;\nexport const a = ["./assets/crystal-ball.png", x];\n',
-    "eslint.config.js": `import pngdeer from ${JSON.stringify(pathToFileURL(join(plugin, "src", "index.js")).href)};
-export default [{ files: ["**/*.jsx"], plugins: { pngdeer }, rules: { "no-var": "error", "pngdeer/compressible-image": "warn" } }];
+    "eslint.config.js": `import slimdeer from ${JSON.stringify(pathToFileURL(join(plugin, "src", "index.js")).href)};
+export default [{ files: ["**/*.jsx"], plugins: { slimdeer }, rules: { "no-var": "error", "slimdeer/compressible-image": "warn" } }];
 `,
   };
   const dir = project({ files, images: ["src/assets/crystal-ball.png"] });
   const [found] = eslint(dir, "--fix", "src").found;
   assert.match(found.message, /and look .* \(quality \d+\/100\)/);
-  assert.match(eslintSummary(dir, "src"), /^pngdeer: 1 flagged image could be/m);
+  assert.match(eslintSummary(dir, "src"), /^slimdeer: 1 flagged image could be/m);
 });

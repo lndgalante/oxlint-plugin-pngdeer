@@ -1,5 +1,5 @@
 // What a lint flagged, in all: a table at the end of the run, biggest saving first, and the list that
-// `npx oxlint-plugin-pngdeer --flagged` shrinks, so nobody copies paths from warnings one by one.
+// `npx oxlint-plugin-slimdeer --flagged` shrinks, so nobody copies paths from warnings one by one.
 // The table also lists images the run measured that got no warning, as they're named only where the
 // run can't warn (a stylesheet, a page, a template, code it didn't lint or resolve), each with where
 // it is named instead, if anywhere. In GitHub Actions, the job summary gets the tables too, with more
@@ -22,7 +22,7 @@ const REPORT_UNNAMED_ROWS = 50;
 const NOWHERE = "nothing names it";
 // The command that shows the flagged images before and after on one page (review.js), from the list
 // this lint leaves, as --flagged shrinks them.
-const REVIEW_FLAGGED = { text: "npx oxlint-plugin-pngdeer --review --flagged", shell: "" };
+const REVIEW_FLAGGED = { text: "npx oxlint-plugin-slimdeer --review --flagged", shell: "" };
 // How wide a terminal draws a character: East Asian wide ones and emoji take two columns, and
 // combining marks (the accent of an NFD é) and the vowels and finals of a decomposed Hangul syllable
 // none, as in Markus Kuhn's wcwidth.
@@ -152,7 +152,7 @@ export function readFlagged(cwd) {
 
 /**
  * Whether `file` holds other bytes than those with the cache key `k` at `target`, and not ones
- * pngdeer wrote (the command leaves those as they are); one it can't read is said so when shrunk.
+ * slimdeer wrote (the command leaves those as they are); one it can't read is said so when shrunk.
  */
 function changed(file, k, target) {
   const image = fileKey(file, target);
@@ -248,14 +248,14 @@ export function summarize(cwd = process.cwd()) {
   // every file linted after a run that ran out of time turned the rule off at its first line, where
   // the problem would go (rule.js), and no other lint thread reported one: the lint still fails
   if (owed && !settled) {
-    process.stderr.write(`pngdeer: this lint is incomplete, with ${owed.left} not measured yet, so it fails (a comment turning the rule off hides the problem that says so)\n`);
+    process.stderr.write(`slimdeer: this lint is incomplete, with ${owed.left} not measured yet, so it fails (a comment turning the rule off hides the problem that says so)\n`);
     process.exitCode ||= 1;
   }
   // ESLint's --cache replays cached warnings without running the rule: they may be stale, and this run
   // saw only the files that changed, if any, so neither a table nor a new --flagged list would be right
   if (eslintCache()) {
     if (!process.argv.includes("--quiet") && !MACHINE.has(format())) {
-      process.stderr.write("pngdeer: with eslint --cache, warnings can be stale and there is no summary; run without --cache to update both\n");
+      process.stderr.write("slimdeer: with eslint --cache, warnings can be stale and there is no summary; run without --cache to update both\n");
     }
     return;
   }
@@ -299,7 +299,7 @@ export function summarize(cwd = process.cwd()) {
     const warnings = images.reduce((sum, [, image]) => sum + image.files.size, 0);
     const often = warnings > images.length ? ` (${count(warnings, "warning")})` : "";
     says.flagged = `${count(images.length, "flagged image")}${often} could be ${saved} smaller in all (${detail})`;
-    lines.push(`pngdeer: ${says.flagged}:`, line(header, " "));
+    lines.push(`slimdeer: ${says.flagged}:`, line(header, " "));
     lines.push(...rows.slice(1, 1 + Math.min(images.length, ROWS)).map((cells) => line(cells)));
     if (images.length > ROWS) lines.push(`  …and ${count(images.length - ROWS, "more image")}, ${total(images.slice(ROWS)).saved} in all`);
   }
@@ -309,15 +309,15 @@ export function summarize(cwd = process.cwd()) {
     // lint-staged left out gets its warning when it's linted.
     const lead = flagged.size ? `also ${count(unnamed.length, "image")} with no warning` : `no warnings, but ${count(unnamed.length, "image")}`;
     says.unnamed = `${lead} could be ${total(unnamed).saved} smaller (named only where this run can't warn, or nowhere)`;
-    lines.push(`pngdeer: ${says.unnamed}:`);
+    lines.push(`slimdeer: ${says.unnamed}:`);
     if (!images.length) lines.push(line(header, " "));
     lines.push(...rows.slice(1 + Math.min(images.length, ROWS)).map((cells) => line(cells)));
     if (unnamed.length > UNNAMED_ROWS) lines.push(`  …and ${count(unnamed.length - UNNAMED_ROWS, "more image")}, ${total(unnamed.slice(UNNAMED_ROWS)).saved} in all`);
   }
-  if (images.length || unnamed.length) lines.push(`pngdeer: ${LEGEND}`);
+  if (images.length || unnamed.length) lines.push(`slimdeer: ${LEGEND}`);
   if (images.length) {
-    says.shrink = { say: `to shrink the ${images.length === 1 ? "flagged image" : `${images.length} flagged images`} in place (lossy, so commit first)`, command: { text: "npx oxlint-plugin-pngdeer --flagged", shell: "" } };
-    for (const { say, command } of [preview(cwd, images), says.shrink]) lines.push(`pngdeer: ${say}, run${command.shell}: ${command.text}`);
+    says.shrink = { say: `to shrink the ${images.length === 1 ? "flagged image" : `${images.length} flagged images`} in place (lossy, so commit first)`, command: { text: "npx oxlint-plugin-slimdeer --flagged", shell: "" } };
+    for (const { say, command } of [preview(cwd, images), says.shrink]) lines.push(`slimdeer: ${say}, run${command.shell}: ${command.text}`);
   }
   if (unnamed.length) {
     const which = unnamed.length === 1 ? "it" : "them";
@@ -331,7 +331,7 @@ export function summarize(cwd = process.cwd()) {
     const shrunk = unnamed.length > UNNAMED_ROWS ? `the ${UNNAMED_ROWS} biggest of ${unnamed.length}` : which;
     for (const [target, paths] of commands) {
       const command = shrinkCommand(paths, target);
-      lines.push(`pngdeer: to shrink ${images.length ? `${shrunk} too` : `${shrunk} in place (lossy, so commit first)`}, run${command.shell}: ${command.text}`);
+      lines.push(`slimdeer: to shrink ${images.length ? `${shrunk} too` : `${shrunk} in place (lossy, so commit first)`}, run${command.shell}: ${command.text}`);
     }
     // an ESLint config that lints only .js files, say: "exclude" isn't the answer there
     const unlinted = new Map(); // JS or TS extensions this run linted no file of -> a file that names an image
@@ -340,28 +340,28 @@ export function summarize(cwd = process.cwd()) {
       if (SOURCES.includes(kind) && !kinds.has(kind) && !unlinted.has(kind)) unlinted.set(kind, page);
     }
     for (const [kind, page] of unlinted) {
-      lines.push(`pngdeer: this run linted no ${kind} files, like ${pathFrom(cwd, page)}, so their images get no warning; with ESLint, see https://github.com/lndgalante/oxlint-plugin-pngdeer#quick-start-with-eslint`);
+      lines.push(`slimdeer: this run linted no ${kind} files, like ${pathFrom(cwd, page)}, so their images get no warning; with ESLint, see https://github.com/lndgalante/oxlint-plugin-slimdeer#quick-start-with-eslint`);
     }
     // "exclude" takes paths from each image's project folder: name them when the rows show others
     const patterns = shownUnnamed.map(([file, , root]) => ({ pattern: pathFrom(root, file), shown: pathFrom(cwd, file), folder: pathFrom(cwd, root) || "." }));
     if (patterns.every(({ pattern, shown }) => pattern === shown)) {
-      lines.push(`pngdeer: to keep ${which} as is and stop listing ${which}, add ${unnamed.length === 1 ? "its path" : "their paths"} to the rule's "exclude" option`);
+      lines.push(`slimdeer: to keep ${which} as is and stop listing ${which}, add ${unnamed.length === 1 ? "its path" : "their paths"} to the rule's "exclude" option`);
     } else {
       const folders = new Set(patterns.map(({ folder }) => folder));
       const list = patterns.map(({ pattern, folder }) => `${JSON.stringify(pattern)}${folders.size > 1 ? ` (in ${folder})` : ""}`).join(", ");
       const start = folders.size > 1 ? "each package's folder" : [...folders][0];
-      lines.push(`pngdeer: to keep ${which} as is and stop listing ${which}, add ${list}${unnamed.length > patterns.length ? ", …" : ""} to the rule's "exclude" option (its paths start at ${start})`);
+      lines.push(`slimdeer: to keep ${which} as is and stop listing ${which}, add ${list}${unnamed.length > patterns.length ? ", …" : ""} to the rule's "exclude" option (its paths start at ${start})`);
     }
     if (places.slice(0, UNNAMED_ROWS).some(({ what }) => what === NOWHERE)) {
-      lines.push("pngdeer: an image nothing names may be unused (or its path is built at runtime): deleting it saves it all");
+      lines.push("slimdeer: an image nothing names may be unused (or its path is built at runtime): deleting it saves it all");
     }
   }
   if (held.length) {
     says.held = `left ${count(held.length, "shared image")} out of --flagged because another reference requires a different quality target`;
-    lines.push(`pngdeer: ${says.held}:`);
+    lines.push(`slimdeer: ${says.held}:`);
     lines.push(...held.slice(0, ROWS).map((file) => `  ${pathFrom(cwd, file)}`));
     if (held.length > ROWS) lines.push(`  …and ${count(held.length - ROWS, "more image")}`);
-    lines.push("pngdeer: use one target for each shared image before compressing it in bulk.");
+    lines.push("slimdeer: use one target for each shared image before compressing it in bulk.");
   }
   // a file name's control characters (an escape sequence, a line break) would restyle the terminal or
   // break a row: replaced, as in the job summary, by a character as wide
@@ -425,10 +425,10 @@ function preview(cwd, images, platform = process.platform) {
 function markdown(cwd, { images, unnamed, places, held, says, incomplete }) {
   // a monorepo's packages may each lint in their own folder, where their commands run
   const folder = inCheckout(cwd);
-  const blocks = [`### pngdeer${folder ? ` in ${code(folder)}` : ""}`];
+  const blocks = [`### slimdeer${folder ? ` in ${code(folder)}` : ""}`];
   // the lint's output says so too, but a table here would pass for the whole story
   if (incomplete) {
-    blocks.push("This lint is incomplete: pngdeer stopped measuring before it had measured every image, so these totals leave some out. Run it again to carry on, and keep the cache between CI runs (`settings.pngdeer.cacheDir`).");
+    blocks.push("This lint is incomplete: slimdeer stopped measuring before it had measured every image, so these totals leave some out. Run it again to carry on, and keep the cache between CI runs (`settings.slimdeer.cacheDir`).");
   }
   const header = ["Image", "Now", "After", "Saves", "Quality"];
   const cells = ([file, { original, compressed, score }]) => [code(pathFrom(cwd, file)), size(original), size(compressed), size(original - compressed), String(Math.round(score))];
@@ -445,7 +445,7 @@ function markdown(cwd, { images, unnamed, places, held, says, incomplete }) {
   if (images.length || unnamed.length) blocks.push(`${capital(LEGEND)}.`);
   if (images.length) {
     // the reader's machine has neither the list that --flagged and --review --flagged read, which a
-    // lint leaves where it ran, nor the node and pngdeer.js a Windows runner's PowerShell form names:
+    // lint leaves where it ran, nor the node and slimdeer.js a Windows runner's PowerShell form names:
     // npx, quoted for a POSIX shell. The commands run where the lint did, and a page has no "this
     // folder", so the folder is named.
     const where = folder ? code(folder) : "the folder CI linted";

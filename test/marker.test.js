@@ -97,7 +97,7 @@ test("a JPEG's mark goes after its APPn segments", () => {
 });
 
 test("a PNG turned by EXIF stays turned when shrunk, at the size the lint measured", async () => {
-  // macOS sips writes a rotated photo this way; pngdeer itself drops eXIf
+  // macOS sips writes a rotated photo this way; slimdeer itself drops eXIf
   const bytes = withChunks(png, exif(6, "MM"));
   const dir = project({ images: [], files: { "turned.png": bytes } });
   const file = join(dir, "turned.png");
@@ -110,7 +110,7 @@ test("a PNG turned by EXIF stays turned when shrunk, at the size the lint measur
 });
 
 test("an EXIF orientation is read in either byte order and carried over once", () => {
-  // `png` stands in for pngdeer's output, which has no eXIf
+  // `png` stands in for slimdeer's output, which has no eXIf
   for (const order of ["MM", "II"]) {
     for (const value of [3, 6, 8]) {
       const output = keepOrientation(withChunks(png, exif(value, order)), png);
@@ -131,7 +131,7 @@ test("output for an image EXIF doesn't turn, or that isn't a PNG starting with I
   for (const output of [jpeg, notFirst]) assert.equal(keepOrientation(withChunks(png, exif(6, "MM")), output), output);
 });
 
-test("a grayscale PNG with a color profile is left alone, as pngdeer's output can look darker", () => {
+test("a grayscale PNG with a color profile is left alone, as slimdeer's output can look darker", () => {
   const image = (colorType, ...chunks) => {
     const ihdr = Buffer.alloc(13);
     ihdr.writeUInt32BE(16, 0);
@@ -141,7 +141,7 @@ test("a grayscale PNG with a color profile is left alone, as pngdeer's output ca
     return Buffer.concat([png.subarray(0, 8), chunk("IHDR", ihdr), ...chunks, chunk("IDAT", deflateSync(pixels)), chunk("IEND", Buffer.alloc(0))]);
   };
   const profile = chunk("iCCP", Buffer.concat([Buffer.from("Gray\0\0", "latin1"), deflateSync(Buffer.alloc(128))]));
-  const why = "a grayscale PNG with a color profile (pngdeer's output can look darker)";
+  const why = "a grayscale PNG with a color profile (slimdeer's output can look darker)";
   assert.equal(unsupported(image(0, profile)), why);
   assert.equal(unsupported(image(4, profile)), why, "gray with alpha");
   assert.equal(unsupported(image(0)), null, "gray without a profile");

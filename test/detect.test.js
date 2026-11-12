@@ -115,7 +115,7 @@ test("a path that ends an earlier one in the same string is underlined where it'
   const dir = project({ files, images: [] });
   place(dir, ball, ...["img/logo", "logo", "img/bg", "bg"].map((name) => `public/${name}.png`));
   // each warning by the path its command names, as both of a pair have one name
-  const byPath = ({ found }) => ({ found: found.map((d) => ({ ...d, message: d.message.split("Run: npx oxlint-plugin-pngdeer ")[1] })) });
+  const byPath = ({ found }) => ({ found: found.map((d) => ({ ...d, message: d.message.split("Run: npx oxlint-plugin-slimdeer ")[1] })) });
   const expected = {
     "public/img/logo.png": [1, 31, 13],
     "public/logo.png": [1, 49, 9],
@@ -142,9 +142,9 @@ test('"/x.png" is looked up in the public folder nearest the file first, in a wo
   const { found } = oxlint(dir);
   const commands = Object.fromEntries(found.map((d) => [d.filename.split(/[\\/]/).slice(0, -1).join("/"), d.message.split("Run: ")[1]]));
   assert.deepEqual(commands, {
-    "apps/web/src/app": "npx oxlint-plugin-pngdeer apps/web/public/logo.png",
-    "apps/admin/src": "npx oxlint-plugin-pngdeer apps/admin/public/logo.png",
-    src: "npx oxlint-plugin-pngdeer public/logo.png",
+    "apps/web/src/app": "npx oxlint-plugin-slimdeer apps/web/public/logo.png",
+    "apps/admin/src": "npx oxlint-plugin-slimdeer apps/admin/public/logo.png",
+    src: "npx oxlint-plugin-slimdeer public/logo.png",
   });
 });
 
@@ -159,7 +159,7 @@ test("in a Gatsby project, /x.png is static/x.png, and the build output in publi
   place(dir, fire, "public/static/d1f3/9a2b/hero.png");
   const [found, ...rest] = oxlint(dir).found;
   assert.equal(rest.length, 0);
-  assert.ok(found.message.endsWith("Run: npx oxlint-plugin-pngdeer static/logo.png"), found.message);
+  assert.ok(found.message.endsWith("Run: npx oxlint-plugin-slimdeer static/logo.png"), found.message);
   assert.deepEqual(readFlagged(dir), [{ file: realpathSync(join(dir, "static/logo.png")) }]);
   assert.equal(cached(dir, "public/static/d1f3/9a2b/hero.png"), null);
   assert.doesNotMatch(oxlintSummary(dir), /public\//);
@@ -178,7 +178,7 @@ test("in a React Native project, an image's density and platform variants are na
   // all at the string that names them
   assert.deepEqual(new Set(Object.values(oxlintSpans(result)).map(String)), new Set(["2,50,20"]));
   const stderr = oxlintSummary(dir);
-  assert.match(stderr, /^pngdeer: 4 flagged images could be/m);
+  assert.match(stderr, /^slimdeer: 4 flagged images could be/m);
   assert.doesNotMatch(stderr, /assets\/logo[@.][^\n]*nothing names it/);
   // a project without React Native names the file alone
   writeFileSync(join(dir, "package.json"), "{}");
@@ -230,7 +230,7 @@ test("an image rendered through next/image says that Next.js re-encodes it, unle
   // the note sits before the command, in the full warning and in the short one another file gets
   const a = first.found.filter((d) => d.message.startsWith("a.png "));
   assert.equal(a.length, 2);
-  assert.ok(a.some((d) => /^a\.png could be \d+% smaller \(.+\) and look .+ \(quality \d+\/100\)\. Here next\/image re-encodes it for visitors, so shrinking it saves repository and build size\. Run: npx oxlint-plugin-pngdeer public\/a\.png$/.test(d.message)), a[0].message);
+  assert.ok(a.some((d) => /^a\.png could be \d+% smaller \(.+\) and look .+ \(quality \d+\/100\)\. Here next\/image re-encodes it for visitors, so shrinking it saves repository and build size\. Run: npx oxlint-plugin-slimdeer public\/a\.png$/.test(d.message)), a[0].message);
   assert.ok(a.some((d) => d.message.includes(`as warned where it's first used. ${NOTE} Run: `)), a[0].message);
   // ESLint lints the .jsx files here, not the .tsx one
   assert.deepEqual(noted(eslint(dir, "src")), ["a.png", "b.png", "ball.png", "e.png"]);

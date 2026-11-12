@@ -23,7 +23,7 @@ after(() => dirs.forEach((dir) => rmSync(dir, { recursive: true, force: true }))
  * image in a project).
  */
 export function project({ files = {}, options = {}, images } = {}) {
-  const dir = mkdtempSync(join(tmpdir(), "pngdeer-"));
+  const dir = mkdtempSync(join(tmpdir(), "slimdeer-"));
   dirs.push(dir);
   if (images) {
     writeFileSync(join(dir, "package.json"), "{}");
@@ -35,14 +35,14 @@ export function project({ files = {}, options = {}, images } = {}) {
     cpSync(example, dir, { recursive: true, filter: (path) => !path.includes("node_modules") });
   }
   const index = join(plugin, "src", "index.js");
-  const oxlintrc = { jsPlugins: [index], rules: { "pngdeer/compressible-image": ["warn", options] } };
+  const oxlintrc = { jsPlugins: [index], rules: { "slimdeer/compressible-image": ["warn", options] } };
   writeFileSync(join(dir, ".oxlintrc.json"), JSON.stringify(oxlintrc));
-  const eslintConfig = `import pngdeer from ${JSON.stringify(pathToFileURL(index).href)};
+  const eslintConfig = `import slimdeer from ${JSON.stringify(pathToFileURL(index).href)};
 export default [{
   files: ["**/*.{js,jsx}"],
   languageOptions: { parserOptions: { ecmaFeatures: { jsx: true } } },
-  plugins: { pngdeer },
-  rules: { "pngdeer/compressible-image": ["warn", ${JSON.stringify(options)}] },
+  plugins: { slimdeer },
+  rules: { "slimdeer/compressible-image": ["warn", ${JSON.stringify(options)}] },
 }];
 `;
   writeFileSync(join(dir, "eslint.config.js"), eslintConfig);
@@ -74,7 +74,7 @@ export const handled = (stdout) => stdout.trim().split("\n").map((line) => line.
 export function eslint(dir, ...args) {
   const run = spawnSync(process.execPath, [join(plugin, "node_modules", "eslint", "bin", "eslint.js"), "--format", "json", ...args], { cwd: dir, encoding: "utf8", timeout: 300_000 });
   assert.equal(run.status, 0, run.stderr || run.stdout);
-  const found = JSON.parse(run.stdout).flatMap((file) => file.messages).filter((m) => m.ruleId === "pngdeer/compressible-image");
+  const found = JSON.parse(run.stdout).flatMap((file) => file.messages).filter((m) => m.ruleId === "slimdeer/compressible-image");
   return { found, stderr: run.stderr };
 }
 
@@ -86,8 +86,8 @@ export function eslintSummary(dir, ...args) {
 }
 
 /** The command's run in `cwd`. */
-export function pngdeer(cwd, ...args) {
-  return spawnSync(process.execPath, [join(plugin, "bin", "pngdeer.js"), ...args], { cwd, encoding: "utf8", timeout: 300_000 });
+export function slimdeer(cwd, ...args) {
+  return spawnSync(process.execPath, [join(plugin, "bin", "slimdeer.js"), ...args], { cwd, encoding: "utf8", timeout: 300_000 });
 }
 
 /** The image names the warnings start with, sorted. */

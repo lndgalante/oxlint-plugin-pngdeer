@@ -21,7 +21,7 @@ import { fetchImages } from "./fetch.js";
 const plugin = fileURLToPath(new URL("..", import.meta.url));
 const OXLINT = join(plugin, "node_modules", "oxlint", "bin", "oxlint");
 const ESLINT = join(plugin, "node_modules", "eslint", "bin", "eslint.js");
-const COMMAND = join(plugin, "bin", "pngdeer.js");
+const COMMAND = join(plugin, "bin", "slimdeer.js");
 
 // How many components, and how many of each kind of image, per size.
 const SIZES = {
@@ -38,11 +38,11 @@ if (!SIZES[size]) throw new Error(`--size is small, medium or large, not ${size}
 const images = await fetchImages();
 // outside this repo, whose .gitignore oxlint would follow
 const compareScopes = args.includes("--scope-comparison");
-const work = join(tmpdir(), "oxlint-plugin-pngdeer-bench", `${size}${compareScopes ? "-scopes" : ""}`);
+const work = join(tmpdir(), "oxlint-plugin-slimdeer-bench", `${size}${compareScopes ? "-scopes" : ""}`);
 const app = build(work, images, SIZES[size]);
 const results = [];
 
-console.log(`oxlint-plugin-pngdeer ${version(plugin)} benchmark, ${size}: ${app.files} files (${app.tsx} .tsx), ${app.images} images (${mb(app.bytes)})`);
+console.log(`oxlint-plugin-slimdeer ${version(plugin)} benchmark, ${size}: ${app.files} files (${app.tsx} .tsx), ${app.images} images (${mb(app.bytes)})`);
 console.log(`${cpus()[0]?.model ?? "?"}, ${cpus().length} cores, ${Math.round(totalmem() / 1e9)} GB, ${platform()} ${release()}, Node ${process.versions.node}, oxlint ${version(join(plugin, "node_modules", "oxlint"))}, ESLint ${version(join(plugin, "node_modules", "eslint"))}`);
 
 record("oxlint, without the plugin", run(OXLINT, ["-c", ".oxlintrc.base.json", "-f", "unix"]));
@@ -59,12 +59,12 @@ if (json) writeFileSync(json, `${JSON.stringify({ size, scopeComparison: compare
 /** Exercise the usual lint, editor and compression workflows. */
 function standard() {
   uncache();
-  record("oxlint + pngdeer, first run", run(OXLINT, ["-f", "unix"]));
-  record("oxlint + pngdeer, later runs (median of 3)", median([1, 2, 3].map(() => run(OXLINT, ["-f", "unix"]))));
+  record("oxlint + slimdeer, first run", run(OXLINT, ["-f", "unix"]));
+  record("oxlint + slimdeer, later runs (median of 3)", median([1, 2, 3].map(() => run(OXLINT, ["-f", "unix"]))));
   copyFileSync(app.replacement, app.changed);
-  record("oxlint + pngdeer, after one image changed", run(OXLINT, ["-f", "unix"]));
+  record("oxlint + slimdeer, after one image changed", run(OXLINT, ["-f", "unix"]));
   const eslint = run(ESLINT, ["src"]);
-  record("ESLint + pngdeer, later run (.jsx files)", eslint);
+  record("ESLint + slimdeer, later run (.jsx files)", eslint);
   uncache();
   editor(warnings(eslint));
   // --flagged holds absolute paths, so lint the copy before compressing its images.
@@ -72,7 +72,7 @@ function standard() {
   rmSync(copy, { recursive: true, force: true });
   cpSync(work, copy, { recursive: true });
   run(OXLINT, ["-f", "unix"], copy);
-  record("npx oxlint-plugin-pngdeer --flagged", run(COMMAND, ["--flagged"], copy));
+  record("npx oxlint-plugin-slimdeer --flagged", run(COMMAND, ["--flagged"], copy));
   rmSync(copy, { recursive: true, force: true });
 }
 
@@ -80,7 +80,7 @@ function standard() {
 function scopes() {
   const config = JSON.parse(readFileSync(join(work, ".oxlintrc.json"), "utf8"));
   for (const scan of ["project", "referenced"]) {
-    config.rules["pngdeer/compressible-image"] = ["warn", { scan }];
+    config.rules["slimdeer/compressible-image"] = ["warn", { scan }];
     const path = `.oxlintrc.${scan}.json`;
     writeFileSync(join(work, path), JSON.stringify(config));
     for (const [label, files] of [["full lint", []], ["one file", ["src/components/Card0.jsx"]]]) {
@@ -127,7 +127,7 @@ function editor(expected) {
 function said(result) {
   const measured = [...result.stderr.matchAll(/measured (\d+) images? in/g)].reduce((sum, match) => sum + Number(match[1]), 0);
   const found = warnings(result);
-  const shrunk = /pngdeer: (\d+) images?, .* smaller\)/.exec(result.stderr)?.[1];
+  const shrunk = /slimdeer: (\d+) images?, .* smaller\)/.exec(result.stderr)?.[1];
   return [measured && `measured ${count(measured, "image")}`, found && count(found, "warning"), shrunk && `shrank ${count(Number(shrunk), "image")}`].filter(Boolean).join(", ");
 }
 
@@ -197,9 +197,9 @@ function build(dir, all, { files, take }) {
   write("package.json", JSON.stringify({ name: `bench-${basename(dir)}`, private: true, type: "module" }, null, 2));
   write("tsconfig.json", JSON.stringify({ compilerOptions: { jsx: "react-jsx", paths: { "@/*": ["./src/*"] } } }, null, 2));
   write(".oxlintrc.base.json", JSON.stringify({ plugins: ["react", "typescript", "oxc"] }, null, 2));
-  write(".oxlintrc.json", JSON.stringify({ plugins: ["react", "typescript", "oxc"], jsPlugins: [join(plugin, "src", "index.js")], rules: { "pngdeer/compressible-image": "warn" } }, null, 2));
+  write(".oxlintrc.json", JSON.stringify({ plugins: ["react", "typescript", "oxc"], jsPlugins: [join(plugin, "src", "index.js")], rules: { "slimdeer/compressible-image": "warn" } }, null, 2));
   const index = JSON.stringify(pathToFileURL(join(plugin, "src", "index.js")).href);
-  write("eslint.config.js", `import pngdeer from ${index};\nexport default [{ files: ["**/*.jsx"], languageOptions: { parserOptions: { ecmaFeatures: { jsx: true } } }, plugins: { pngdeer }, rules: { "pngdeer/compressible-image": "warn" } }];\n`);
+  write("eslint.config.js", `import slimdeer from ${index};\nexport default [{ files: ["**/*.jsx"], languageOptions: { parserOptions: { ecmaFeatures: { jsx: true } } }, plugins: { slimdeer }, rules: { "slimdeer/compressible-image": "warn" } }];\n`);
   const api = JSON.stringify(pathToFileURL(join(plugin, "node_modules", "eslint", "lib", "api.js")).href);
   write("eslintServer.mjs", `// ESLint's Node API, named as ESLint's language server is (the rule measures in the background
 // there): lints at once, then each second, as an editor does while you type, until the warnings
@@ -207,7 +207,7 @@ function build(dir, all, { files, take }) {
 import { ESLint } from ${api};
 const [cwd, expected] = process.argv.slice(2);
 const eslint = new ESLint({ cwd });
-const count = async () => (await eslint.lintFiles(["src"])).flatMap((r) => r.messages).filter((m) => m.ruleId === "pngdeer/compressible-image").length;
+const count = async () => (await eslint.lintFiles(["src"])).flatMap((r) => r.messages).filter((m) => m.ruleId === "slimdeer/compressible-image").length;
 const start = performance.now();
 const warnings = await count();
 const first = performance.now() - start;

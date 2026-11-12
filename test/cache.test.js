@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { fill } from "../src/batch.js";
 import { cacheDir, ENGINE, fileKey, key, legacyKey, read, reportable, write } from "../src/cache.js";
-import { oxlintSummary, pngdeer, project } from "./helpers.js";
+import { oxlintSummary, slimdeer, project } from "./helpers.js";
 
 test("a same-size replacement with preserved mtime gets a new content key", () => {
   const dir = project({ images: [] });
@@ -39,7 +39,7 @@ test("percentage thresholds compare exact savings before display rounding", () =
   assert.equal(reportable({ ...entry, compressed: 900 }, options), true);
 });
 
-test("an entry holds only what pngdeer computes, so it is the same on every machine", async () => {
+test("an entry holds only what slimdeer computes, so it is the same on every machine", async () => {
   const dir = project({ images: ["src/assets/crystal-ball.png"] });
   const file = join(dir, "src/assets/crystal-ball.png");
   await fill({ dir: join(dir, "cache"), files: [file] });
@@ -58,14 +58,14 @@ test("a result 0.5.0 measured goes into a cache folder set later without the tim
   mkdirSync(cacheDir(dir), { recursive: true });
   writeFileSync(join(cacheDir(dir), `${k}.json`), JSON.stringify({ ...measured, ms: 838 }));
   const config = JSON.parse(readFileSync(join(dir, ".oxlintrc.json"), "utf8"));
-  config.settings = { pngdeer: { cacheDir: ".pngdeer" } };
+  config.settings = { slimdeer: { cacheDir: ".slimdeer" } };
   writeFileSync(join(dir, ".oxlintrc.json"), JSON.stringify(config));
-  const copied = () => JSON.parse(readFileSync(join(dir, ".pngdeer", `${k}.json`), "utf8"));
+  const copied = () => JSON.parse(readFileSync(join(dir, ".slimdeer", `${k}.json`), "utf8"));
   assert.doesNotMatch(oxlintSummary(dir), /measur/);
   assert.deepEqual(copied(), measured);
   // and --check --cache-dir, which fills such a folder from what this machine measured
-  rmSync(join(dir, ".pngdeer"), { recursive: true });
-  assert.equal(pngdeer(dir, "--check", "src", "--target", "80", "--cache-dir", ".pngdeer").status, 1);
+  rmSync(join(dir, ".slimdeer"), { recursive: true });
+  assert.equal(slimdeer(dir, "--check", "src", "--target", "80", "--cache-dir", ".slimdeer").status, 1);
   assert.deepEqual(copied(), measured);
 });
 
@@ -73,7 +73,7 @@ test("0.5.0's automatic results carry over where the quality floor changes nothi
   const dir = project({ images: ["src/assets/crystal-ball.png", "public/unused-fire.png"] });
   const cache = join(dir, "cache");
   const [ball, fire] = ["src/assets/crystal-ball.png", "public/unused-fire.png"].map((file) => readFileSync(join(dir, file)));
-  // as 0.5.0 left them: a measurement with the time it took, and the mark of pngdeer's own output
+  // as 0.5.0 left them: a measurement with the time it took, and the mark of slimdeer's own output
   write(cache, legacyKey(ball), { original: ball.length, compressed: 11179, outcome: "hit", score: 86.9, ms: 726 });
   write(cache, legacyKey(fire), { original: fire.length, outcome: "output" });
   const result = await fill({ dir: cache, files: ["src/assets/crystal-ball.png", "public/unused-fire.png"].map((file) => join(dir, file)) });

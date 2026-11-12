@@ -1,5 +1,5 @@
 {
-  "name": "oxlint-plugin-pngdeer",
+  "name": "oxlint-plugin-slimdeer",
   "version": "0.6.0",
   "description": "Lint rule for oxlint and ESLint: flags PNGs and JPEGs your code uses that could be much smaller at about the same visual quality, with a command that shows them before and after and shrinks them. Local WebAssembly, no upload.",
   "keywords": [
@@ -19,14 +19,14 @@
     "web-performance",
     "ssimulacra2",
     "webassembly",
-    "pngdeer",
+    "slimdeer",
     "slimdeer"
   ],
-  "homepage": "https://github.com/lndgalante/oxlint-plugin-pngdeer#readme",
-  "bugs": "https://github.com/lndgalante/oxlint-plugin-pngdeer/issues",
+  "homepage": "https://github.com/lndgalante/oxlint-plugin-slimdeer#readme",
+  "bugs": "https://github.com/lndgalante/oxlint-plugin-slimdeer/issues",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/lndgalante/oxlint-plugin-pngdeer.git"
+    "url": "git+https://github.com/lndgalante/oxlint-plugin-slimdeer.git"
   },
   "author": "Leonardo Galante",
   "license": "MIT",
@@ -38,7 +38,7 @@
     }
   },
   "bin": {
-    "oxlint-plugin-pngdeer": "bin/pngdeer.js"
+    "oxlint-plugin-slimdeer": "bin/slimdeer.js"
   },
   "files": [
     "bin",

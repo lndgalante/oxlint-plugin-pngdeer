@@ -13,7 +13,7 @@ import { opener } from "../src/review.js";
 import { page } from "../src/review-page.js";
 import { flaggedList } from "../src/summary.js";
 import { checkCommand, quote, shrinkCommand } from "../src/text.js";
-import { oxlintSummary, plugin, pngdeer, project } from "./helpers.js";
+import { oxlintSummary, plugin, slimdeer, project } from "./helpers.js";
 
 // a name with what a shell, HTML and a URL each read specially; Windows refuses " < > ? in names
 const ODD = process.platform === "win32" ? "public/odd dir/it's a & c #1 50% [x].png" : `public/odd dir/it's "a" <b> & c #1 50%?.png`;
@@ -98,18 +98,18 @@ const model = (cards, more = {}) => ({ cwd: "/project", date: "2026-11-11 12:00"
 
 test("review writes each preview and a page into the project's cache, and changes no image", (t) => {
   const before = IMAGES.map((image) => sha(join(dir, image)));
-  const review = pngdeer(dir, "--review");
+  const review = slimdeer(dir, "--review");
   assert.equal(review.status, 0, review.stderr);
-  const index = join(realpathSync(dir), "node_modules/.cache/pngdeer/review/index.html");
+  const index = join(realpathSync(dir), "node_modules/.cache/slimdeer/review/index.html");
   assert.deepEqual(review.stdout.split("\n"), [
-    "pngdeer: 3 images could be 199 kB smaller (306 kB → 107 kB, 65% smaller). Images unchanged.",
-    `pngdeer: the page that compares each one before and after: ${pathToFileURL(index).href}`,
-    "pngdeer: open it in a browser, untick any image to keep as it is, and run the command it gives.",
+    "slimdeer: 3 images could be 199 kB smaller (306 kB → 107 kB, 65% smaller). Images unchanged.",
+    `slimdeer: the page that compares each one before and after: ${pathToFileURL(index).href}`,
+    "slimdeer: open it in a browser, untick any image to keep as it is, and run the command it gives.",
     "",
   ]);
   // measured, then the two previews (the copies share one)
-  assert.match(review.stderr, /^pngdeer: measuring 2 images not in the cache yet\.\.\.$/m);
-  assert.match(review.stderr, /^pngdeer: writing 2 previews\.\.\.$/m);
+  assert.match(review.stderr, /^slimdeer: measuring 2 images not in the cache yet\.\.\.$/m);
+  assert.match(review.stderr, /^slimdeer: writing 2 previews\.\.\.$/m);
   assert.deepEqual(IMAGES.map((image) => sha(join(dir, image))), before);
   // the page, two previews, and what keeps them out of a repository
   assert.equal(readdirSync(folder).length, 4);
@@ -127,11 +127,11 @@ test("review writes each preview and a page into the project's cache, and change
     assert.equal(resolveFrom(after), realpathSync(join(folder, after)));
   }
   // each preview is what the command writes with -o, byte for byte
-  const out = mkdtempSync(join(tmpdir(), "pngdeer-preview-"));
+  const out = mkdtempSync(join(tmpdir(), "slimdeer-preview-"));
   t.after(() => rmSync(out, { recursive: true, force: true }));
   for (const [i, [image, shown]] of [[BALL, ODD], [PHOTO, PHOTO]].entries()) {
     const preview = join(out, `${i}${image.slice(-4)}`);
-    assert.equal(pngdeer(dir, image, "-o", preview).status, 0);
+    assert.equal(slimdeer(dir, image, "-o", preview).status, 0);
     assert.deepEqual(readFileSync(join(folder, cards.find(({ path }) => path === shown).after)), readFileSync(preview));
   }
 
@@ -160,15 +160,15 @@ test("a second review reuses the previews still wanted, writes the ones that wen
   const ball = join(folder, cards.find(({ path }) => path === ODD).after);
   const photo = join(folder, cards.find(({ path }) => path === PHOTO).after);
   const good = { ball: readFileSync(ball), photo: readFileSync(photo) };
-  // one cut short, one of the right size that isn't pngdeer's
+  // one cut short, one of the right size that isn't slimdeer's
   writeFileSync(photo, good.photo.subarray(0, 100));
   writeFileSync(ball, Buffer.alloc(good.ball.length));
   writeFileSync(join(folder, "stale.png"), "old");
   writeFileSync(join(folder, ".x.png.123.tmp"), "left by a killed run");
 
-  const again = pngdeer(dir, "--review");
+  const again = slimdeer(dir, "--review");
   assert.equal(again.status, 0, again.stderr);
-  assert.match(again.stderr, /^pngdeer: writing 2 previews\.\.\.$/m);
+  assert.match(again.stderr, /^slimdeer: writing 2 previews\.\.\.$/m);
   assert.doesNotMatch(again.stderr, /measuring/);
   assert.deepEqual(readFileSync(photo), good.photo);
   assert.deepEqual(readFileSync(ball), good.ball);
@@ -176,12 +176,12 @@ test("a second review reuses the previews still wanted, writes the ones that wen
 
   // left out now: its preview goes, the other is kept as it is, and nothing is compressed
   const kept = statSync(ball).mtimeMs;
-  const fewer = pngdeer(dir, "--review", "--exclude", PHOTO);
+  const fewer = slimdeer(dir, "--review", "--exclude", PHOTO);
   assert.equal(fewer.status, 0, fewer.stderr);
   assert.equal(fewer.stderr, "");
-  assert.match(fewer.stdout, /^pngdeer: 2 images could be /);
-  assert.match(fewer.stdout, /^pngdeer: the page that compares it before and after: /m);
-  assert.match(fewer.stdout, /^pngdeer: open it in a browser, and if the after looks right, run the command it gives\.$/m);
+  assert.match(fewer.stdout, /^slimdeer: 2 images could be /);
+  assert.match(fewer.stdout, /^slimdeer: the page that compares it before and after: /m);
+  assert.match(fewer.stdout, /^slimdeer: open it in a browser, and if the after looks right, run the command it gives\.$/m);
   assert.equal(existsSync(photo), false);
   assert.equal(statSync(ball).mtimeMs, kept);
   assert.equal(parse(readFileSync(join(folder, "index.html"), "utf8")).cards.length, 1);
@@ -195,24 +195,24 @@ test("a long list's page gives several commands, and the terminal says so", () =
     mkdirSync(copy, { recursive: true });
     copyFileSync(join(long, BALL), join(copy, "crystal-ball-with-a-long-name.png"));
   }
-  const review = pngdeer(long, "--review");
+  const review = slimdeer(long, "--review");
   assert.equal(review.status, 0, review.stderr);
   assert.match(readFileSync(join(cacheDir(long), "review/index.html"), "utf8"), /<span id="say">[^<]*, run these \d+ commands/);
-  assert.match(review.stdout, /^pngdeer: open it in a browser, and if the after looks right, run the commands it gives\.$/m);
+  assert.match(review.stdout, /^slimdeer: open it in a browser, and if the after looks right, run the commands it gives\.$/m);
 });
 
 test("an image that can't be checked makes the review exit 2, and the page still shows the others and lists it", () => {
   writeFileSync(join(dir, "public/fixture.png"), "not an image");
   try {
-    const review = pngdeer(dir, "--review", "--exclude", PHOTO);
+    const review = slimdeer(dir, "--review", "--exclude", PHOTO);
     assert.equal(review.status, 2);
     assert.equal(review.stderr, "public/fixture.png: not a PNG or JPEG\n");
     // the terminal names what the page leaves out, as --check would, right after the totals, with
     // the review that leaves it out
     const lines = review.stdout.split("\n");
-    assert.match(lines[0], /^pngdeer: 2 images could be /);
-    assert.equal(lines[1], "pngdeer: 1 file named like an image isn't a PNG or JPEG; if that's expected (a test fixture, say), to leave it out, run: npx oxlint-plugin-pngdeer --review --exclude public/photo.jpg --exclude public/fixture.png");
-    assert.match(lines[2], /^pngdeer: the page that compares it before and after: file:/);
+    assert.match(lines[0], /^slimdeer: 2 images could be /);
+    assert.equal(lines[1], "slimdeer: 1 file named like an image isn't a PNG or JPEG; if that's expected (a test fixture, say), to leave it out, run: npx oxlint-plugin-slimdeer --review --exclude public/photo.jpg --exclude public/fixture.png");
+    assert.match(lines[2], /^slimdeer: the page that compares it before and after: file:/);
     const html = readFileSync(join(folder, "index.html"), "utf8");
     assert.equal(parse(html).cards.length, 1);
     assert.ok(html.includes("<details class=\"unlisted\"><summary>1 image or folder couldn&#39;t be checked or previewed.</summary>\n<ul><li><code>public/fixture.png</code>: not a PNG or JPEG</li></ul>"));
@@ -226,40 +226,40 @@ test("an error that running it again may clear names the run to repeat", () => {
   const bytes = readFileSync(join(stale, PHOTO));
   // an entry no measurement writes
   write(cacheDir(stale), key(bytes), { original: bytes.length, compressed: -1, outcome: "hit", score: 80 });
-  const said = (run) => `public/photo.jpg: invalid measurement in node_modules/.cache/pngdeer; remove that cache entry and run ${run} again\n`;
-  assert.equal(pngdeer(stale, "--check").stderr, said("--check"));
-  assert.equal(pngdeer(stale, "--review").stderr, said("--review"));
+  const said = (run) => `public/photo.jpg: invalid measurement in node_modules/.cache/slimdeer; remove that cache entry and run ${run} again\n`;
+  assert.equal(slimdeer(stale, "--check").stderr, said("--check"));
+  assert.equal(slimdeer(stale, "--review").stderr, said("--review"));
   // the lint's list again, not the whole folder
   mkdirSync(cacheDir(stale), { recursive: true });
   writeFileSync(flaggedList(stale), JSON.stringify({ cwd: realpathSync.native(stale), images: [{ file: PHOTO }] }));
-  assert.equal(pngdeer(stale, "--review", "--flagged").stderr, said("--review --flagged"));
+  assert.equal(slimdeer(stale, "--review", "--flagged").stderr, said("--review --flagged"));
 });
 
 // what a review adds to --check's words when it shows nothing, as a tab may still show an old page
-const NO_PAGE = "pngdeer: no image to compare, so no page was written.\n";
+const NO_PAGE = "slimdeer: no image to compare, so no page was written.\n";
 
 test("with nothing to review, review says what --check says and that it wrote no page, leaves no page and no job summary, and exits 0", () => {
   const small = project({ images: ["src/assets/heart.png"] });
   const old = join(cacheDir(small), "review");
   mkdirSync(old, { recursive: true });
   writeFileSync(join(old, "index.html"), "a page from an earlier run");
-  const review = pngdeer(small, "--review");
+  const review = slimdeer(small, "--review");
   assert.equal(review.status, 0, review.stderr);
-  assert.equal(review.stdout, `${pngdeer(small, "--check").stdout}${NO_PAGE}`);
-  assert.match(review.stdout, /^pngdeer: no images exceed the savings thresholds\. Images unchanged\.$/m);
+  assert.equal(review.stdout, `${slimdeer(small, "--check").stdout}${NO_PAGE}`);
+  assert.match(review.stdout, /^slimdeer: no images exceed the savings thresholds\. Images unchanged\.$/m);
   assert.equal(existsSync(old), false);
 
   // in GitHub Actions --check would write a job summary for the file that isn't an image; a review doesn't
   writeFileSync(join(small, "bad.png"), "not an image");
   const summary = join(small, "summary.md");
   const env = { ...process.env, GITHUB_STEP_SUMMARY: summary };
-  const command = (...args) => spawnSync(process.execPath, [join(plugin, "bin/pngdeer.js"), ...args], { cwd: small, env, encoding: "utf8" });
+  const command = (...args) => spawnSync(process.execPath, [join(plugin, "bin/slimdeer.js"), ...args], { cwd: small, env, encoding: "utf8" });
   const failed = command("--review");
   assert.equal(failed.status, 2);
-  assert.ok(failed.stdout.endsWith(`pngdeer: check incomplete. Images unchanged.\n${NO_PAGE}`), failed.stdout);
+  assert.ok(failed.stdout.endsWith(`slimdeer: check incomplete. Images unchanged.\n${NO_PAGE}`), failed.stdout);
   assert.equal(existsSync(summary), false);
   assert.equal(command("--check").status, 2);
-  assert.match(readFileSync(summary, "utf8"), /### pngdeer --check/);
+  assert.match(readFileSync(summary, "utf8"), /### slimdeer --check/);
 });
 
 // chmod keeps neither Windows nor root out
@@ -269,11 +269,11 @@ test("with nothing measured, as a cache folder can't be written, review says why
   mkdirSync(modules);
   chmodSync(modules, 0o555);
   t.after(() => chmodSync(modules, 0o755));
-  const review = pngdeer(locked, "--review");
+  const review = slimdeer(locked, "--review");
   assert.equal(review.status, 2);
-  assert.equal(review.stderr.match(/^pngdeer: measuring failed: .*$/gm).length, 1, review.stderr);
+  assert.equal(review.stderr.match(/^slimdeer: measuring failed: .*$/gm).length, 1, review.stderr);
   assert.equal(review.stderr.match(/^src\/assets\/crystal-ball\.png: not measured \(see above\)$/gm).length, 1, review.stderr);
-  assert.match(review.stdout, /^pngdeer: check incomplete\. Images unchanged\.$/m);
+  assert.match(review.stdout, /^slimdeer: check incomplete\. Images unchanged\.$/m);
 });
 
 test("a preview of another size than measured is reported and left off the page, which shows the others", () => {
@@ -282,14 +282,14 @@ test("a preview of another size than measured is reported and left off the page,
   writeFileSync(join(odd, "ball.png"), bytes);
   // a measurement that no preview of these bytes matches
   write(cacheDir(odd), key(bytes), { original: bytes.length, compressed: 20000, outcome: "hit", score: 90 });
-  const report = /^ball\.png: its preview is \d+ bytes, but measuring said 20000; please report this at https:\/\/github\.com\/lndgalante\/oxlint-plugin-pngdeer\/issues$/m;
-  const alone = pngdeer(odd, "--review");
+  const report = /^ball\.png: its preview is \d+ bytes, but measuring said 20000; please report this at https:\/\/github\.com\/lndgalante\/oxlint-plugin-slimdeer\/issues$/m;
+  const alone = slimdeer(odd, "--review");
   assert.equal(alone.status, 2);
   assert.match(alone.stderr, report);
-  assert.equal(alone.stdout, "pngdeer: review incomplete: no preview could be written. Images unchanged.\n");
+  assert.equal(alone.stdout, "slimdeer: review incomplete: no preview could be written. Images unchanged.\n");
   assert.deepEqual(readdirSync(join(cacheDir(odd), "review")), [".gitignore"]);
   // on a terminal, the report starts a line of its own, not the end of the count's
-  const tty = spawnSync(process.execPath, ["--import", "data:text/javascript,process.stderr.isTTY=true", join(plugin, "bin/pngdeer.js"), "--review"], { cwd: odd, encoding: "utf8" });
+  const tty = spawnSync(process.execPath, ["--import", "data:text/javascript,process.stderr.isTTY=true", join(plugin, "bin/slimdeer.js"), "--review"], { cwd: odd, encoding: "utf8" });
   assert.equal(tty.status, 2, tty.stderr);
   assert.ok(tty.stderr.includes("\r\x1b[Kball.png: its preview is"), JSON.stringify(tty.stderr));
 
@@ -297,10 +297,10 @@ test("a preview of another size than measured is reported and left off the page,
   const photo = readFileSync(join(dir, PHOTO));
   writeFileSync(join(odd, "photo.jpg"), photo);
   write(cacheDir(odd), key(photo), read(cacheDir(dir), key(photo)));
-  const review = pngdeer(odd, "--review");
+  const review = slimdeer(odd, "--review");
   assert.equal(review.status, 2);
   assert.match(review.stderr, report);
-  assert.match(review.stdout, /^pngdeer: 1 image could be 150 kB smaller /);
+  assert.match(review.stdout, /^slimdeer: 1 image could be 150 kB smaller /);
   const { cards } = parse(readFileSync(join(cacheDir(odd), "review/index.html"), "utf8"));
   assert.deepEqual(cards.map(({ path }) => path), ["photo.jpg"]);
 });
@@ -335,9 +335,9 @@ test("the page's script builds the ticked images' commands as the terminal does:
   assert.ok(lines.length > 1);
   for (const line of lines) {
     assert.ok(line.length <= 6000, String(line.length));
-    assert.match(line, /^npx oxlint-plugin-pngdeer .* --target 80$/);
+    assert.match(line, /^npx oxlint-plugin-slimdeer .* --target 80$/);
   }
-  assert.deepEqual(lines.flatMap((line) => line.replace(/^npx oxlint-plugin-pngdeer /, "").replace(/ --target 80$/, "").split(" ")), many);
+  assert.deepEqual(lines.flatMap((line) => line.replace(/^npx oxlint-plugin-slimdeer /, "").replace(/ --target 80$/, "").split(" ")), many);
 });
 
 test("when the page can't copy the command, the reader sees what to press, not only a screen reader", async () => {
@@ -356,7 +356,7 @@ test("when the page can't copy the command, the reader sees what to press, not o
     navigator: { clipboard: { writeText: () => Promise.reject(new Error("denied")) } },
     setTimeout: () => {},
   });
-  context.copy(["npx oxlint-plugin-pngdeer a.png"], shown);
+  context.copy(["npx oxlint-plugin-slimdeer a.png"], shown);
   await new Promise(setImmediate);
   assert.equal(selected, shown);
   assert.equal(button.textContent, "Copy");
@@ -364,7 +364,7 @@ test("when the page can't copy the command, the reader sees what to press, not o
   assert.equal(classes.has("hidden"), false);
   // copied: the button says so, and the line is for screen readers again
   context.navigator.clipboard.writeText = () => Promise.resolve();
-  context.copy(["npx oxlint-plugin-pngdeer a.png"], shown);
+  context.copy(["npx oxlint-plugin-slimdeer a.png"], shown);
   await new Promise(setImmediate);
   assert.equal(button.textContent, "Copied");
   assert.equal(status.textContent, "Copied the command.");
@@ -429,7 +429,7 @@ test("the page's Copy button copies every command the bar gives", async () => {
   element("copy").on.click();
   // once the clipboard has answered
   await new Promise(setImmediate);
-  assert.equal(copied, "npx oxlint-plugin-pngdeer a.png\nnpx oxlint-plugin-pngdeer b.png --target 80");
+  assert.equal(copied, "npx oxlint-plugin-slimdeer a.png\nnpx oxlint-plugin-slimdeer b.png --target 80");
   assert.equal(element("status").textContent, "Copied the commands.");
 });
 
@@ -485,19 +485,19 @@ test("--review --flagged shows the images the last lint flagged, each at its own
   const linted = project({ files, images: [BALL, PHOTO, "public/unused-fire.png"], options: { scan: "referenced" } });
   const configFile = join(linted, ".oxlintrc.json");
   const config = JSON.parse(readFileSync(configFile, "utf8"));
-  config.overrides = [{ files: ["src/b.js"], rules: { "pngdeer/compressible-image": ["warn", { scan: "referenced", target: 70 }] } }];
+  config.overrides = [{ files: ["src/b.js"], rules: { "slimdeer/compressible-image": ["warn", { scan: "referenced", target: 70 }] } }];
   writeFileSync(configFile, JSON.stringify(config));
-  const noList = "oxlint-plugin-pngdeer: no list of flagged images here: lint in this folder first (npx oxlint, or eslint without --cache); if a lint here flagged no image, there is nothing to do\n";
-  const before = pngdeer(linted, "--review", "--flagged");
+  const noList = "oxlint-plugin-slimdeer: no list of flagged images here: lint in this folder first (npx oxlint, or eslint without --cache); if a lint here flagged no image, there is nothing to do\n";
+  const before = slimdeer(linted, "--review", "--flagged");
   assert.equal(before.status, 2);
   assert.equal(before.stderr, noList);
 
-  assert.match(oxlintSummary(linted), /^pngdeer: to see the 2 flagged images before and after on one page first, run: npx oxlint-plugin-pngdeer --review --flagged$/m);
-  const review = pngdeer(linted, "--review", "--flagged");
+  assert.match(oxlintSummary(linted), /^slimdeer: to see the 2 flagged images before and after on one page first, run: npx oxlint-plugin-slimdeer --review --flagged$/m);
+  const review = slimdeer(linted, "--review", "--flagged");
   assert.equal(review.status, 0, review.stderr);
-  assert.match(review.stdout, /^pngdeer: 2 images could be \d+ kB smaller /);
+  assert.match(review.stdout, /^slimdeer: 2 images could be \d+ kB smaller /);
   // a command per target, as the page says
-  assert.match(review.stdout, /^pngdeer: open it in a browser, untick any image to keep as it is, and run the commands it gives\.$/m);
+  assert.match(review.stdout, /^slimdeer: open it in a browser, untick any image to keep as it is, and run the commands it gives\.$/m);
   const reviewFolder = join(cacheDir(linted), "review");
   const html = readFileSync(join(reviewFolder, "index.html"), "utf8");
   const { data, script, cards } = parse(html);
@@ -509,35 +509,35 @@ test("--review --flagged shows the images the last lint flagged, each at its own
   assert.deepEqual(lines, [shrinkCommand([PHOTO], 70).text, shrinkCommand([BALL]).text]);
 
   // a --target given here wins for every image
-  const fixed = pngdeer(linted, "--review", "--flagged", "--target", "70");
+  const fixed = slimdeer(linted, "--review", "--flagged", "--target", "70");
   assert.equal(fixed.status, 0, fixed.stderr);
-  assert.match(fixed.stdout, /^pngdeer: open it in a browser, untick any image to keep as it is, and run the command it gives\.$/m);
+  assert.match(fixed.stdout, /^slimdeer: open it in a browser, untick any image to keep as it is, and run the command it gives\.$/m);
   const one = parse(readFileSync(join(reviewFolder, "index.html"), "utf8"));
   assert.deepEqual(plain(run(one.script).commands(one.data, [true, true]).lines), [shrinkCommand([PHOTO, BALL], 70).text]);
 
   // the page's commands write what it shows, byte for byte
-  assert.equal(pngdeer(linted, "--review", "--flagged").status, 0);
+  assert.equal(slimdeer(linted, "--review", "--flagged").status, 0);
   const shown = parse(readFileSync(join(reviewFolder, "index.html"), "utf8"));
   const previews = Object.fromEntries(shown.cards.map(({ path, after }) => [path, readFileSync(join(reviewFolder, after))]));
   for (const line of plain(run(shown.script).commands(shown.data, [true, true]).lines)) {
-    const shrink = pngdeer(linted, ...line.replace(/^npx oxlint-plugin-pngdeer /, "").split(" "));
+    const shrink = slimdeer(linted, ...line.replace(/^npx oxlint-plugin-slimdeer /, "").split(" "));
     assert.equal(shrink.status, 0, shrink.stderr);
   }
   for (const path of [PHOTO, BALL]) assert.deepEqual(readFileSync(join(linted, path)), previews[path], path);
 
   // the list is the last lint's: nothing on it can be made smaller now, and the page goes
-  const after = pngdeer(linted, "--review", "--flagged");
+  const after = slimdeer(linted, "--review", "--flagged");
   assert.equal(after.status, 0, after.stderr);
-  assert.equal(after.stdout, "pngdeer: none of the 2 images the last lint here flagged can be made smaller now, so there is nothing to review; lint again to update the list.\n");
+  assert.equal(after.stdout, "slimdeer: none of the 2 images the last lint here flagged can be made smaller now, so there is nothing to review; lint again to update the list.\n");
   assert.equal(existsSync(join(reviewFolder, "index.html")), false);
   // a lint that flags nothing leaves an empty list, and an old page still goes
   oxlintSummary(linted);
   assert.deepEqual(JSON.parse(readFileSync(flaggedList(linted), "utf8")).images, []);
   mkdirSync(reviewFolder, { recursive: true });
   writeFileSync(join(reviewFolder, "index.html"), "a page from an earlier run");
-  const empty = pngdeer(linted, "--review", "--flagged");
+  const empty = slimdeer(linted, "--review", "--flagged");
   assert.equal(empty.status, 0, empty.stderr);
-  assert.equal(empty.stdout, "pngdeer: the last lint here left no images to review with --flagged.\n");
+  assert.equal(empty.stdout, "slimdeer: the last lint here left no images to review with --flagged.\n");
   assert.equal(empty.stderr, "");
   assert.equal(existsSync(join(reviewFolder, "index.html")), false);
 });
@@ -548,13 +548,13 @@ test("--review --flagged shows what the lint flagged by the lint's thresholds, f
   const linted = project({ images: [fire], files: { "src/a.js": 'export const fire = "/unused-fire.png";\n' }, options: { scan: "referenced", target: 95, minSavedBytes: 1000, minSavedPercent: 5 } });
   // measured into a folder the team commits, where the lint writes what it measures
   const configFile = join(linted, ".oxlintrc.json");
-  writeFileSync(configFile, JSON.stringify({ ...JSON.parse(readFileSync(configFile, "utf8")), settings: { pngdeer: { cacheDir: ".pngdeer" } } }));
-  assert.match(oxlintSummary(linted), /^pngdeer: 1 flagged image could be 1\.2 kB smaller/m);
-  const check = pngdeer(linted, "--check", fire, "--target", "95", "--cache-dir", ".pngdeer");
+  writeFileSync(configFile, JSON.stringify({ ...JSON.parse(readFileSync(configFile, "utf8")), settings: { slimdeer: { cacheDir: ".slimdeer" } } }));
+  assert.match(oxlintSummary(linted), /^slimdeer: 1 flagged image could be 1\.2 kB smaller/m);
+  const check = slimdeer(linted, "--check", fire, "--target", "95", "--cache-dir", ".slimdeer");
   assert.equal(check.status, 0, check.stderr);
-  assert.match(check.stdout, /^pngdeer: no images exceed the savings thresholds\. Images unchanged\.$/m);
-  for (const given of [[], ["--cache-dir", ".pngdeer"]]) {
-    const review = pngdeer(linted, "--review", "--flagged", ...given);
+  assert.match(check.stdout, /^slimdeer: no images exceed the savings thresholds\. Images unchanged\.$/m);
+  for (const given of [[], ["--cache-dir", ".slimdeer"]]) {
+    const review = slimdeer(linted, "--review", "--flagged", ...given);
     assert.equal(review.status, 0, review.stderr);
     // read from where the lint measured it: nothing is measured again
     assert.doesNotMatch(review.stderr, /measuring/);
@@ -563,27 +563,27 @@ test("--review --flagged shows what the lint flagged by the lint's thresholds, f
   // at a target given here that nothing reaches, the list is up to date: the target is named instead
   const bytes = readFileSync(join(linted, fire));
   write(cacheDir(linted), key(bytes, 99), { original: bytes.length, compressed: bytes.length - 1000, outcome: "miss", score: 97.4 });
-  const strict = pngdeer(linted, "--review", "--flagged", "--target", "99");
+  const strict = slimdeer(linted, "--review", "--flagged", "--target", "99");
   assert.equal(strict.status, 0, strict.stderr);
-  assert.equal(strict.stdout, `pngdeer: ${fire} isn't listed: no smaller file reaches --target 99 (the best reaches quality 97/100)\npngdeer: the image the last lint here flagged can't be made smaller at --target 99, so there is nothing to review.\n`);
+  assert.equal(strict.stdout, `slimdeer: ${fire} isn't listed: no smaller file reaches --target 99 (the best reaches quality 97/100)\nslimdeer: the image the last lint here flagged can't be made smaller at --target 99, so there is nothing to review.\n`);
   // shrunk since the lint
-  assert.equal(pngdeer(linted, fire, "--target", "95").status, 0);
-  const shrunk = pngdeer(linted, "--review", "--flagged");
+  assert.equal(slimdeer(linted, fire, "--target", "95").status, 0);
+  const shrunk = slimdeer(linted, "--review", "--flagged");
   assert.equal(shrunk.status, 0, shrunk.stderr);
-  assert.equal(shrunk.stdout, "pngdeer: the image the last lint here flagged can't be made smaller now, so there is nothing to review; lint again to update the list.\n");
+  assert.equal(shrunk.stdout, "slimdeer: the image the last lint here flagged can't be made smaller now, so there is nothing to review; lint again to update the list.\n");
   // gone since the lint
   rmSync(join(linted, fire));
-  const gone = pngdeer(linted, "--review", "--flagged");
+  const gone = slimdeer(linted, "--review", "--flagged");
   assert.equal(gone.status, 2);
   assert.equal(gone.stderr, `${fire}: no such file or folder\n`);
-  assert.equal(gone.stdout, "pngdeer: review incomplete: none of the images the last lint here flagged could be shown; lint again to update the list.\n");
+  assert.equal(gone.stdout, "slimdeer: review incomplete: none of the images the last lint here flagged could be shown; lint again to update the list.\n");
 });
 
 test("--review --flagged reads an image another package's code names from the folder the lint measured it into", () => {
   // the app's lint measures the root package's image into the app's cache, not the image's package's
   const linted = project({ images: [BALL], files: { "apps/web/package.json": "{}", "apps/web/src/a.js": `export const ball = new URL("../../../${BALL}", import.meta.url);\n` } });
-  assert.match(oxlintSummary(linted, "apps"), /^pngdeer: 1 flagged image could be/m);
-  const review = pngdeer(linted, "--review", "--flagged");
+  assert.match(oxlintSummary(linted, "apps"), /^slimdeer: 1 flagged image could be/m);
+  const review = slimdeer(linted, "--review", "--flagged");
   assert.equal(review.status, 0, review.stderr);
   assert.doesNotMatch(review.stderr, /measuring/);
   assert.deepEqual(parse(readFileSync(join(cacheDir(linted), "review", "index.html"), "utf8")).cards.map(({ path }) => path), [BALL]);
@@ -728,7 +728,7 @@ test("the first Tab on the page offers to skip every card's controls to the comm
 });
 
 test("--open asks the system's opener for the page, with no shell to read the path", () => {
-  const file = "/work/R&D 100%/node_modules/.cache/pngdeer/review/index.html";
+  const file = "/work/R&D 100%/node_modules/.cache/slimdeer/review/index.html";
   assert.deepEqual(opener(file, "darwin"), { command: "open", args: [file] });
   // Windows' own explorer.exe, by its full path, never one in the folder the review runs in
   const windows = opener("C:\\R&D 100%\\index.html", "win32");
@@ -740,28 +740,28 @@ test("--open asks the system's opener for the page, with no shell to read the pa
 
 // Windows finds explorer.exe without PATH
 test("--open with no opener installed says so in one line, and the review still exits 0", { skip: process.platform === "win32" }, (t) => {
-  const empty = mkdtempSync(join(tmpdir(), "pngdeer-nopath-"));
+  const empty = mkdtempSync(join(tmpdir(), "slimdeer-nopath-"));
   t.after(() => rmSync(empty, { recursive: true, force: true }));
-  const review = spawnSync(process.execPath, [join(plugin, "bin/pngdeer.js"), "--review", "--open"], { cwd: dir, env: { ...process.env, PATH: empty }, encoding: "utf8" });
+  const review = spawnSync(process.execPath, [join(plugin, "bin/slimdeer.js"), "--review", "--open"], { cwd: dir, env: { ...process.env, PATH: empty }, encoding: "utf8" });
   assert.equal(review.status, 0, review.stderr);
-  assert.match(review.stderr, /^pngdeer: couldn't open a browser: (?:open|xdg-open) isn't installed$/m);
-  assert.match(review.stdout, /^pngdeer: open it in a browser, untick any image to keep as it is, and run the command it gives\.$/m);
+  assert.match(review.stderr, /^slimdeer: couldn't open a browser: (?:open|xdg-open) isn't installed$/m);
+  assert.match(review.stdout, /^slimdeer: open it in a browser, untick any image to keep as it is, and run the command it gives\.$/m);
 });
 
 // Windows' explorer.exe exits 1 even when it opened the page
 test("--open whose opener gives up says so, and the review still exits 0", { skip: process.platform === "win32" }, (t) => {
-  const bin = mkdtempSync(join(tmpdir(), "pngdeer-opener-"));
+  const bin = mkdtempSync(join(tmpdir(), "slimdeer-opener-"));
   t.after(() => rmSync(bin, { recursive: true, force: true }));
   // as xdg-open does with no display and no browser to use (over SSH, in a container)
   for (const name of ["open", "xdg-open"]) writeFileSync(join(bin, name), "#!/bin/sh\necho \"xdg-open: no method available for opening '$1'\" >&2\nexit 3\n", { mode: 0o755 });
-  const review = spawnSync(process.execPath, [join(plugin, "bin/pngdeer.js"), "--review", "--open"], { cwd: dir, env: { ...process.env, PATH: bin }, encoding: "utf8" });
+  const review = spawnSync(process.execPath, [join(plugin, "bin/slimdeer.js"), "--review", "--open"], { cwd: dir, env: { ...process.env, PATH: bin }, encoding: "utf8" });
   assert.equal(review.status, 0, review.stderr);
-  assert.match(review.stderr, /^pngdeer: couldn't open a browser: (?:open|xdg-open) exited with code 3$/m);
-  assert.match(review.stdout, /^pngdeer: open it in a browser, untick any image to keep as it is, and run the command it gives\.$/m);
+  assert.match(review.stderr, /^slimdeer: couldn't open a browser: (?:open|xdg-open) exited with code 3$/m);
+  assert.match(review.stdout, /^slimdeer: open it in a browser, untick any image to keep as it is, and run the command it gives\.$/m);
 });
 
 test("--open whose opener stays with the browser it started doesn't wait for it", { skip: process.platform === "win32" }, (t) => {
-  const bin = mkdtempSync(join(tmpdir(), "pngdeer-opener-"));
+  const bin = mkdtempSync(join(tmpdir(), "slimdeer-opener-"));
   const pid = join(bin, "pid");
   t.after(() => {
     try {
@@ -773,23 +773,23 @@ test("--open whose opener stays with the browser it started doesn't wait for it"
   });
   // as xdg-open does outside a desktop environment: it runs the browser and waits for it to close
   for (const name of ["open", "xdg-open"]) writeFileSync(join(bin, name), `#!/bin/sh\necho $$ > '${pid}'\nexec /bin/sleep 120\n`, { mode: 0o755 });
-  const review = spawnSync(process.execPath, [join(plugin, "bin/pngdeer.js"), "--review", "--open"], { cwd: dir, env: { ...process.env, PATH: bin }, encoding: "utf8", timeout: 60_000 });
+  const review = spawnSync(process.execPath, [join(plugin, "bin/slimdeer.js"), "--review", "--open"], { cwd: dir, env: { ...process.env, PATH: bin }, encoding: "utf8", timeout: 60_000 });
   assert.equal(review.status, 0, review.stderr);
   assert.doesNotMatch(review.stderr, /couldn't open a browser/);
-  assert.match(review.stdout, /^pngdeer: opening it in your browser; untick any image to keep as it is, and run the command it gives\.$/m);
+  assert.match(review.stdout, /^slimdeer: opening it in your browser; untick any image to keep as it is, and run the command it gives\.$/m);
 });
 
 // chmod keeps neither Windows nor root out
 test("a review folder that can't be changed is named, and with nothing to review --check's words still follow", { skip: process.platform === "win32" || process.getuid?.() === 0 }, () => {
   chmodSync(folder, 0o555);
   try {
-    const nothing = pngdeer(dir, "--review", "--min-saved-percent", "99");
+    const nothing = slimdeer(dir, "--review", "--min-saved-percent", "99");
     assert.equal(nothing.status, 0, nothing.stderr);
-    assert.equal(nothing.stderr, "pngdeer: couldn't remove the old review page in node_modules/.cache/pngdeer/review: permission denied\n");
-    assert.equal(nothing.stdout, `${pngdeer(dir, "--check", "--min-saved-percent", "99").stdout}${NO_PAGE}`);
-    const review = pngdeer(dir, "--review");
+    assert.equal(nothing.stderr, "slimdeer: couldn't remove the old review page in node_modules/.cache/slimdeer/review: permission denied\n");
+    assert.equal(nothing.stdout, `${slimdeer(dir, "--check", "--min-saved-percent", "99").stdout}${NO_PAGE}`);
+    const review = slimdeer(dir, "--review");
     assert.equal(review.status, 2);
-    assert.equal(review.stderr, "oxlint-plugin-pngdeer: can't write the review folder node_modules/.cache/pngdeer/review: permission denied\n");
+    assert.equal(review.stderr, "oxlint-plugin-slimdeer: can't write the review folder node_modules/.cache/slimdeer/review: permission denied\n");
   } finally {
     chmodSync(folder, 0o755);
   }
@@ -830,7 +830,7 @@ function screen(text, columns) {
 test("on a narrow terminal, the measuring and preview counts leave no rows behind", { skip: process.platform === "win32" }, (t) => {
   const narrow = project({ images: [BALL, "public/unused-fire.png"] });
   const out = join(narrow, "terminal.txt");
-  const command = `stty cols 30 rows 50; exec ${[process.execPath, join(plugin, "bin/pngdeer.js"), "--review"].map((arg) => `'${arg.replaceAll("'", "'\\''")}'`).join(" ")}`;
+  const command = `stty cols 30 rows 50; exec ${[process.execPath, join(plugin, "bin/slimdeer.js"), "--review"].map((arg) => `'${arg.replaceAll("'", "'\\''")}'`).join(" ")}`;
   // util-linux's script(1) takes the command with -c, BSD's (macOS) after the file
   const flags = process.platform === "linux" ? ["-q", "-c", command, out] : ["-q", out, "sh", "-c", command];
   // no input: macOS's script(1) fails asking a pipe for its terminal settings
@@ -839,17 +839,17 @@ test("on a narrow terminal, the measuring and preview counts leave no rows behin
   assert.equal(run.status, 0, run.stderr);
   const text = readFileSync(out, "utf8");
   // both counts ran, each wider than the terminal
-  assert.match(text, /\rpngdeer: measuring 2 images\.\.\. 2\/2, could save /);
-  assert.match(text, /\rpngdeer: writing 2 previews\.\.\. 2\/2/);
+  assert.match(text, /\rslimdeer: measuring 2 images\.\.\. 2\/2, could save /);
+  assert.match(text, /\rslimdeer: writing 2 previews\.\.\. 2\/2/);
   const rows = screen(text, 30);
-  assert.ok(rows.some((row) => row.startsWith("pngdeer: the page that compar")), rows.join("\n"));
+  assert.ok(rows.some((row) => row.startsWith("slimdeer: the page that compar")), rows.join("\n"));
   assert.deepEqual(rows.filter((row) => /measuring|writing/.test(row)), []);
 });
 
 test("a review folder that is a link is left as it is, and so is every file where it leads", (t) => {
   const linked = project({ images: [BALL] });
   // someone's own folder, as a link to public/ or to a home folder leads to
-  const elsewhere = mkdtempSync(join(tmpdir(), "pngdeer-elsewhere-"));
+  const elsewhere = mkdtempSync(join(tmpdir(), "slimdeer-elsewhere-"));
   t.after(() => rmSync(elsewhere, { recursive: true, force: true }));
   mkdirSync(join(elsewhere, "posts"));
   writeFileSync(join(elsewhere, "index.html"), "<h1>site</h1>");
@@ -864,13 +864,13 @@ test("a review folder that is a link is left as it is, and so is every file wher
     if (process.platform !== "win32") throw error;
     return t.skip("no junction here");
   }
-  const review = pngdeer(linked, "--review");
+  const review = slimdeer(linked, "--review");
   assert.equal(review.status, 2, review.stdout);
-  assert.match(review.stderr, /^oxlint-plugin-pngdeer: the review folder node_modules\/\.cache\/pngdeer\/review is a link to another folder, which a review would empty: remove the link and run --review again$/m);
+  assert.match(review.stderr, /^oxlint-plugin-slimdeer: the review folder node_modules\/\.cache\/slimdeer\/review is a link to another folder, which a review would empty: remove the link and run --review again$/m);
   assert.equal(review.stdout, "");
   // a review of the last lint's list says to run that again
   writeFileSync(flaggedList(linked), JSON.stringify({ cwd: realpathSync.native(linked), images: [{ file: BALL }] }));
-  assert.match(pngdeer(linked, "--review", "--flagged").stderr, /: remove the link and run --review --flagged again$/m);
+  assert.match(slimdeer(linked, "--review", "--flagged").stderr, /: remove the link and run --review --flagged again$/m);
   assert.ok(lstatSync(link).isSymbolicLink());
   assert.deepEqual(readdirSync(elsewhere, { recursive: true }).sort(), ["index.html", "photo.jpg", "posts", join("posts", "first.md")].sort());
   assert.equal(sha(join(elsewhere, "photo.jpg")), sha(join(dir, PHOTO)));

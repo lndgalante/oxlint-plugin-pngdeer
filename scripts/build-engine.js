@@ -16,9 +16,9 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const provenance = JSON.parse(readFileSync(join(root, "engine/provenance.json"), "utf8"));
 assert.match(provenance.source.revision, /^[a-f0-9]{40}$/, "pin a full source revision");
 assert.match(provenance.source.cargoLockSha256, /^[a-f0-9]{64}$/, "pin the Cargo.lock checksum");
-const output = args.length ? resolve(args[1]) : mkdtempSync(join(tmpdir(), "pngdeer-engine-"));
+const output = args.length ? resolve(args[1]) : mkdtempSync(join(tmpdir(), "slimdeer-engine-"));
 if (args.length) mkdirSync(output);
-const tag = `pngdeer-engine:${provenance.source.revision.slice(0, 12)}`;
+const tag = `slimdeer-engine:${provenance.source.revision.slice(0, 12)}`;
 run([
   "build", "--platform", "linux/amd64", "--tag", tag,
   "--build-arg", `SOURCE_REPOSITORY=${provenance.source.repository}`,

@@ -1,5 +1,5 @@
 // What kind of image a file is and how many pixels it has, from its first bytes: enough to skip
-// what pngdeer can't take before decoding anything (limits as in pngdeer's web/worker.js).
+// what slimdeer can't take before decoding anything (limits as in slimdeer's web/worker.js).
 
 // Large images peak at about 80 bytes a pixel in wasm32's 4 GB, so 40 MP is the browser build's
 // limit; an animation gets about as much over all its frames.
@@ -47,15 +47,15 @@ export function pngChunk(bytes, type) {
   return null;
 }
 
-/** Why pngdeer would not take this file, or null if it would. */
+/** Why slimdeer would not take this file, or null if it would. */
 export function unsupported(bytes) {
   const type = kind(bytes);
   if (!type) return "not a PNG or JPEG";
   const [width, height, frames] = dimensions(bytes, type);
   if (!width || !height) return "unreadable header";
-  // pngdeer writes these as palette PNGs and keeps the gray profile, which a palette PNG can't use,
-  // so browsers can show them darker. Until pngdeer keeps them gray, they're left alone.
-  if (type === "png" && (bytes[25] === 0 || bytes[25] === 4) && pngChunk(bytes, "iCCP")) return "a grayscale PNG with a color profile (pngdeer's output can look darker)";
+  // slimdeer writes these as palette PNGs and keeps the gray profile, which a palette PNG can't use,
+  // so browsers can show them darker. Until slimdeer keeps them gray, they're left alone.
+  if (type === "png" && (bytes[25] === 0 || bytes[25] === 4) && pngChunk(bytes, "iCCP")) return "a grayscale PNG with a color profile (slimdeer's output can look darker)";
   const pixels = width * height;
   if (pixels > MAX_PIXELS) return `too large (${(pixels / 1e6).toFixed(1)} MP, at most ${MAX_PIXELS / 1e6})`;
   if (frames > 1 && pixels * frames > MAX_ANIMATION_PIXELS) return `animation too large (${frames} frames, ${((pixels * frames) / 1e6).toFixed(1)} MP)`;

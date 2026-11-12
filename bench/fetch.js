@@ -9,7 +9,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const here = fileURLToPath(new URL(".", import.meta.url));
 export const IMAGES = join(here, ".images");
 // Wikimedia asks for a User-Agent that says who's asking
-const HEADERS = { "user-agent": "oxlint-plugin-pngdeer-bench (https://github.com/lndgalante/oxlint-plugin-pngdeer)" };
+const HEADERS = { "user-agent": "oxlint-plugin-slimdeer-bench (https://github.com/lndgalante/oxlint-plugin-slimdeer)" };
 
 /** The manifest's images, each downloaded if it isn't yet: [{ ...entry, path }]. */
 export async function fetchImages() {

@@ -22,7 +22,7 @@ export function unwrapped(text) {
 
 /** fill()'s onStart: how many images go to the engine. On a terminal the count then rewrites this line. */
 export function startLine(total) {
-  const line = `pngdeer: measuring ${count(total, "image")} not in the cache yet...`;
+  const line = `slimdeer: measuring ${count(total, "image")} not in the cache yet...`;
   say(isatty(2) ? unwrapped(line) : `${line}\n`);
 }
 
@@ -39,11 +39,11 @@ export function progressLine() {
     // "could save", as a bare "smaller" reads as done and nothing has changed; never "flagged": it
     // counts images no code names, and ones a comment turns off
     const so = saved ? `, could save ${size(saved)} so far` : "";
-    if (tty) return void say(unwrapped(`\rpngdeer: measuring ${count(total, "image")}... ${done}/${total}${so}\x1b[K`));
+    if (tty) return void say(unwrapped(`\rslimdeer: measuring ${count(total, "image")}... ${done}/${total}${so}\x1b[K`));
     // the last count is the caller's to tell ("measured 3 images in 2.1 s"): it would come right after
     // this one when a wait for another lint's lock used up the 30 s
     if (done === total || Date.now() - last < 30_000) return;
     last = Date.now();
-    say(`pngdeer: measured ${done} of ${count(total, "image")}${so}...\n`);
+    say(`slimdeer: measured ${done} of ${count(total, "image")}${so}...\n`);
   };
 }

@@ -5,7 +5,7 @@ import compressibleImage from "./rule.js";
 const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 
 const plugin = {
-  meta: { name: "pngdeer", version },
+  meta: { name: "slimdeer", version },
   rules: { "compressible-image": compressibleImage },
 };
 
@@ -13,9 +13,9 @@ const plugin = {
 // TypeScript the config can't parse. oxlint ignores it.
 plugin.configs = {
   recommended: {
-    name: "pngdeer/recommended",
-    plugins: { pngdeer: plugin },
-    rules: { "pngdeer/compressible-image": "warn" },
+    name: "slimdeer/recommended",
+    plugins: { slimdeer: plugin },
+    rules: { "slimdeer/compressible-image": "warn" },
   },
 };
 

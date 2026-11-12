@@ -5,20 +5,20 @@ import { test } from "node:test";
 import { pathToFileURL } from "node:url";
 import { cacheDir, key, write } from "../src/cache.js";
 import { readFlagged } from "../src/summary.js";
-import { eslintSummary, oxlintSummary, plugin, pngdeer, project } from "./helpers.js";
+import { eslintSummary, oxlintSummary, plugin, slimdeer, project } from "./helpers.js";
 
 function mixed({ strict = 95, entry = "miss", minSavedBytes = 4096, files = 2 } = {}) {
   const dir = project({ images: ["src/assets/crystal-ball.png"], options: { measure: "never", scan: "referenced", target: 70 } });
   for (let i = 0; i < files; i++) writeFileSync(join(dir, `src/${i % 2 ? "strict" : "loose"}${i}.js`), 'export const image = "./assets/crystal-ball.png";');
   const config = JSON.parse(readFileSync(join(dir, ".oxlintrc.json"), "utf8"));
   const options = { measure: "never", scan: "referenced", target: strict, minSavedBytes };
-  config.overrides = [{ files: ["src/strict*.js"], rules: { "pngdeer/compressible-image": ["warn", options] } }];
+  config.overrides = [{ files: ["src/strict*.js"], rules: { "slimdeer/compressible-image": ["warn", options] } }];
   writeFileSync(join(dir, ".oxlintrc.json"), JSON.stringify(config));
   const index = pathToFileURL(join(plugin, "src/index.js")).href;
-  writeFileSync(join(dir, "eslint.config.js"), `import pngdeer from ${JSON.stringify(index)};
+  writeFileSync(join(dir, "eslint.config.js"), `import slimdeer from ${JSON.stringify(index)};
 export default [
-  { files: ["src/*.js"], plugins: { pngdeer }, rules: { "pngdeer/compressible-image": ["warn", { measure: "never", scan: "referenced", target: 70 }] } },
-  { files: ["src/strict*.js"], rules: { "pngdeer/compressible-image": ["warn", ${JSON.stringify(options)}] } },
+  { files: ["src/*.js"], plugins: { slimdeer }, rules: { "slimdeer/compressible-image": ["warn", { measure: "never", scan: "referenced", target: 70 }] } },
+  { files: ["src/strict*.js"], rules: { "slimdeer/compressible-image": ["warn", ${JSON.stringify(options)}] } },
 ];
 `);
   const file = join(dir, "src/assets/crystal-ball.png");
@@ -52,7 +52,7 @@ for (const [name, lint] of [["oxlint", oxlintSummary], ["ESLint", eslintSummary]
 
   test(`${name}: a disabled reference does not constrain bulk quality`, () => {
     const { dir, file } = mixed({ entry: "hit" });
-    writeFileSync(join(dir, "src/strict1.js"), '// eslint-disable-next-line pngdeer/compressible-image\nexport const image = "./assets/crystal-ball.png";');
+    writeFileSync(join(dir, "src/strict1.js"), '// eslint-disable-next-line slimdeer/compressible-image\nexport const image = "./assets/crystal-ball.png";');
     assert.doesNotMatch(lint(dir, "src"), /left 1 shared image out of --flagged/);
     assert.deepEqual(readFlagged(dir), [{ file: realpathSync(file), target: 70 }]);
   });
@@ -72,9 +72,9 @@ test("--review --flagged after a lint that held its only flagged image back says
   const stderr = oxlintSummary(dir, "src");
   assert.match(stderr, /left 1 shared image out of --flagged/);
   assert.deepEqual(readFlagged(dir), []);
-  const review = pngdeer(dir, "--review", "--flagged");
+  const review = slimdeer(dir, "--review", "--flagged");
   assert.equal(review.status, 0, review.stderr);
-  assert.equal(review.stdout, "pngdeer: the last lint here left no images to review with --flagged.\n");
+  assert.equal(review.stdout, "slimdeer: the last lint here left no images to review with --flagged.\n");
 });
 
 const [major, minor] = JSON.parse(readFileSync(join(plugin, "node_modules/eslint/package.json"), "utf8")).version.split(".").map(Number);

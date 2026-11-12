@@ -1,4 +1,4 @@
-// pngdeer's wasm engine (engine/), started on first use: one instance per thread.
+// slimdeer's wasm engine (engine/), started on first use: one instance per thread.
 import { readFileSync } from "node:fs";
 import { compress as compressPng, compress_jpeg as compressJpeg, initSync } from "../engine/pngdeer_wasm.js";
 import { belowFloor, FLOOR } from "./cache.js";
@@ -9,7 +9,7 @@ let started = false;
 let panicked = false;
 
 /**
- * pngdeer's file for a PNG or JPEG, its outcome ("hit", "miss" when no file reaches the target,
+ * slimdeer's file for a PNG or JPEG, its outcome ("hit", "miss" when no file reaches the target,
  * "exact", "lossless", or "original" when nothing smaller does) and its SSIMULACRA2 score. The
  * automatic target settles for no less than FLOOR: an image it would make visibly different is
  * compressed again at FLOOR, and is a miss if nothing reaches it.
@@ -47,7 +47,7 @@ function run(bytes, target) {
     const bug = error instanceof WebAssembly.RuntimeError;
     if (bug) panicked = true;
     // upstream renamed its engine slimdeer: said so, as the link names it
-    throw new Error(`pngdeer couldn't compress this image: ${error.message}${bug ? " (a bug in pngdeer's engine, now named slimdeer: please report it at https://github.com/heydeer/slimdeer/issues)" : ""}`);
+    throw new Error(`slimdeer couldn't compress this image: ${error.message}${bug ? " (a bug in slimdeer's engine, now named slimdeer: please report it at https://github.com/heydeer/slimdeer/issues)" : ""}`);
   }
   const output = jpeg ? out.jpeg : out.png;
   const { outcome, score } = JSON.parse(out.report);

@@ -18,8 +18,8 @@ const MAX_WORKERS = 8;
 // replaced rather than kept.
 const BIG = 300e6;
 // A lock its holder hasn't refreshed for this long was left by a batch that's gone, whatever pid it
-// names: a container gives the next run the same pids. The tests shorten it with PNGDEER_STALE_MS.
-const STALE_MS = Number(process.env.PNGDEER_STALE_MS) || 60_000;
+// names: a container gives the next run the same pids. The tests shorten it with SLIMDEER_STALE_MS.
+const STALE_MS = Number(process.env.SLIMDEER_STALE_MS) || 60_000;
 // several times within STALE_MS, so a holder on a busy machine doesn't lose its lock
 const HEARTBEAT_MS = STALE_MS / 6;
 
@@ -102,7 +102,7 @@ async function measure(requests, progress, onStart) {
         counts.cached++;
         continue;
       }
-      // pngdeer's own output needs no engine, and no entry: the rule knows it by its mark
+      // slimdeer's own output needs no engine, and no entry: the rule knows it by its mark
       if (marked(bytes)) {
         counts.skipped++;
         continue;
@@ -137,10 +137,10 @@ async function measure(requests, progress, onStart) {
       return 0;
     }
     counts.computed++;
-    // only what pngdeer computes, the same on every machine, so a committed cache folder changes
+    // only what slimdeer computes, the same on every machine, so a committed cache folder changes
     // only when a result does
     const entry = { original: result.original, compressed: result.compressed, outcome: result.outcome, score: result.score };
-    // pngdeer writes these same bytes everywhere: if they land on disk, they're done (a JPEG would
+    // slimdeer writes these same bytes everywhere: if they land on disk, they're done (a JPEG would
     // otherwise lose about another fifth each time it's recompressed). Such a mark is never replaced.
     if (read(dir, k)?.outcome !== "output") write(dir, k, entry);
     if (result.output !== k) write(dir, result.output, { original: entry.compressed, outcome: "output" });
@@ -153,7 +153,7 @@ async function measure(requests, progress, onStart) {
   await pool(todo, {
     // the editor's batches leave it a core (sync.js)
     spare: Math.max(0, ...requests.map(({ spare = 0 }) => spare)),
-    // the same bytes may have been measured, or marked as pngdeer's output, since the batch started
+    // the same bytes may have been measured, or marked as slimdeer's output, since the batch started
     skip: (job) => {
       const { dir, failures = dir } = job.request;
       const entry = readFirst(job.k, dir, failures);
@@ -291,7 +291,7 @@ export async function lock(folder) {
     else if (!told && foreign(path)) {
       told = true;
       // a lock nothing refreshes goes stale within STALE_MS (a minute): no one needs to delete it
-      say("pngdeer: waiting for another lint measuring this project (if none is running, this one goes on within a minute)\n");
+      say("slimdeer: waiting for another lint measuring this project (if none is running, this one goes on within a minute)\n");
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
@@ -373,7 +373,7 @@ export function peakOf(bytes) {
 
 /** An engine's expected peak memory for an image of this many pixels (over all its frames). */
 function peak(pixels) {
-  // about 125 bytes a pixel below 8 MP and 85 above (pngdeer keeps a lean reference there), on top
+  // about 125 bytes a pixel below 8 MP and 85 above (slimdeer keeps a lean reference there), on top
   // of about 50 MB of its own
   return 50e6 + pixels * (pixels < 8e6 ? 125 : 85);
 }

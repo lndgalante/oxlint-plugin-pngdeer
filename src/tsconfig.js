@@ -97,7 +97,7 @@ function load(file, seen) {
   } catch (error) {
     if (!told.has(file)) {
       told.add(file);
-      process.stderr.write(`pngdeer: couldn't read path aliases from ${file}: ${error.message}\n`);
+      process.stderr.write(`slimdeer: couldn't read path aliases from ${file}: ${error.message}\n`);
     }
     return null;
   }

@@ -12,7 +12,7 @@ const npm = process.env.npm_execpath;
 assert.ok(npm && /npm-cli\.[cm]?js$/.test(npm), "Run this check with npm: npm run check:package");
 const published = process.argv.includes("--published");
 
-const work = mkdtempSync(join(tmpdir(), "pngdeer-package-"));
+const work = mkdtempSync(join(tmpdir(), "slimdeer-package-"));
 const app = join(work, "consumer");
 const npmArgs = ["--cache", join(work, "npm-cache"), ...(published ? [] : ["--offline"]), "--ignore-scripts", "--no-audit", "--no-fund"];
 try {
@@ -36,10 +36,10 @@ assert.equal(typeof plugin.rules["compressible-image"].create, "function");
 
   writeFileSync(join(app, ".oxlintrc.json"), JSON.stringify({
     jsPlugins: [name],
-    rules: { "pngdeer/compressible-image": ["warn", { measure: "never" }] },
+    rules: { "slimdeer/compressible-image": ["warn", { measure: "never" }] },
   }));
-  writeFileSync(join(app, "eslint.config.js"), `import pngdeer from ${JSON.stringify(name)};
-export default [{ plugins: { pngdeer }, rules: { "pngdeer/compressible-image": ["warn", { measure: "never" }] } }];
+  writeFileSync(join(app, "eslint.config.js"), `import slimdeer from ${JSON.stringify(name)};
+export default [{ plugins: { slimdeer }, rules: { "slimdeer/compressible-image": ["warn", { measure: "never" }] } }];
 `);
   writeFileSync(join(app, "src", "app.js"), 'export const image = "./image.png";\n');
   const image = join(app, "src", "image.png");
@@ -47,7 +47,7 @@ export default [{ plugins: { pngdeer }, rules: { "pngdeer/compressible-image": [
   const before = readFileSync(image);
   checkImages(1);
   assert.deepEqual(readFileSync(image), before, "--check leaves image bytes unchanged");
-  const cache = join(app, "node_modules", ".cache", "pngdeer");
+  const cache = join(app, "node_modules", ".cache", "slimdeer");
   assert.ok(readdirSync(cache).some((file) => /^[a-f0-9]{64}\.json$/.test(file)), "--check warms the shared cache");
   assert.ok(!readdirSync(cache).includes("flagged.json"), "--check does not create a lint manifest");
   assert.equal(oxlintWarnings(), 1, "oxlint reads measurements from --check without running the engine");
@@ -77,7 +77,7 @@ function oxlintWarnings() {
 
 function eslintWarnings() {
   const result = JSON.parse(run(join(root, "node_modules", "eslint", "bin", "eslint.js"), ["--format", "json", "src"]));
-  return result.flatMap((file) => file.messages).filter((item) => item.ruleId === "pngdeer/compressible-image").length;
+  return result.flatMap((file) => file.messages).filter((item) => item.ruleId === "slimdeer/compressible-image").length;
 }
 
 function run(script, args = [], cwd = app, status = 0) {

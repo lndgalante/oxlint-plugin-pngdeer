@@ -86,7 +86,7 @@ test("an image the automatic target can't make close enough is left alone by the
   const file = join(dir, "fade.png");
   const before = readFileSync(file);
   const { text } = shrink(file, file);
-  assert.match(text, /^pngdeer can't make it smaller without a visible difference \(the best reaches quality \d+\/100\); left as is$/);
+  assert.match(text, /^slimdeer can't make it smaller without a visible difference \(the best reaches quality \d+\/100\); left as is$/);
   assert.deepEqual(readFileSync(file), before);
 });
 

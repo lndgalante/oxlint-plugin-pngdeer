@@ -9,15 +9,15 @@ import { plain, shrink } from "../src/shrink.js";
 import { readFlagged } from "../src/summary.js";
 import { count, pathFrom, printable, quote, size } from "../src/text.js";
 
-const HELP = `usage: oxlint-plugin-pngdeer IMAGE... [--target auto|T]
-       oxlint-plugin-pngdeer IMAGE -o OUT [--target auto|T]
-       oxlint-plugin-pngdeer --flagged [--target auto|T]
-       oxlint-plugin-pngdeer --check [PATH...] [--json] [options]
-       oxlint-plugin-pngdeer --review [PATH...] [--open] [options]
-       oxlint-plugin-pngdeer --review --flagged [--open] [--target auto|T] [--cache-dir PATH]
+const HELP = `usage: oxlint-plugin-slimdeer IMAGE... [--target auto|T]
+       oxlint-plugin-slimdeer IMAGE -o OUT [--target auto|T]
+       oxlint-plugin-slimdeer --flagged [--target auto|T]
+       oxlint-plugin-slimdeer --check [PATH...] [--json] [options]
+       oxlint-plugin-slimdeer --review [PATH...] [--open] [options]
+       oxlint-plugin-slimdeer --review --flagged [--open] [--target auto|T] [--cache-dir PATH]
 
-Makes PNGs and JPEGs smaller with pngdeer, in place, at about the same visual quality.
-pngdeer is lossy: the picture looks about the same, the bytes don't, so commit first.
+Makes PNGs and JPEGs smaller with slimdeer, in place, at about the same visual quality.
+slimdeer is lossy: the picture looks about the same, the bytes don't, so commit first.
 
   -o OUT        write to OUT instead of in place, to preview the result (one image only)
   --flagged     the images the last lint here flagged, each at the target it was measured at;
@@ -35,7 +35,7 @@ Options for --check and --review:
   --min-saved-percent N  the smallest saving to list, in percent (default: 10)
   --exclude PATTERN      leave out a file, folder or glob (*, **, ?), as a path from the
                          image's package or from this folder; repeat for more
-  --cache-dir PATH       the cache folder, from each package (default: node_modules/.cache/pngdeer)
+  --cache-dir PATH       the cache folder, from each package (default: node_modules/.cache/slimdeer)
 
   --            treat all remaining arguments as image paths
   -v, --version
@@ -47,7 +47,7 @@ or when an image or folder couldn't be checked. It reads no linter configuration
 --review exits 0 when it wrote the page or found nothing to review, and 2 on a mistake,
 when --flagged finds no list, or when an image or folder couldn't be checked or previewed.
 Like --check, it reads no linter configuration; with --flagged, it shows what the lint flagged.
-Files it writes are marked as pngdeer's, so the lint rule doesn't flag them again.`;
+Files it writes are marked as slimdeer's, so the lint rule doesn't flag them again.`;
 
 const CHECK_OPTIONS = {
   "--min-saved-bytes": "minSavedBytes",
@@ -74,7 +74,7 @@ for (const stream of [process.stdout, process.stderr]) {
 async function main(args) {
   // run bare, it says what it does
   if (args.length === 0) {
-    console.error(`oxlint-plugin-pngdeer: no image given\n\n${HELP}`);
+    console.error(`oxlint-plugin-slimdeer: no image given\n\n${HELP}`);
     return 2;
   }
   const inputs = [];
@@ -146,7 +146,7 @@ async function main(args) {
       if (["exclude", "minSavedBytes", "minSavedPercent"].some((option) => option in checkOptions)) return fail("--review --flagged cannot be combined with --exclude, --min-saved-bytes or --min-saved-percent");
       const list = readFlagged(process.cwd());
       if (!list) {
-        console.error(`oxlint-plugin-pngdeer: ${NO_LIST}`);
+        console.error(`oxlint-plugin-slimdeer: ${NO_LIST}`);
         return 2;
       }
       // a --target given here wins over the lint's, as with --flagged, and so does a --cache-dir over
@@ -158,7 +158,7 @@ async function main(args) {
       const { review } = await import("../src/review.js");
       return await review(inputs.length ? inputs : ["."], { ...checkOptions, target, open, flagged });
     } catch (error) {
-      console.error(printable(`oxlint-plugin-pngdeer: ${plain(error)}`));
+      console.error(printable(`oxlint-plugin-slimdeer: ${plain(error)}`));
       return 2;
     }
   }
@@ -169,7 +169,7 @@ async function main(args) {
       const { check } = await import("../src/check.js");
       return await check(inputs.length ? inputs : ["."], { ...checkOptions, target, json });
     } catch (error) {
-      console.error(printable(`oxlint-plugin-pngdeer: ${plain(error)}`));
+      console.error(printable(`oxlint-plugin-slimdeer: ${plain(error)}`));
       return 2;
     }
   }
@@ -191,7 +191,7 @@ async function main(args) {
 
   const flagged = fromLint ? readFlagged(process.cwd()) : null;
   if (fromLint && !flagged) {
-    console.error(`oxlint-plugin-pngdeer: ${NO_LIST}`);
+    console.error(`oxlint-plugin-slimdeer: ${NO_LIST}`);
     return 1;
   }
   if (fromLint && flagged.length === 0) {
@@ -223,7 +223,7 @@ async function main(args) {
       return 1;
     }
   }
-  console.error(`pngdeer: shrinking ${count(jobs.length, "image")} in place (lossy; commit first so you can undo)`);
+  console.error(`slimdeer: shrinking ${count(jobs.length, "image")} in place (lossy; commit first so you can undo)`);
   let status = changed.length ? 1 : 0;
   let finished = 0;
   let original = 0;
@@ -258,11 +258,11 @@ async function main(args) {
   try {
     await pool(work, { done: (job, result) => report(job.input, result) });
   } catch (error) {
-    console.error(printable(`oxlint-plugin-pngdeer: ${plain(error)}`));
+    console.error(printable(`oxlint-plugin-slimdeer: ${plain(error)}`));
     return 1;
   }
   if (shrunk) {
-    console.error(`pngdeer: ${count(shrunk, "image")}, ${size(original)} → ${size(compressed)} (${size(original - compressed)} smaller). Lint again to check.`);
+    console.error(`slimdeer: ${count(shrunk, "image")}, ${size(original)} → ${size(compressed)} (${size(original - compressed)} smaller). Lint again to check.`);
   }
   return status;
 }
@@ -291,7 +291,7 @@ function folder(path) {
 
 /** A mistake in the arguments: said in one line, which the usage would scroll away. */
 function fail(message) {
-  console.error(`oxlint-plugin-pngdeer: ${printable(message)}\nRun npx oxlint-plugin-pngdeer --help to see every option.`);
+  console.error(`oxlint-plugin-slimdeer: ${printable(message)}\nRun npx oxlint-plugin-slimdeer --help to see every option.`);
   return 2;
 }
 

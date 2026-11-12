@@ -99,13 +99,13 @@ progress(3, 40);
 `;
   const run = spawnSync(process.execPath, ["--input-type=module", "-e", script], { encoding: "utf8" });
   assert.equal(run.status, 0, run.stderr);
-  assert.equal(run.stderr, "pngdeer: measured 2 of 40 images...\n");
+  assert.equal(run.stderr, "slimdeer: measured 2 of 40 images...\n");
 });
 
 test("a batch stopped for taking too long leaves no lock for its own process to wait on", () => {
   const images = ["public/hero.png", "public/photo.jpg", "src/assets/diagram.png"];
   const dir = project({ images });
-  const cache = join(dir, "node_modules", ".cache", "pngdeer");
+  const cache = join(dir, "node_modules", ".cache", "slimdeer");
   // by 1 s the batch holds the lock and is still measuring (about 4 s on 16 cores); stopped, it can't
   // release the lock, which held this process's pid, so a later batch here would wait until it went stale
   const script = `import { existsSync } from "node:fs";
@@ -117,7 +117,7 @@ try {
 }
 console.log(existsSync(${JSON.stringify(join(cache, "measuring.lock"))}) ? "locked" : "unlocked");
 `;
-  const run = spawnSync(process.execPath, ["--input-type=module", "-e", script], { encoding: "utf8", env: { ...process.env, PNGDEER_TIMEOUT_MS: "1000" }, timeout: 60_000 });
+  const run = spawnSync(process.execPath, ["--input-type=module", "-e", script], { encoding: "utf8", env: { ...process.env, SLIMDEER_TIMEOUT_MS: "1000" }, timeout: 60_000 });
   assert.equal(run.stdout, "stopped\nunlocked\n", run.stderr);
 });
 
@@ -254,7 +254,7 @@ console.log(computed);
 
 test("a lock left by a process that had this one's pid is taken once a minute has passed", () => {
   const dir = project({ images: ["src/assets/crystal-ball.png"] });
-  const cache = join(dir, "node_modules", ".cache", "pngdeer");
+  const cache = join(dir, "node_modules", ".cache", "slimdeer");
   // a lint killed two minutes ago in a container left it, and this run got the same pid
   const run = script(`import { mkdirSync, utimesSync, writeFileSync } from "node:fs";
 import { fill } from ${batch};
@@ -273,7 +273,7 @@ console.log(computed);
 
 test("waiting on such a lock, a run says so", () => {
   const dir = project({ images: ["src/assets/crystal-ball.png"] });
-  const cache = join(dir, "node_modules", ".cache", "pngdeer");
+  const cache = join(dir, "node_modules", ".cache", "slimdeer");
   // with a lock stale after 4 s, refreshed every 0.67 s: one 2.5 s old isn't refreshed by anyone
   const run = script(`import { mkdirSync, utimesSync, writeFileSync } from "node:fs";
 import { fill } from ${batch};
@@ -284,10 +284,10 @@ const then = new Date(Date.now() - 2500);
 utimesSync(lock, then, then);
 const { computed } = await fill({ dir: ${JSON.stringify(cache)}, files: [${JSON.stringify(join(dir, "src/assets/crystal-ball.png"))}] });
 console.log(computed);
-`, { PNGDEER_STALE_MS: "4000" });
+`, { SLIMDEER_STALE_MS: "4000" });
   assert.equal(run.stdout, "1\n");
   // nothing to delete by hand: the lock goes stale by itself
-  assert.match(run.stderr, /^pngdeer: waiting for another lint measuring this project \(if none is running, this one goes on within a minute\)$/m);
+  assert.match(run.stderr, /^slimdeer: waiting for another lint measuring this project \(if none is running, this one goes on within a minute\)$/m);
 });
 
 test("a batch keeps its lock fresh for as long as it holds it, and only its own", () => {
@@ -311,13 +311,13 @@ await sleep(500);
 console.log(old() ? "left alone" : "refreshed");
 release();
 console.log(existsSync(path) ? "kept" : "removed");
-`, { PNGDEER_STALE_MS: "600" });
+`, { SLIMDEER_STALE_MS: "600" });
   assert.equal(run.stdout, "refreshed\nleft alone\nkept\n");
 });
 
 test("a lint blocked waiting for its batch still keeps the batch's lock fresh", () => {
   const dir = project({ images: ["public/hero.png"] });
-  const cache = join(dir, "node_modules", ".cache", "pngdeer");
+  const cache = join(dir, "node_modules", ".cache", "slimdeer");
   // Stale after 2 s, refreshed every 0.33 s, and hero.png takes seconds. The batch's own thread holds
   // the lock while this one waits in fillSync, as the lint thread does; a third thread, not blocked,
   // watches the lock's age. (execArgv: [] keeps --input-type=module from the eval'd watcher.)
@@ -333,7 +333,7 @@ await new Promise((resolve) => watcher.once("online", resolve));
 const { computed } = fillSync(${JSON.stringify({ dir: cache, files: [join(dir, "public/hero.png")] })});
 await watcher.terminate();
 console.log(computed, oldest[0] < 2000 ? "fresh" : \`\${Math.round(oldest[0])} ms old\`);
-`, { PNGDEER_STALE_MS: "2000" });
+`, { SLIMDEER_STALE_MS: "2000" });
   assert.equal(run.stdout, "1 fresh\n");
 });
 
@@ -345,7 +345,7 @@ Date.now = ((now) => () => now + 31_000)(Date.now());
 progress(2, 40, { saved: 1500 });
 progress(3, 40, { saved: 0 });
 `);
-  assert.equal(run.stderr, "pngdeer: measured 2 of 40 images, could save 4.5 kB so far...\n");
+  assert.equal(run.stderr, "slimdeer: measured 2 of 40 images, could save 4.5 kB so far...\n");
 });
 
 test("off a terminal, the last image's count is left to the caller, even after a long wait for the lock", () => {

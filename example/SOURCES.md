@@ -1,6 +1,6 @@
 # Example images
 
-Copied from pngdeer's `bench/images` (see its `SOURCES.md`), each under its own license:
+Copied from slimdeer's `bench/images` (see its `SOURCES.md`), each under its own license:
 
 | File | Source | License |
 |---|---|---|

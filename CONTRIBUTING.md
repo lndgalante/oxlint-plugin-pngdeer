@@ -3,8 +3,8 @@
 You need Node 20.19+ or 22.13+, and npm (the package checks run npm itself):
 
 ```bash
-git clone https://github.com/lndgalante/oxlint-plugin-pngdeer
-cd oxlint-plugin-pngdeer
+git clone https://github.com/lndgalante/oxlint-plugin-slimdeer
+cd oxlint-plugin-slimdeer
 npm ci
 ```
 
@@ -23,13 +23,13 @@ Those times are from a 16-core M3 Max. The tests compress real images with up to
 
 CI runs the tests on Linux, macOS and Windows with Node 20, 22, 24 and 26, and on Linux with Node 20.19.0, the oldest supported. It tests oxlint 1.60 (the oldest supported), 1.89 (which Vite+ 1.4 brings), 1.90 and the newest, and ESLint 9.0 and 10. It also runs weekly, for new oxlint releases.
 
-To run your clone's command, use node: `node bin/pngdeer.js --check example` from the root, or `node ../bin/pngdeer.js` inside `example/`. There, `npx oxlint-plugin-pngdeer` runs the published version instead, because `example/` has its own package.json. To look at the review page while you work on it, run `node bin/pngdeer.js --review example --open` from the root: it writes the page to the root's `node_modules/.cache/pngdeer/review/index.html` and opens it. Without `--open`, it prints the page's address.
+To run your clone's command, use node: `node bin/slimdeer.js --check example` from the root, or `node ../bin/slimdeer.js` inside `example/`. There, `npx oxlint-plugin-slimdeer` runs the published version instead, because `example/` has its own package.json. To look at the review page while you work on it, run `node bin/slimdeer.js --review example --open` from the root: it writes the page to the root's `node_modules/.cache/slimdeer/review/index.html` and opens it. Without `--open`, it prints the page's address.
 
-When behavior or options change, update README.md, docs/rules/compressible-image.md, skills/pngdeer/SKILL.md, src/index.d.ts and the `--help` text in bin/pngdeer.js.
+When behavior or options change, update README.md, docs/rules/compressible-image.md, skills/oxlint-plugin-slimdeer/SKILL.md, src/index.d.ts and the `--help` text in bin/slimdeer.js.
 
 ## The engine
 
-Don't edit `engine/` by hand. It is pngdeer's WebAssembly build (upstream is now called [slimdeer](https://github.com/heydeer/slimdeer)), rebuilt from pinned source: see [engine/README.md](engine/README.md#build-and-compare). A new engine measures every image again, so say so in the release notes.
+Don't edit `engine/` by hand. It is slimdeer's WebAssembly build (upstream is now called [slimdeer](https://github.com/heydeer/slimdeer)), rebuilt from pinned source: see [engine/README.md](engine/README.md#build-and-compare). A new engine measures every image again, so say so in the release notes.
 
 ## Releasing
 

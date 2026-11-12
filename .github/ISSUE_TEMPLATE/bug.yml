@@ -1,12 +1,12 @@
 name: Bug report
-description: The rule or the command did something wrong. No warnings at all? Go through the checklist at https://github.com/lndgalante/oxlint-plugin-pngdeer/blob/main/docs/rules/compressible-image.md#no-warnings first.
+description: The rule or the command did something wrong. No warnings at all? Go through the checklist at https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/docs/rules/compressible-image.md#no-warnings first.
 labels: ["bug"]
 body:
   - type: textarea
     id: what
     attributes:
       label: What happened, and what did you expect?
-      description: Paste the warning or the stderr line (pngdeer prints its notes on stderr).
+      description: Paste the warning or the stderr line (slimdeer prints its notes on stderr).
     validations:
       required: true
   - type: textarea
@@ -16,7 +16,7 @@ body:
       description: The output of these commands, and your OS.
       value: |
         npx oxlint --version (or npx eslint --version):
-        npx oxlint-plugin-pngdeer --version:
+        npx oxlint-plugin-slimdeer --version:
         node --version:
         OS:
     validations:
@@ -25,4 +25,4 @@ body:
     id: image
     attributes:
       label: The image
-      description: If you can share it, attach the image involved. If pngdeer's engine itself fails on it ("a bug in pngdeer's engine"), report it at https://github.com/heydeer/slimdeer/issues as well (upstream now names the engine slimdeer).
+      description: If you can share it, attach the image involved. If slimdeer's engine itself fails on it ("a bug in slimdeer's engine"), report it at https://github.com/heydeer/slimdeer/issues as well (upstream now names the engine slimdeer).

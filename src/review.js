@@ -17,7 +17,7 @@ import { projectRoot } from "./scan.js";
 import { plain } from "./shrink.js";
 import { count, pathFrom, printable, reviewCommand, size, smaller } from "./text.js";
 
-const ISSUES = "https://github.com/lndgalante/oxlint-plugin-pngdeer/issues";
+const ISSUES = "https://github.com/lndgalante/oxlint-plugin-slimdeer/issues";
 // How long --open waits for the opener to give up before it takes the page as opening.
 const SETTLE = 2000;
 
@@ -52,18 +52,18 @@ export async function review(inputs, { cwd = process.cwd(), target, minSavedByte
       // a page left from an earlier run would show savings that are gone
       rmSync(folder, { recursive: true, force: true });
     } catch (cause) {
-      console.error(printable(`pngdeer: couldn't remove the old review page in ${pathFrom(cwd, folder)}: ${denied(cause)}`));
+      console.error(printable(`slimdeer: couldn't remove the old review page in ${pathFrom(cwd, folder)}: ${denied(cause)}`));
     }
     // everything is measured now: --check says what it found in its own words, without its job
     // summary, which would be titled --check and point at no page; then that there's no page, as a
     // tab still showing the old one would pass for this run's
     if (!flagged) {
       const status = print(inputs, lists[0].result, { ...options, summary: false });
-      console.log("pngdeer: no image to compare, so no page was written.");
+      console.log("slimdeer: no image to compare, so no page was written.");
       return status;
     }
     for (const line of unlisted) console.log(printable(line));
-    console.log(`pngdeer: ${nothing(flagged, result.errors.length, target)}`);
+    console.log(`slimdeer: ${nothing(flagged, result.errors.length, target)}`);
     return result.errors.length ? 2 : 0;
   }
 
@@ -73,7 +73,7 @@ export async function review(inputs, { cwd = process.cwd(), target, minSavedByte
     console.error(printable(`${path}: ${message}`));
   });
   if (cards.length === 0) {
-    console.log("pngdeer: review incomplete: no preview could be written. Images unchanged.");
+    console.log("slimdeer: review incomplete: no preview could be written. Images unchanged.");
     return 2;
   }
   const index = join(folder, "index.html");
@@ -92,22 +92,22 @@ export async function review(inputs, { cwd = process.cwd(), target, minSavedByte
   const one = cards.length === 1;
   // the page gives a command per target, and splits a long one
   const several = commandCount(cards) > 1;
-  console.log(`pngdeer: ${count(files, "image")} could be ${size(original - compressed)} smaller (${size(original)} → ${size(compressed)}, ${smaller(original, compressed)}% smaller). Images unchanged.`);
+  console.log(`slimdeer: ${count(files, "image")} could be ${size(original - compressed)} smaller (${size(original)} → ${size(compressed)}, ${smaller(original, compressed)}% smaller). Images unchanged.`);
   // the terminal names what the page leaves out too
   for (const line of unlisted) console.log(printable(line));
-  console.log(`pngdeer: the page that compares ${one ? "it" : "each one"} before and after: ${pathToFileURL(index).href}`);
+  console.log(`slimdeer: the page that compares ${one ? "it" : "each one"} before and after: ${pathToFileURL(index).href}`);
   const failure = open ? await launch(index) : null;
   const gives = `run the ${several ? "commands" : "command"} it gives.`;
   const next = one ? `if the after looks right, ${gives}` : `untick any image to keep as it is, and ${gives}`;
-  console.log(`pngdeer: ${open && !failure ? "opening it in your browser;" : `open it in a browser,${one ? " and" : ""}`} ${next}`);
-  if (failure) console.error(printable(`pngdeer: couldn't open a browser: ${failure}`));
+  console.log(`slimdeer: ${open && !failure ? "opening it in your browser;" : `open it in a browser,${one ? " and" : ""}`} ${next}`);
+  if (failure) console.error(printable(`slimdeer: couldn't open a browser: ${failure}`));
   return errors.length ? 2 : 0;
 }
 
 /**
  * Measures the images a lint flagged, each at its own target and from the cache folder the lint
  * measured it into (so nothing it measured is measured again), a measureAll() per target and folder:
- * [{ inputs, settings, result }]. The lint applied its thresholds: an image is shown if pngdeer still
+ * [{ inputs, settings, result }]. The lint applied its thresholds: an image is shown if slimdeer still
  * makes it smaller at all.
  */
 async function measureFlagged(flagged, options) {
@@ -129,7 +129,7 @@ async function measureFlagged(flagged, options) {
 /**
  * What a review of a lint's list (`flagged`) says when it shows none: none listed (a lint that held
  * every image it flagged back from --flagged leaves an empty list too), none that could be checked,
- * or none that pngdeer still makes smaller (at `target`, the --target given here, if one was).
+ * or none that slimdeer still makes smaller (at `target`, the --target given here, if one was).
  */
 function nothing(flagged, failed, target) {
   if (flagged.length === 0) return "the last lint here left no images to review with --flagged.";
@@ -192,7 +192,7 @@ async function previews(rows, folder, cwd, again, error) {
   }
   writable(cwd, folder, () => {
     // kept out of a repository that doesn't ignore node_modules: previews weigh as much as the images
-    if (!existsSync(join(folder, ".gitignore"))) writeFileSync(join(folder, ".gitignore"), "# pngdeer --review's previews, rewritten on each run\n*\n");
+    if (!existsSync(join(folder, ".gitignore"))) writeFileSync(join(folder, ".gitignore"), "# slimdeer --review's previews, rewritten on each run\n*\n");
     // the old page first, so it never links a preview that's gone
     rmSync(join(folder, "index.html"), { force: true });
     for (const entry of readdirSync(folder)) {
@@ -220,7 +220,7 @@ async function previews(rows, folder, cwd, again, error) {
         counter(answered.size);
         const { files: [file], compressed } = job.card;
         if (reply.error) fail(job, reply.error);
-        // pngdeer left the image as it is, and the "preview" is a copy of it
+        // slimdeer left the image as it is, and the "preview" is a copy of it
         else if (!reply.written) fail(job, `no preview: ${reply.text}`);
         // the page shows what was measured, so a preview of another size can't go on it
         else if (reply.written !== compressed) fail(job, changed(file, job.k, job.message.target) ? `changed while reviewing; run ${again} again` : `its preview is ${reply.written} bytes, but measuring said ${compressed}; please report this at ${ISSUES}`);
@@ -250,7 +250,7 @@ function denied(cause) {
   return cause?.code === "ENOTEMPTY" ? "permission denied" : plain(cause);
 }
 
-/** Whether `out` holds the preview of `card`: pngdeer's file, of the size measured. */
+/** Whether `out` holds the preview of `card`: slimdeer's file, of the size measured. */
 function preview(out, { compressed }) {
   try {
     const bytes = readFileSync(out);
@@ -292,7 +292,7 @@ function progress(total) {
   if (total === 0) return () => {};
   const tty = process.stderr.isTTY;
   let last = Date.now();
-  const line = `pngdeer: writing ${count(total, "preview")}...`;
+  const line = `slimdeer: writing ${count(total, "preview")}...`;
   process.stderr.write(tty ? unwrapped(line) : `${line}\n`);
   return (done) => {
     if (done === null) {
@@ -302,7 +302,7 @@ function progress(total) {
     if (tty) return void process.stderr.write(unwrapped(`\r${line} ${done}/${total}\x1b[K`));
     if (Date.now() - last < 30_000) return;
     last = Date.now();
-    process.stderr.write(`pngdeer: wrote ${done} of ${count(total, "preview")}...\n`);
+    process.stderr.write(`slimdeer: wrote ${done} of ${count(total, "preview")}...\n`);
   };
 }
 

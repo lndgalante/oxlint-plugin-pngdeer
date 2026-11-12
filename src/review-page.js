@@ -56,14 +56,14 @@ export function page({ cwd, date, target, cards, declined = [], missed = [], err
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' file:; style-src '${hash(style)}'; script-src '${hash(script)}'; base-uri 'none'; form-action 'none'">
 <meta name="color-scheme" content="light dark">
 <meta name="referrer" content="no-referrer">
-<title>pngdeer review: ${escape(headline)}</title>
+<title>slimdeer review: ${escape(headline)}</title>
 <style>${style}</style>
 </head>
 <body>
 <a class="skip" href="#command">Skip to the command</a>
 <header class="top">
 <div class="lead">
-<p class="tool">pngdeer review</p>
+<p class="tool">slimdeer review</p>
 <h1>${escape(unbroken(headline))}</h1>
 <p class="sum">${escape(unbroken(`${size(original)} → ${size(compressed)}, ${smaller(original, compressed)}% smaller`))}</p>
 <dl class="meta">
@@ -164,7 +164,7 @@ ${levels.map(([value, label]) => `<label><input ${UNSAVED} type="radio" name="zo
 <div class="view">
 <div class="pan" role="group" aria-label="${escape(path)}, before and after"><div class="canvas">
 ${img("before", before, `${path}, before`)}
-${img("after", after, `${path}, after: pngdeer's file`)}
+${img("after", after, `${path}, after: slimdeer's file`)}
 </div></div>
 <input ${UNSAVED} class="slider" type="range" min="0" max="100" step="1" value="50" aria-label="Divider for ${escape(path)}: before on its left, after on its right" aria-valuetext="50%">
 <div class="divider" aria-hidden="true"><span class="grip"></span></div>
@@ -402,14 +402,14 @@ function start() {
     radio.addEventListener("change", () => {
       background(radio.value);
       try {
-        localStorage.setItem("pngdeer-review-bg", radio.value);
+        localStorage.setItem("slimdeer-review-bg", radio.value);
       } catch {
         // a file:// page may have no storage: the choice lasts as long as the page
       }
     });
   }
   try {
-    const kept = localStorage.getItem("pngdeer-review-bg");
+    const kept = localStorage.getItem("slimdeer-review-bg");
     if (["white", "black"].includes(kept) && document.querySelector("input[name=bg]")) background(kept);
   } catch {
     // no storage: the checks

@@ -59,7 +59,7 @@ async function fetchSource(source) {
 }
 
 function measure(source) {
-  const work = mkdtempSync(join(tmpdir(), `pngdeer-trial-${source.id}-`));
+  const work = mkdtempSync(join(tmpdir(), `slimdeer-trial-${source.id}-`));
   try {
     // Copy assets only: none of the upstream project's code or install scripts is executed.
     writeFileSync(join(work, "package.json"), '{"private":true}\n');
@@ -112,7 +112,7 @@ function measure(source) {
 
 function check(cwd) {
   const start = performance.now();
-  const run = spawnSync(process.execPath, [join(root, "bin", "pngdeer.js"), "--check", "."], {
+  const run = spawnSync(process.execPath, [join(root, "bin", "slimdeer.js"), "--check", "."], {
     cwd, encoding: "utf8", timeout: 180_000, maxBuffer: 4e6,
   });
   if (run.error || ![0, 1, 2].includes(run.status)) throw new Error(`${run.error?.message ?? "check failed"}\n${run.stderr}`);

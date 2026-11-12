@@ -1,4 +1,4 @@
-// Results by content: pngdeer writes the same bytes for the same input everywhere, so an image's
+// Results by content: slimdeer writes the same bytes for the same input everywhere, so an image's
 // saving only changes when its bytes, the engine or the target do. One small JSON file per entry,
 // so parallel lint threads and batch workers never write the same file twice over.
 import { createHash } from "node:crypto";
@@ -17,7 +17,7 @@ export const ENGINE = createHash("sha256")
   .slice(0, 16);
 
 export function cacheDir(cwd) {
-  return join(cwd, "node_modules", ".cache", "pngdeer");
+  return join(cwd, "node_modules", ".cache", "slimdeer");
 }
 
 // What an entry holds: a change measures everything again. 2 added the score; 3 skips grayscale
@@ -50,7 +50,7 @@ export function belowFloor({ outcome, score }) {
 
 /**
  * { original, compressed, outcome, score }, compressed counting the mark the command adds;
- * { skipped } (with failed: true if pngdeer itself failed); { outcome: "output" } for bytes pngdeer
+ * { skipped } (with failed: true if slimdeer itself failed); { outcome: "output" } for bytes slimdeer
  * wrote; or null if not cached yet.
  */
 export function read(dir, k) {
@@ -97,7 +97,7 @@ export function reportable(entry, { minSavedBytes, minSavedPercent }) {
   return saved > 0 && saved >= minSavedBytes && (100 * saved) / entry.original >= minSavedPercent;
 }
 
-/** An image's size, the cache key of its current bytes, whether pngdeer wrote it and its frame count; null if it can't be read. */
+/** An image's size, the cache key of its current bytes, whether slimdeer wrote it and its frame count; null if it can't be read. */
 export function fileKey(file, target) {
   try {
     const { size, mtimeMs, ctimeMs, dev, ino } = statSync(file);

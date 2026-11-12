@@ -114,7 +114,7 @@ jobs:
       - run: npm ci
       - name: Verify the published package
         run: |
-          log="$RUNNER_TEMP/pngdeer-published-check.log"
+          log="$RUNNER_TEMP/slimdeer-published-check.log"
           for attempt in {1..12}; do
             if npm run check:published >"$log" 2>&1; then
               cat "$log"

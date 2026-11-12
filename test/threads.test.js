@@ -18,6 +18,6 @@ console.log(JSON.stringify(results.flatMap((result) => result.messages)));
 `;
     const run = spawnSync(process.execPath, [...args, "-e", script], { cwd: dir, encoding: "utf8", timeout: 60_000 });
     assert.equal(run.status, 0, run.error?.message ?? run.stderr);
-    assert.ok(JSON.parse(run.stdout).some(({ ruleId }) => ruleId === "pngdeer/compressible-image"), run.stdout);
+    assert.ok(JSON.parse(run.stdout).some(({ ruleId }) => ruleId === "slimdeer/compressible-image"), run.stdout);
   }
 });

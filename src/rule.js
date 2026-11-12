@@ -1,6 +1,6 @@
-// pngdeer/compressible-image: on each string in the code that names a local PNG or JPEG (imports,
+// slimdeer/compressible-image: on each string in the code that names a local PNG or JPEG (imports,
 // require, new URL, JSX src and srcSet, CSS url() in styles, plain strings), says how much smaller
-// pngdeer would make it. oxlint never lints image files themselves, so the reference is where the
+// slimdeer would make it. oxlint never lints image files themselves, so the reference is where the
 // warning goes.
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
@@ -12,7 +12,7 @@ import { configAliases } from "./tsconfig.js";
 import { fillInBackground, fillSync } from "./sync.js";
 import { checkCommand, count, looks, pathFrom, printable, shrinkCommand, size, smaller } from "./text.js";
 
-const RULE = "pngdeer/compressible-image";
+const RULE = "slimdeer/compressible-image";
 const IMAGE = /\.(png|apng|jpe?g)$/i;
 // ESLint's --no-inline-config ignores disable comments, so they turn nothing off
 const NO_INLINE_CONFIG = process.argv.includes("--no-inline-config");
@@ -47,9 +47,9 @@ export default {
   meta: {
     type: "suggestion",
     docs: {
-      description: "Flag PNGs and JPEGs that pngdeer would make much smaller at about the same visual quality",
+      description: "Flag PNGs and JPEGs that slimdeer would make much smaller at about the same visual quality",
       recommended: true,
-      url: "https://github.com/lndgalante/oxlint-plugin-pngdeer/blob/main/docs/rules/compressible-image.md",
+      url: "https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/docs/rules/compressible-image.md",
     },
     messages: {
       // {{note}} is empty, or says why the saving may not reach visitors (REENCODED)
@@ -57,7 +57,7 @@ export default {
       // the same image again, in another file of the same run: its first warning said the rest
       again: "{{name}} could be {{percent}}% smaller ({{before}} → {{after}}), as warned where it's first used.{{note}} Run{{shell}}: {{command}}",
       lossless: "{{name}} could be {{percent}}% smaller ({{before}} → {{after}}), losslessly.{{note}} Run{{shell}}: {{command}}",
-      incomplete: "pngdeer stopped measuring after {{after}} with {{left}} not measured yet, so this lint is incomplete. Run it again to carry on; in CI, keep the cache between runs (settings.pngdeer.cacheDir).",
+      incomplete: "slimdeer stopped measuring after {{after}} with {{left}} not measured yet, so this lint is incomplete. Run it again to carry on; in CI, keep the cache between runs (settings.slimdeer.cacheDir).",
     },
     schema: [
       {
@@ -81,7 +81,7 @@ export default {
   create(context) {
     const { minSavedBytes, minSavedPercent, target: option, measure, scan, exclude: excludeOption } = { ...DEFAULTS, ...context.options[0] };
     const target = option === "auto" ? undefined : option;
-    const settings = context.settings.pngdeer ?? {};
+    const settings = context.settings.slimdeer ?? {};
     const from = resolve(context.cwd, context.physicalFilename ?? context.filename);
     // public dirs, aliases and the cache belong to the package, wherever the linter was started
     const root = projectRoot(dirname(from), context.cwd);
@@ -100,7 +100,7 @@ export default {
     // Metro serves logo@2x.png, logo@3x.png and logo.ios.png for require("./logo.png")
     const variants = depends.has("react-native") || depends.has("expo") ? metroVariants : null;
     const where = { from, root, servedDirs, aliases, variants };
-    // a folder the team commits (settings.pngdeer.cacheDir) keeps CI and fresh clones warm
+    // a folder the team commits (settings.slimdeer.cacheDir) keeps CI and fresh clones warm
     const local = cacheDir(root);
     const dir = settings.cacheDir ? resolve(root, settings.cacheDir) : local;
     // the cache folders of the package an image is in, when it isn't this one (../../assets/logo.png):
@@ -109,7 +109,7 @@ export default {
       const home = projectRoot(dirname(file), context.cwd);
       return home === root ? [] : [settings.cacheDir ? resolve(home, settings.cacheDir) : cacheDir(home), cacheDir(home)];
     };
-    // pngdeer failing on an image is kept in `local` only: the failure may be this machine's alone
+    // slimdeer failing on an image is kept in `local` only: the failure may be this machine's alone
     // (out of memory), and in a committed folder it would stick for the whole team
     const lookup = (k, file) => {
       const shared = read(dir, k);
@@ -195,7 +195,7 @@ export default {
       // image's own package's local one: the settings name another, or the image is another package's
       const measuredIn = dir === cacheDir(projectRoot(dirname(file), context.cwd)) ? undefined : dir;
       if (!EDITOR && !kept(line)) flag(file, from, { original: result.original, compressed: result.compressed, score: result.score, target, key: k, cacheDir: measuredIn });
-      // this package's own command (bin/pngdeer.js), at the target measured, so it writes exactly the
+      // this package's own command (bin/slimdeer.js), at the target measured, so it writes exactly the
       // file this promises; named by the package, so npx can't fetch someone else's
       const command = shrinkCommand([shown(file)], target);
       const seen = `${path}\0${target}`;
@@ -261,7 +261,7 @@ export default {
       const path = physical(file);
       if (told.has(path)) return;
       told.add(path);
-      process.stderr.write(`${printable(`pngdeer: ${result.failed ? "" : "skipped "}${shown(file)}: ${result.skipped}`)}\n`);
+      process.stderr.write(`${printable(`slimdeer: ${result.failed ? "" : "skipped "}${shown(file)}: ${result.skipped}`)}\n`);
     }
 
     return {
@@ -299,7 +299,7 @@ export default {
           return;
         }
         if (first) scanned.add(group);
-        // what the engine has yet to measure: pngdeer's own output (marked) needs none, and gets no entry,
+        // what the engine has yet to measure: slimdeer's own output (marked) needs none, and gets no entry,
         // so the editor and the command line leave the same files in a cache folder someone commits
         const unmeasured = (file) => {
           const image = fileKey(file, target);
@@ -339,7 +339,7 @@ export default {
         // measure: "always" waits in an editor too: a core stays free for the editor, as in its background batches (sync.js)
         const { computed, declined, ms } = fillSync({ dir, failures: local, target, files, progress: true, minSavedBytes, minSavedPercent, spare: EDITOR ? 1 : 0 });
         if (clear) process.stderr.write(clear);
-        if (computed) process.stderr.write(`pngdeer: measured ${count(computed, "image")} in ${(ms / 1000).toFixed(1)} s; later runs read the cache\n`);
+        if (computed) process.stderr.write(`slimdeer: measured ${count(computed, "image")} in ${(ms / 1000).toFixed(1)} s; later runs read the cache\n`);
         // without a word, an image the floor turns down would just be missing: said once, as it's measured
         if (declined) {
           // the --check it gives looks where this batch did: in the project's folder, from a lint run
@@ -349,7 +349,7 @@ export default {
           const project = pathFrom(physical(context.cwd), physical(root));
           const paths = project ? [project] : [];
           const options = { paths, exclude: excludeOption, minSavedBytes, minSavedPercent, cacheDir: dir === local ? undefined : settings.cacheDir };
-          process.stderr.write(`${printable(`pngdeer: ${floorLine(computed, declined, options)}`)}\n`);
+          process.stderr.write(`${printable(`slimdeer: ${floorLine(computed, declined, options)}`)}\n`);
         }
       } catch (error) {
         // the images stay unmeasured (and unreported) rather than failing the lint, and the rest

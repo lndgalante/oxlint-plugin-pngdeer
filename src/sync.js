@@ -8,8 +8,8 @@ import { count } from "./text.js";
 import { startWorker } from "./threads.js";
 
 // A worker that dies without answering (out of memory, say) must not hang the lint forever. The
-// tests shorten it with PNGDEER_TIMEOUT_MS.
-const TIMEOUT_MS = Number(process.env.PNGDEER_TIMEOUT_MS) || 15 * 60 * 1000;
+// tests shorten it with SLIMDEER_TIMEOUT_MS.
+const TIMEOUT_MS = Number(process.env.SLIMDEER_TIMEOUT_MS) || 15 * 60 * 1000;
 const LIMIT = TIMEOUT_MS < 60000 ? `${TIMEOUT_MS / 1000} s` : count(TIMEOUT_MS / 60000, "minute");
 
 /** fill(request) from batch.js, waited for synchronously. */
@@ -32,13 +32,13 @@ export function fillSync(request) {
     worker.terminate();
     unlock(request.failures ?? request.dir, thread);
     const why = status === "timed-out" ? `stopped measuring after ${LIMIT}` : "measuring stopped without an answer (out of memory?)";
-    const error = new Error(`pngdeer: ${why}; what it measured is cached, so the next run here carries on (in CI, only if the cache is kept between runs)`);
+    const error = new Error(`slimdeer: ${why}; what it measured is cached, so the next run here carries on (in CI, only if the cache is kept between runs)`);
     // the lint reports a run that ran out of time as incomplete (rule.js)
     if (status === "timed-out") error.after = LIMIT;
     throw error;
   }
   worker.unref();
-  if (reply.error) throw new Error(`pngdeer: ${reply.error}`);
+  if (reply.error) throw new Error(`slimdeer: ${reply.error}`);
   return reply.result;
 }
 

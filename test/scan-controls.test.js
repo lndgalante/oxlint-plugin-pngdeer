@@ -48,7 +48,7 @@ test("a project scan still runs after a referenced-only override in the same pro
   }, options: { scan: "project" } });
   const path = join(dir, ".oxlintrc.json");
   const config = JSON.parse(readFileSync(path, "utf8"));
-  config.overrides = [{ files: ["src/a.js"], rules: { "pngdeer/compressible-image": ["warn", { scan: "referenced" }] } }];
+  config.overrides = [{ files: ["src/a.js"], rules: { "slimdeer/compressible-image": ["warn", { scan: "referenced" }] } }];
   writeFileSync(path, JSON.stringify(config));
   const stderr = oxlintSummary(dir, "src/a.js", "src/b.js");
   assert.ok(cached(dir, photo));
@@ -69,7 +69,7 @@ test("project summaries retain configurations with different exclusions", async 
   let stderr = "";
   t.mock.method(process.stderr, "write", (text) => { stderr += text; return true; });
   summary.summarize(dir);
-  assert.match(stderr, /^pngdeer: no warnings, but 2 images could be .* smaller \(named only where this run can't warn, or nowhere\):$/m);
+  assert.match(stderr, /^slimdeer: no warnings, but 2 images could be .* smaller \(named only where this run can't warn, or nowhere\):$/m);
   assert.match(stderr, /photo\.jpg/);
   assert.match(stderr, /crystal-ball\.png/);
 });

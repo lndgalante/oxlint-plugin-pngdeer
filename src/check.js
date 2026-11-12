@@ -59,7 +59,7 @@ export function print(inputs, result, options = {}) {
     const summary = process.env.GITHUB_STEP_SUMMARY;
     if (options.summary !== false && summary && (result.rows.length || result.declined.length || result.missed.length || result.errors.length)) {
       try {
-        // the reader's machine has none of the node and pngdeer.js a Windows runner's PowerShell form
+        // the reader's machine has none of the node and slimdeer.js a Windows runner's PowerShell form
         // names: npx, quoted for a POSIX shell, as in the lint's job summary (summary.js)
         appendJobSummary(summary, markdown(result, settings, tell(inputs, result, settings, checkCommand, "linux")));
       } catch {
@@ -72,7 +72,7 @@ export function print(inputs, result, options = {}) {
 
 /**
  * The notes --check prints about what it doesn't list, as lines: Gatsby build folders left out, Git
- * LFS pointers, files pngdeer can't take, images the quality floor turned down, images that missed
+ * LFS pointers, files slimdeer can't take, images the quality floor turned down, images that missed
  * the target. Each may end with the command to run next; `rerun` (text.js) writes the one that runs
  * this again with other paths or exclusions, as --review gives it for a review.
  */
@@ -126,8 +126,8 @@ export async function measureAll(inputs, { cwd = process.cwd(), target, minSaved
   for (const { file, root } of files.values()) {
     try {
       const bytes = readFileSync(file);
-      // an image too small to save minSavedBytes, or already pngdeer's, needs nothing more, whatever
-      // pngdeer would make of it; a file that isn't a PNG or JPEG is an error at any size
+      // an image too small to save minSavedBytes, or already slimdeer's, needs nothing more, whatever
+      // slimdeer would make of it; a file that isn't a PNG or JPEG is an error at any size
       if (kind(bytes) && (marked(bytes) || bytes.length < minSavedBytes)) {
         counts.skipped++;
         continue;
@@ -232,7 +232,7 @@ async function measure(groups, { target, minSavedBytes, minSavedPercent }, count
   if (started && process.stderr.isTTY) process.stderr.write("\r\x1b[K");
   // once each and in full: a cache folder it can't write fails every image there, and only this names the folder
   const reasons = new Set([...requests.values()].filter(({ failure }) => failure).map(({ failure }) => failure.message ?? String(failure)));
-  for (const reason of reasons) console.error(printable(`pngdeer: measuring failed: ${reason}`));
+  for (const reason of reasons) console.error(printable(`slimdeer: measuring failed: ${reason}`));
 }
 
 /**
@@ -246,7 +246,7 @@ function collect(inputs, cwd, exclude, error) {
   const add = (file, walked) => {
     try {
       // as the file system spells it, so logo.png and LOGO.png are one image on macOS and Windows, as
-      // the command takes them (bin/pngdeer.js); realpathSync, unlike physical(), fails on a missing
+      // the command takes them (bin/slimdeer.js); realpathSync, unlike physical(), fails on a missing
       // file or a broken link
       const path = physical(realpathSync(file));
       if (files.has(path)) return;
@@ -326,9 +326,9 @@ function tell(inputs, { rows, declined, missed, errors, counts, builds }, settin
   const says = { lines: rows.map(row), notes: [] };
   const packages = counts.packages > 1 ? ` in ${count(counts.packages, "package")}` : "";
   says.checked = `checked ${count(counts.checked, "image")}${packages}; ${counts.measured} measured, ${counts.cached} cached, ${counts.skipped} skipped (already optimized or below ${size(minSavedBytes)}), ${count(errors.length, "error")}`;
-  says.lines.push(`pngdeer: ${says.checked}.`);
+  says.lines.push(`slimdeer: ${says.checked}.`);
   const part = (words, command) => {
-    const line = `pngdeer: ${words((path) => path)}${command ? `, run${command.shell}: ${command.text}` : ""}`;
+    const line = `slimdeer: ${words((path) => path)}${command ? `, run${command.shell}: ${command.text}` : ""}`;
     says.lines.push(line);
     return { words, command, line };
   };
@@ -350,7 +350,7 @@ function tell(inputs, { rows, declined, missed, errors, counts, builds }, settin
     const which = pointers === 1 ? "1 image is a Git LFS pointer" : `${pointers} images are Git LFS pointers`;
     note(() => `${which}: git lfs pull fetches ${pointers === 1 ? "it" : "them"} (in GitHub Actions, check out with lfs: true)`);
   }
-  // files a walk found that pngdeer won't take, which every check would find again; one named is meant
+  // files a walk found that slimdeer won't take, which every check would find again; one named is meant
   const named = new Set(inputs.map((input) => resolve(cwd, input)));
   const strays = errors.filter(({ file, message }) => !named.has(file) && REFUSED.some((start) => message.startsWith(start)));
   if (strays.length) {
@@ -358,7 +358,7 @@ function tell(inputs, { rows, declined, missed, errors, counts, builds }, settin
     const them = one ? "it" : strays.length > COMMAND_ROWS ? `the first ${COMMAND_ROWS}` : "them";
     const say = strays.every(({ message }) => message === NOT_IMAGE)
       ? one ? "1 file named like an image isn't a PNG or JPEG; if that's expected (a test fixture, say)," : `${strays.length} files named like images aren't PNGs or JPEGs; if that's expected (test fixtures, say),`
-      : `${count(strays.length, "file")} pngdeer can't take (see above);`;
+      : `${count(strays.length, "file")} slimdeer can't take (see above);`;
     // the same check again, with each one's path from here, which --exclude matches
     const left = strays.slice(0, COMMAND_ROWS).map(({ path }) => path);
     note(() => `${say} to leave ${them} out`, rerun(args, { ...settings, exclude: [...exclude, ...left] }, platform));
@@ -385,7 +385,7 @@ function tell(inputs, { rows, declined, missed, errors, counts, builds }, settin
   if (rows.length) {
     const { original, compressed } = totals(rows);
     says.total = `${count(rows.length, "image")} could be ${size(original - compressed)} smaller (${size(original)} → ${size(compressed)}, ${smaller(original, compressed)}% smaller)`;
-    says.lines.push(`pngdeer: ${says.total}. Images unchanged.`);
+    says.lines.push(`slimdeer: ${says.total}. Images unchanged.`);
     if (rows.length === 1) {
       const [{ path }] = rows;
       const extension = extname(path);
@@ -398,11 +398,11 @@ function tell(inputs, { rows, declined, missed, errors, counts, builds }, settin
     const biggest = rows.slice(-COMMAND_ROWS).reverse().map(({ path }) => path);
     const which = rows.length > COMMAND_ROWS ? `the ${COMMAND_ROWS} biggest of ${rows.length}` : rows.length === 1 ? "it" : "them";
     says.shrink = part(() => `to shrink ${which} in place (lossy, so commit first)`, shrinkCommand(biggest, target, platform));
-  } else if (errors.length) says.lines.push("pngdeer: check incomplete. Images unchanged.");
+  } else if (errors.length) says.lines.push("slimdeer: check incomplete. Images unchanged.");
   else if (counts.checked === 0) {
     // after the Gatsby line, "no images" would contradict it; and --exclude may be why there are none
-    says.lines.push(`pngdeer: found no ${builds.length ? "other " : ""}PNG or JPEG images to check in ${where(inputs, cwd)}${exclude.length ? ", apart from what --exclude leaves out" : ""}.`);
-  } else says.lines.push("pngdeer: no images exceed the savings thresholds. Images unchanged.");
+    says.lines.push(`slimdeer: found no ${builds.length ? "other " : ""}PNG or JPEG images to check in ${where(inputs, cwd)}${exclude.length ? ", apart from what --exclude leaves out" : ""}.`);
+  } else says.lines.push("slimdeer: no images exceed the savings thresholds. Images unchanged.");
   return says;
 }
 
@@ -475,7 +475,7 @@ function markdown({ rows, errors }, { cwd }, says) {
   // commands run where the check did, so a folder the heading names is named before each one too.
   const at = folder ? ` in ${code(folder)}` : "";
   const run = ({ words, command }) => (command ? [`${capital(words(code))}, run${at}${command.shell}:`, block(command.text)] : [`${capital(words(code))}.`]);
-  const blocks = [`### pngdeer --check${at}`, `${capital(says.checked)}.`];
+  const blocks = [`### slimdeer --check${at}`, `${capital(says.checked)}.`];
   if (rows.length) {
     const cells = ({ path, original, compressed, outcome, score }) => [code(path), size(original), size(compressed), size(original - compressed), outcome === "hit" ? String(Math.round(score)) : "lossless"];
     const sorted = biggestFirst(rows);

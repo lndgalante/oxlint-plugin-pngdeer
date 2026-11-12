@@ -1,4 +1,4 @@
-// One pngdeer engine per worker thread, doing what it's sent: { file, target } measures a file and
+// One slimdeer engine per worker thread, doing what it's sent: { file, target } measures a file and
 // reports sizes, the cache key of the bytes it actually read (the file may have changed since it was
 // queued), and the key of its own output, so that file is recognized later if someone writes it to
 // disk; { file, target, out, lint } makes the file smaller on disk, as the command does (shrink.js).

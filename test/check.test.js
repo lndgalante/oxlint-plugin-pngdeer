@@ -13,7 +13,7 @@ import { reviewCommand, size, smaller } from "../src/text.js";
 import { fade, grayWithProfile, names, oxlint, plugin, project } from "./helpers.js";
 
 function check(cwd, ...args) {
-  const run = spawnSync(process.execPath, [join(plugin, "bin/pngdeer.js"), "--check", ...args], { cwd, encoding: "utf8", timeout: 60_000 });
+  const run = spawnSync(process.execPath, [join(plugin, "bin/slimdeer.js"), "--check", ...args], { cwd, encoding: "utf8", timeout: 60_000 });
   assert.equal(run.error, undefined, run.error?.message);
   return run;
 }
@@ -21,7 +21,7 @@ function check(cwd, ...args) {
 /** check() in a GitHub Actions step whose job summary goes to `summary`, in a checkout at `workspace`. */
 function checkInActions(cwd, summary, workspace, ...args) {
   const env = { ...process.env, GITHUB_STEP_SUMMARY: summary, GITHUB_WORKSPACE: workspace };
-  const run = spawnSync(process.execPath, [join(plugin, "bin/pngdeer.js"), "--check", ...args], { cwd, env, encoding: "utf8", timeout: 60_000 });
+  const run = spawnSync(process.execPath, [join(plugin, "bin/slimdeer.js"), "--check", ...args], { cwd, env, encoding: "utf8", timeout: 60_000 });
   assert.equal(run.error, undefined, run.error?.message);
   return run;
 }
@@ -53,9 +53,9 @@ test("check finds unreferenced images, deduplicates inputs and preserves images 
   assert.equal(first.status, 1, first.stderr);
   assert.match(first.stdout, /^src\/assets\/crystal-ball\.png: could be 68% smaller \(35 kB → 11 kB, quality 87\/100: looks the same side by side\)$/m);
   assert.match(first.stdout, /checked 1 image; 1 measured, 0 cached/);
-  assert.match(first.stdout, /^pngdeer: 1 image could be 24 kB smaller \(35 kB → 11 kB, 68% smaller\)\. Images unchanged\.$/m);
-  assert.match(first.stdout, /^pngdeer: to preview it as a new file, run: npx oxlint-plugin-pngdeer src\/assets\/crystal-ball\.png -o crystal-ball\.preview\.png$/m);
-  assert.match(first.stdout, /^pngdeer: to shrink it in place \(lossy, so commit first\), run: npx oxlint-plugin-pngdeer src\/assets\/crystal-ball\.png$/m);
+  assert.match(first.stdout, /^slimdeer: 1 image could be 24 kB smaller \(35 kB → 11 kB, 68% smaller\)\. Images unchanged\.$/m);
+  assert.match(first.stdout, /^slimdeer: to preview it as a new file, run: npx oxlint-plugin-slimdeer src\/assets\/crystal-ball\.png -o crystal-ball\.preview\.png$/m);
+  assert.match(first.stdout, /^slimdeer: to shrink it in place \(lossy, so commit first\), run: npx oxlint-plugin-slimdeer src\/assets\/crystal-ball\.png$/m);
   // stderr isn't a terminal: no count rewriting its line
   assert.doesNotMatch(first.stderr, /\r/);
   assert.deepEqual(readFileSync(file), before);
@@ -84,15 +84,15 @@ test("check lists the biggest savings last, totals them, and shrinks the 10 bigg
   assert.deepEqual(rows.map((line) => line.split(":")[0]), Array.from({ length: 12 }, (_, i) => `public/img-${String(11 - i).padStart(2, "0")}.png`));
   assert.match(rows[0], /: could be 25% smaller \(35 kB → 26 kB, lossless: looks identical\)$/);
   assert.match(rows[11], /: could be 56% smaller \(35 kB → 15 kB, quality 85\/100: looks the same side by side\)$/);
-  assert.match(run.stdout, /^pngdeer: 12 images could be 174 kB smaller \(426 kB → 252 kB, 41% smaller\)\. Images unchanged\.$/m);
+  assert.match(run.stdout, /^slimdeer: 12 images could be 174 kB smaller \(426 kB → 252 kB, 41% smaller\)\. Images unchanged\.$/m);
   // the page shows all 12, where the command takes the 10 biggest
-  assert.match(run.stdout, /^pngdeer: to see all 12 before and after on one page first, run: npx oxlint-plugin-pngdeer --review public$/m);
+  assert.match(run.stdout, /^slimdeer: to see all 12 before and after on one page first, run: npx oxlint-plugin-slimdeer --review public$/m);
   const biggest = Array.from({ length: 10 }, (_, i) => `public/img-${String(i).padStart(2, "0")}.png`).join(" ");
-  assert.ok(run.stdout.includes(`pngdeer: to shrink the 10 biggest of 12 in place (lossy, so commit first), run: npx oxlint-plugin-pngdeer ${biggest}\n`), run.stdout);
+  assert.ok(run.stdout.includes(`slimdeer: to shrink the 10 biggest of 12 in place (lossy, so commit first), run: npx oxlint-plugin-slimdeer ${biggest}\n`), run.stdout);
   // the same next steps at a fixed target
   const fixed = check(dir, "public", "--target", "70").stdout;
-  assert.match(fixed, /run: npx oxlint-plugin-pngdeer --review public --target 70$/m);
-  assert.match(fixed, /run: npx oxlint-plugin-pngdeer( public\/img-\d\d\.png){10} --target 70$/m);
+  assert.match(fixed, /run: npx oxlint-plugin-slimdeer --review public --target 70$/m);
+  assert.match(fixed, /run: npx oxlint-plugin-slimdeer( public\/img-\d\d\.png){10} --target 70$/m);
 });
 
 test("check warms the linter's cache at the requested target and custom cache directory", () => {
@@ -103,16 +103,16 @@ test("check warms the linter's cache at the requested target and custom cache di
   });
   const configFile = join(dir, ".oxlintrc.json");
   const config = JSON.parse(readFileSync(configFile, "utf8"));
-  config.settings = { pngdeer: { cacheDir: ".pngdeer" } };
+  config.settings = { slimdeer: { cacheDir: ".slimdeer" } };
   writeFileSync(configFile, JSON.stringify(config));
-  const run = check(dir, "src", "--target", "70", "--cache-dir", ".pngdeer");
+  const run = check(dir, "src", "--target", "70", "--cache-dir", ".slimdeer");
   assert.equal(run.status, 1, run.stderr);
   const bytes = readFileSync(join(dir, "src/assets/crystal-ball.png"));
-  assert.equal(existsSync(join(dir, ".pngdeer", `${key(bytes, 70)}.json`)), true);
+  assert.equal(existsSync(join(dir, ".slimdeer", `${key(bytes, 70)}.json`)), true);
   const lint = oxlint(dir, "src");
   assert.deepEqual(names(lint), ["crystal-ball.png"]);
   assert.doesNotMatch(lint.stderr, /measuring/);
-  assert.equal(check(dir, "src", "--target", "70", "--cache-dir", ".pngdeer").status, 1);
+  assert.equal(check(dir, "src", "--target", "70", "--cache-dir", ".slimdeer").status, 1);
 });
 
 test("check warms the linter's cache for an image another package's code names", () => {
@@ -123,12 +123,12 @@ test("check warms the linter's cache for an image another package's code names",
     options: { measure: "never" },
   });
   const configFile = join(dir, ".oxlintrc.json");
-  writeFileSync(configFile, JSON.stringify({ ...JSON.parse(readFileSync(configFile, "utf8")), settings: { pngdeer: { cacheDir: ".pngdeer" } } }));
-  assert.equal(check(dir, "--cache-dir", ".pngdeer").status, 1);
+  writeFileSync(configFile, JSON.stringify({ ...JSON.parse(readFileSync(configFile, "utf8")), settings: { slimdeer: { cacheDir: ".slimdeer" } } }));
+  assert.equal(check(dir, "--cache-dir", ".slimdeer").status, 1);
   assert.deepEqual(names(oxlint(dir, "apps")), ["crystal-ball.png"]);
   // copied into the app's folder, as measuring it there would have
   const bytes = readFileSync(join(dir, "src/assets/crystal-ball.png"));
-  assert.equal(existsSync(join(dir, "apps/web/.pngdeer", `${key(bytes)}.json`)), true);
+  assert.equal(existsSync(join(dir, "apps/web/.slimdeer", `${key(bytes)}.json`)), true);
 });
 
 test("check applies both savings thresholds and skips marked or tiny images", () => {
@@ -151,7 +151,7 @@ test("check says how many images it measures once copies of one image count once
   for (const name of ["a.png", "b.png"]) copyFileSync(join(plugin, "example/src/assets/crystal-ball.png"), join(dir, name));
   const run = check(dir);
   assert.equal(run.status, 1, run.stderr);
-  assert.match(run.stderr, /^pngdeer: measuring 1 image not in the cache yet\.\.\.$/m);
+  assert.match(run.stderr, /^slimdeer: measuring 1 image not in the cache yet\.\.\.$/m);
   assert.match(run.stdout, /checked 2 images; 1 measured, 1 cached/);
 });
 
@@ -161,10 +161,10 @@ test("a grayscale PNG with a color profile below the byte threshold is skipped, 
   assert.equal(small.status, 0, small.stderr);
   assert.match(small.stdout, /checked 1 image; 0 measured, 0 cached, 1 skipped/);
   assert.equal(small.stderr, "");
-  // one big enough to measure is named, as pngdeer's output could look darker
+  // one big enough to measure is named, as slimdeer's output could look darker
   const big = check(dir, "big.png");
   assert.equal(big.status, 2, big.stderr);
-  assert.match(big.stderr, /^big\.png: a grayscale PNG with a color profile \(pngdeer's output can look darker\)$/m);
+  assert.match(big.stderr, /^big\.png: a grayscale PNG with a color profile \(slimdeer's output can look darker\)$/m);
   // a file that isn't an image is an error at any size (a Git LFS pointer, say)
   writeFileSync(join(dir, "pointer.png"), "version https://git-lfs.github.com/spec/v1\n");
   assert.equal(check(dir, "pointer.png").status, 2);
@@ -179,7 +179,7 @@ test("check uses package-relative exclusions even when scanning a subdirectory",
   assert.equal(run.status, 0, run.stderr);
   assert.match(run.stdout, /checked 0 images/);
   // --exclude may be why there are none
-  assert.match(run.stdout, /^pngdeer: found no PNG or JPEG images to check in src\/assets\/crystal-ball\.png and public, apart from what --exclude leaves out\.$/m);
+  assert.match(run.stdout, /^slimdeer: found no PNG or JPEG images to check in src\/assets\/crystal-ball\.png and public, apart from what --exclude leaves out\.$/m);
   assert.equal(existsSync(cacheDir(dir)), false);
 });
 
@@ -202,10 +202,10 @@ test("check reports engine failures, including cached failures, as incomplete", 
   for (let i = 0; i < 2; i++) {
     const run = check(dir, "fade.png", "--target", "90");
     assert.equal(run.status, 2, run.stderr);
-    assert.match(run.stderr, /fade\.png: pngdeer couldn't compress/);
+    assert.match(run.stderr, /fade\.png: slimdeer couldn't compress/);
     assert.match(run.stdout, /check incomplete/);
     // counted once, as an error, not also as cached when the failure is read from the cache
-    assert.match(run.stdout, /^pngdeer: checked 1 image; 0 measured, 0 cached, 0 skipped .*, 1 error\.$/m);
+    assert.match(run.stdout, /^slimdeer: checked 1 image; 0 measured, 0 cached, 0 skipped .*, 1 error\.$/m);
   }
 });
 
@@ -225,21 +225,21 @@ test("check covers a monorepo's packages in one run, each with its own cache, on
   const first = check(dir);
   assert.equal(first.status, 1, first.stderr);
   // one pool, one count: the same image in two packages is measured for each package's cache
-  assert.deepEqual(first.stderr.match(/^pngdeer: measuring .*$/gm), ["pngdeer: measuring 2 images not in the cache yet..."]);
-  assert.match(first.stdout, /^pngdeer: checked 2 images in 2 packages; 2 measured, 0 cached, 0 skipped /m);
+  assert.deepEqual(first.stderr.match(/^slimdeer: measuring .*$/gm), ["slimdeer: measuring 2 images not in the cache yet..."]);
+  assert.match(first.stdout, /^slimdeer: checked 2 images in 2 packages; 2 measured, 0 cached, 0 skipped /m);
   assert.match(first.stdout, /^packages\/a\/ball\.png: could be 68% smaller/m);
   assert.match(first.stdout, /^packages\/b\/public\/ball\.png: could be 68% smaller/m);
   assert.equal(existsSync(cacheDir(join(dir, "packages/a"))), true);
   assert.equal(existsSync(cacheDir(join(dir, "packages/b"))), true);
   assert.equal(existsSync(cacheDir(dir)), false);
   // the packages folder alone, too
-  assert.match(check(dir, "packages").stdout, /^pngdeer: checked 2 images in 2 packages; 0 measured, 2 cached/m);
+  assert.match(check(dir, "packages").stdout, /^slimdeer: checked 2 images in 2 packages; 0 measured, 2 cached/m);
   // exclusions from the folder it runs in, or from each image's package, as the rule's option
   const fromRoot = check(dir, "--exclude", "packages/b");
-  assert.match(fromRoot.stdout, /^pngdeer: checked 1 image; 0 measured, 1 cached/m);
+  assert.match(fromRoot.stdout, /^slimdeer: checked 1 image; 0 measured, 1 cached/m);
   assert.doesNotMatch(fromRoot.stdout, /packages\/b/);
   const fromPackage = check(dir, "--exclude", "public");
-  assert.match(fromPackage.stdout, /^pngdeer: checked 1 image; /m);
+  assert.match(fromPackage.stdout, /^slimdeer: checked 1 image; /m);
   assert.doesNotMatch(fromPackage.stdout, /packages\/b/);
   assert.equal(check(dir, "--exclude", "packages/*/ball.png", "--exclude", "packages/b/**").status, 0);
 });
@@ -266,8 +266,8 @@ test("one image named in two letter cases is checked and counted once", (t) => {
   for (const args of [["public/logo.png", "public/LOGO.png"], ["public", "public/LOGO.png"]]) {
     const run = check(dir, ...args);
     assert.equal(run.status, 1, run.stderr);
-    assert.match(run.stdout, /^pngdeer: checked 1 image; /m);
-    assert.match(run.stdout, /^pngdeer: 1 image could be 30 kB smaller /m);
+    assert.match(run.stdout, /^slimdeer: checked 1 image; /m);
+    assert.match(run.stdout, /^slimdeer: 1 image could be 30 kB smaller /m);
   }
 });
 
@@ -309,7 +309,7 @@ test("check blames an unwritable cache folder, not the image", { skip: process.p
   t.after(() => chmodSync(modules, 0o755));
   const run = check(dir, "src");
   assert.equal(run.status, 2, run.stderr);
-  assert.match(run.stderr, /^pngdeer: measuring failed: EACCES: permission denied, mkdir '.*node_modules[\\/]\.cache[\\/]pngdeer'$/m);
+  assert.match(run.stderr, /^slimdeer: measuring failed: EACCES: permission denied, mkdir '.*node_modules[\\/]\.cache[\\/]slimdeer'$/m);
   assert.match(run.stderr, /^src\/assets\/crystal-ball\.png: not measured \(see above\)$/m);
   assert.match(run.stdout, /check incomplete/);
 });
@@ -321,16 +321,16 @@ test("check copies successful local results into a requested shared cache, but k
   const k = key(bytes);
   const entry = { original: bytes.length, compressed: 10000, outcome: "hit", score: 90 };
   write(cacheDir(dir), k, entry);
-  const run = check(dir, file, "--cache-dir", ".pngdeer");
+  const run = check(dir, file, "--cache-dir", ".slimdeer");
   assert.equal(run.status, 1, run.stderr);
   assert.match(run.stdout, /0 measured, 1 cached/);
-  assert.deepEqual(JSON.parse(readFileSync(join(dir, ".pngdeer", `${k}.json`), "utf8")), entry);
+  assert.deepEqual(JSON.parse(readFileSync(join(dir, ".slimdeer", `${k}.json`), "utf8")), entry);
 
   const failureKey = key(bytes, 90);
   write(cacheDir(dir), failureKey, { skipped: "engine failed", failed: true });
-  const failed = check(dir, file, "--target", "90", "--cache-dir", ".pngdeer");
+  const failed = check(dir, file, "--target", "90", "--cache-dir", ".slimdeer");
   assert.equal(failed.status, 2, failed.stderr);
-  assert.equal(existsSync(join(dir, ".pngdeer", `${failureKey}.json`)), false);
+  assert.equal(existsSync(join(dir, ".slimdeer", `${failureKey}.json`)), false);
 });
 
 test("directory checks include symlinked images and report dangling image links", (t) => {
@@ -363,11 +363,11 @@ test("check says where it looked when it finds no images", () => {
   const here = check(dir);
   assert.equal(here.status, 0, here.stderr);
   // the folder it runs in by its full path, which tells a wrong folder at once
-  assert.ok(here.stdout.includes(`\npngdeer: found no PNG or JPEG images to check in ${realpathSync(dir)}.\n`), here.stdout);
-  assert.match(check(dir, "public").stdout, /^pngdeer: found no PNG or JPEG images to check in public\.$/m);
+  assert.ok(here.stdout.includes(`\nslimdeer: found no PNG or JPEG images to check in ${realpathSync(dir)}.\n`), here.stdout);
+  assert.match(check(dir, "public").stdout, /^slimdeer: found no PNG or JPEG images to check in public\.$/m);
   for (const name of ["a", "b", "c", "d"]) mkdirSync(join(dir, name));
-  assert.match(check(dir, "a", "b").stdout, /^pngdeer: found no PNG or JPEG images to check in a and b\.$/m);
-  assert.match(check(dir, "a", "b", "c", "d", "public").stdout, /^pngdeer: found no PNG or JPEG images to check in a, b, c and 2 more paths\.$/m);
+  assert.match(check(dir, "a", "b").stdout, /^slimdeer: found no PNG or JPEG images to check in a and b\.$/m);
+  assert.match(check(dir, "a", "b", "c", "d", "public").stdout, /^slimdeer: found no PNG or JPEG images to check in a, b, c and 2 more paths\.$/m);
 });
 
 test("files named like images that aren't are counted, with the check that leaves them out", () => {
@@ -381,16 +381,16 @@ test("files named like images that aren't are counted, with the check that leave
   assert.equal(run.status, 2, run.stderr);
   assert.match(run.stderr, /^fixtures\/fake\.png: not a PNG or JPEG$/m);
   assert.match(run.stderr, /^public\/hero\.png: a Git LFS pointer, not the image itself$/m);
-  assert.match(run.stdout, /^pngdeer: checked 4 images; 0 measured, 1 cached, 0 skipped \(already optimized or below 4\.1 kB\), 3 errors\.$/m);
-  assert.match(run.stdout, /^pngdeer: 1 image is a Git LFS pointer: git lfs pull fetches it \(in GitHub Actions, check out with lfs: true\)$/m);
+  assert.match(run.stdout, /^slimdeer: checked 4 images; 0 measured, 1 cached, 0 skipped \(already optimized or below 4\.1 kB\), 3 errors\.$/m);
+  assert.match(run.stdout, /^slimdeer: 1 image is a Git LFS pointer: git lfs pull fetches it \(in GitHub Actions, check out with lfs: true\)$/m);
   // the LFS pointer is fetched, not left out
-  const command = "npx oxlint-plugin-pngdeer --check --exclude fixtures/also-fake.jpg --exclude fixtures/fake.png";
-  assert.ok(run.stdout.includes(`\npngdeer: 2 files named like images aren't PNGs or JPEGs; if that's expected (test fixtures, say), to leave them out, run: ${command}\n`), run.stdout);
+  const command = "npx oxlint-plugin-slimdeer --check --exclude fixtures/also-fake.jpg --exclude fixtures/fake.png";
+  assert.ok(run.stdout.includes(`\nslimdeer: 2 files named like images aren't PNGs or JPEGs; if that's expected (test fixtures, say), to leave them out, run: ${command}\n`), run.stdout);
   // the image that is one still counts
   assert.match(run.stdout, /^public\/real\.png: could be/m);
   // with the check's own paths and options
   const one = check(dir, "fixtures", "--exclude", "fixtures/also-fake.jpg", "--min-saved-percent", "5");
-  assert.match(one.stdout, /^pngdeer: 1 file named like an image isn't a PNG or JPEG; if that's expected \(a test fixture, say\), to leave it out, run: npx oxlint-plugin-pngdeer --check fixtures --exclude fixtures\/also-fake\.jpg --exclude fixtures\/fake\.png --min-saved-percent 5$/m);
+  assert.match(one.stdout, /^slimdeer: 1 file named like an image isn't a PNG or JPEG; if that's expected \(a test fixture, say\), to leave it out, run: npx oxlint-plugin-slimdeer --check fixtures --exclude fixtures\/also-fake\.jpg --exclude fixtures\/fake\.png --min-saved-percent 5$/m);
   // the command it gives works
   const left = check(dir, "--exclude", "fixtures/also-fake.jpg", "--exclude", "fixtures/fake.png", "--exclude", "public/hero.png");
   assert.equal(left.status, 1, left.stderr);
@@ -399,16 +399,16 @@ test("files named like images that aren't are counted, with the check that leave
   const named = check(dir, "fixtures/fake.png");
   assert.equal(named.status, 2, named.stderr);
   assert.doesNotMatch(named.stdout, /leave/);
-  // another file pngdeer won't take is counted too, in other words
+  // another file slimdeer won't take is counted too, in other words
   writeFileSync(join(dir, "fixtures/gray.png"), grayWithProfile(100));
-  assert.match(check(dir, "fixtures").stdout, /^pngdeer: 3 files pngdeer can't take \(see above\); to leave them out, run: npx oxlint-plugin-pngdeer --check fixtures --exclude fixtures\/also-fake\.jpg --exclude fixtures\/fake\.png --exclude fixtures\/gray\.png$/m);
+  assert.match(check(dir, "fixtures").stdout, /^slimdeer: 3 files slimdeer can't take \(see above\); to leave them out, run: npx oxlint-plugin-slimdeer --check fixtures --exclude fixtures\/also-fake\.jpg --exclude fixtures\/fake\.png --exclude fixtures\/gray\.png$/m);
 });
 
 test("check names a path it can't find before it measures", () => {
   const dir = project({ images: ["src/assets/crystal-ball.png"] });
   const run = check(dir, "missing.png", "src");
   assert.equal(run.status, 2, run.stderr);
-  assert.match(run.stderr, /^missing\.png: no such file or folder\npngdeer: measuring 1 image not in the cache yet\.\.\.$/m);
+  assert.match(run.stderr, /^missing\.png: no such file or folder\nslimdeer: measuring 1 image not in the cache yet\.\.\.$/m);
 });
 
 test("check offers one page to see several images before and after, and a new file to see one", () => {
@@ -419,16 +419,16 @@ test("check offers one page to see several images before and after, and a new fi
   const run = check(dir);
   assert.equal(run.status, 1, run.stderr);
   // the folder it runs in is what --review checks by itself
-  assert.match(run.stdout, /^pngdeer: to see all 3 before and after on one page first, run: npx oxlint-plugin-pngdeer --review$/m);
+  assert.match(run.stdout, /^slimdeer: to see all 3 before and after on one page first, run: npx oxlint-plugin-slimdeer --review$/m);
   // before the command that writes in place, and instead of a file for one of them
   assert.ok(run.stdout.indexOf("to see") < run.stdout.indexOf("to shrink"), run.stdout);
   assert.doesNotMatch(run.stdout, / -o /);
   // two, with the paths and options of the check, so the page shows what it listed
   const both = check(dir, "public/a.png", "public/c.png", "--min-saved-percent", "5", "--exclude", "public/b.png");
-  assert.match(both.stdout, /^pngdeer: to see both before and after on one page first, run: npx oxlint-plugin-pngdeer --review public\/a\.png public\/c\.png --exclude public\/b\.png --min-saved-percent 5$/m);
+  assert.match(both.stdout, /^slimdeer: to see both before and after on one page first, run: npx oxlint-plugin-slimdeer --review public\/a\.png public\/c\.png --exclude public\/b\.png --min-saved-percent 5$/m);
   // one: a new file, which the page would only frame
   const one = check(dir, "public/b.png");
-  assert.match(one.stdout, /^pngdeer: to preview it as a new file, run: npx oxlint-plugin-pngdeer public\/b\.png -o b\.preview\.png$/m);
+  assert.match(one.stdout, /^slimdeer: to preview it as a new file, run: npx oxlint-plugin-slimdeer public\/b\.png -o b\.preview\.png$/m);
   assert.doesNotMatch(one.stdout, /--review/);
   // --json says none of it
   assert.doesNotMatch(check(dir, "--json").stdout, /--review/);
@@ -439,27 +439,27 @@ test("check says how many images the quality floor turned down, with the command
   measured(dir, "public/logo.png", { saved: 20000, score: 88 });
   // the automatic target's best looked visibly different, and nothing reached 70 (engine.js)
   const header = measured(dir, "public/header.png", { saved: 20000, score: 64.2, outcome: "miss" });
-  const run = check(dir, "--cache-dir", ".pngdeer", "--min-saved-percent", "5");
+  const run = check(dir, "--cache-dir", ".slimdeer", "--min-saved-percent", "5");
   assert.equal(run.status, 1, run.stderr);
   assert.doesNotMatch(run.stdout, /^public\/header\.png/m);
-  const command = "npx oxlint-plugin-pngdeer --check public/header.png --cache-dir .pngdeer --min-saved-percent 5 --target 60";
-  assert.ok(run.stdout.includes(`\npngdeer: 1 image can't be made smaller without a visible difference (its best quality is below 70), so it isn't listed; to try it at a lower target, run: ${command}\n`), run.stdout);
+  const command = "npx oxlint-plugin-slimdeer --check public/header.png --cache-dir .slimdeer --min-saved-percent 5 --target 60";
+  assert.ok(run.stdout.includes(`\nslimdeer: 1 image can't be made smaller without a visible difference (its best quality is below 70), so it isn't listed; to try it at a lower target, run: ${command}\n`), run.stdout);
   // at that target it may be listed: here it is
-  write(join(dir, ".pngdeer"), key(header, 60), { original: header.length, compressed: header.length - 25000, outcome: "hit", score: 61 });
-  const lower = check(dir, "public/header.png", "--cache-dir", ".pngdeer", "--min-saved-percent", "5", "--target", "60");
+  write(join(dir, ".slimdeer"), key(header, 60), { original: header.length, compressed: header.length - 25000, outcome: "hit", score: 61 });
+  const lower = check(dir, "public/header.png", "--cache-dir", ".slimdeer", "--min-saved-percent", "5", "--target", "60");
   assert.equal(lower.status, 1, lower.stderr);
   assert.match(lower.stdout, /^public\/header\.png: could be \d+% smaller \(.*, quality 61\/100: looks visibly different\)$/m);
   // a target given is never turned down
   assert.doesNotMatch(lower.stdout, /visible difference \(/);
   // the plural, with the same target whatever their best: the engine searches anew at each target
   const banner = measured(dir, "public/banner.png", { saved: 20000, score: 57.8, outcome: "miss" });
-  assert.match(check(dir).stdout, /^pngdeer: 2 images can't be made smaller without a visible difference \(their best quality is below 70\), so they aren't listed; to try them at a lower target, run: npx oxlint-plugin-pngdeer --check public\/\w+\.png public\/\w+\.png --target 60$/m);
+  assert.match(check(dir).stdout, /^slimdeer: 2 images can't be made smaller without a visible difference \(their best quality is below 70\), so they aren't listed; to try them at a lower target, run: npx oxlint-plugin-slimdeer --check public\/\w+\.png public\/\w+\.png --target 60$/m);
   // one it still can't make reach the target given is named, not left out without a word, its best
   // rounded down: 59.6 shown as 60 would reach the target it missed
   write(cacheDir(dir), key(banner, 60), { original: banner.length, compressed: banner.length - 30000, outcome: "miss", score: 59.6 });
   const missed = check(dir, "public/banner.png", "--target", "60");
   assert.equal(missed.status, 0, missed.stderr);
-  assert.match(missed.stdout, /^pngdeer: public\/banner\.png isn't listed: no smaller file reaches --target 60 \(the best reaches quality 59\/100\)$/m);
+  assert.match(missed.stdout, /^slimdeer: public\/banner\.png isn't listed: no smaller file reaches --target 60 \(the best reaches quality 59\/100\)$/m);
   assert.deepEqual(JSON.parse(check(dir, "public/banner.png", "--target", "60", "--json").stdout).missed, [{ file: "public/banner.png", original: banner.length, quality: 59 }]);
   const summary = join(dir, "summary.md");
   assert.equal(checkInActions(dir, summary, dir, "public/banner.png", "--target", "60").status, 0);
@@ -467,7 +467,7 @@ test("check says how many images the quality floor turned down, with the command
   // several
   write(cacheDir(dir), key(header, 90), { original: header.length, compressed: header.length - 30000, outcome: "miss", score: 89.6 });
   write(cacheDir(dir), key(banner, 90), { original: banner.length, compressed: banner.length - 30000, outcome: "miss", score: 85.2 });
-  assert.match(check(dir, "public/header.png", "public/banner.png", "--target", "90").stdout, /^pngdeer: 2 images aren't listed: no smaller file reaches --target 90 \(the best of them reaches quality 89\/100\)$/m);
+  assert.match(check(dir, "public/header.png", "public/banner.png", "--target", "90").stdout, /^slimdeer: 2 images aren't listed: no smaller file reaches --target 90 \(the best of them reaches quality 89\/100\)$/m);
 });
 
 test("an image the floor turned down is named only if it would otherwise be listed", () => {
@@ -477,11 +477,11 @@ test("an image the floor turned down is named only if it would otherwise be list
   const run = check(dir);
   assert.equal(run.status, 0, run.stderr);
   assert.doesNotMatch(run.stdout, /visible difference|isn't listed/);
-  assert.match(run.stdout, /^pngdeer: no images exceed the savings thresholds\. Images unchanged\.$/m);
+  assert.match(run.stdout, /^slimdeer: no images exceed the savings thresholds\. Images unchanged\.$/m);
   assert.deepEqual(JSON.parse(check(dir, "--json").stdout).declined, []);
   // with thresholds it clears, the floor is what keeps it off the list
   const lower = check(dir, "--min-saved-bytes", "1000", "--min-saved-percent", "5");
-  assert.match(lower.stdout, /^pngdeer: 1 image can't be made smaller without a visible difference \(its best quality is below 70\), so it isn't listed; /m);
+  assert.match(lower.stdout, /^slimdeer: 1 image can't be made smaller without a visible difference \(its best quality is below 70\), so it isn't listed; /m);
 });
 
 test("--json prints one JSON document on stdout, biggest saving first, with the same exit codes", () => {
@@ -553,29 +553,29 @@ test("in a Gatsby project, check leaves out the build output in public/ unless i
   measured(dir, "public/static/abc/photo.png", { saved: 20000 });
   const run = check(dir);
   assert.equal(run.status, 1, run.stderr);
-  assert.match(run.stdout, /^pngdeer: checked 1 image; /m);
-  assert.match(run.stdout, /^pngdeer: left out 2 images in public, Gatsby's build output; to check them too, run: npx oxlint-plugin-pngdeer --check public$/m);
-  assert.match(check(dir, "public").stdout, /^pngdeer: checked 2 images; /m);
-  assert.match(check(dir, "public/static").stdout, /^pngdeer: checked 1 image; /m);
+  assert.match(run.stdout, /^slimdeer: checked 1 image; /m);
+  assert.match(run.stdout, /^slimdeer: left out 2 images in public, Gatsby's build output; to check them too, run: npx oxlint-plugin-slimdeer --check public$/m);
+  assert.match(check(dir, "public").stdout, /^slimdeer: checked 2 images; /m);
+  assert.match(check(dir, "public/static").stdout, /^slimdeer: checked 1 image; /m);
   const named = check(dir, ".", "public/logo.png");
-  assert.match(named.stdout, /^pngdeer: checked 2 images; /m);
-  assert.match(named.stdout, /^pngdeer: left out 1 image in public, Gatsby's build output; to check it too, run: npx oxlint-plugin-pngdeer --check public$/m);
+  assert.match(named.stdout, /^slimdeer: checked 2 images; /m);
+  assert.match(named.stdout, /^slimdeer: left out 1 image in public, Gatsby's build output; to check it too, run: npx oxlint-plugin-slimdeer --check public$/m);
   // a review's page shows one run's images, so its command takes the review's paths as well, which
   // reach every image
   const found = { rows: [], declined: [], missed: [], errors: [], counts: { checked: 1, measured: 0, cached: 1, skipped: 0, packages: 1 }, builds: [{ path: "public", images: 2 }] };
-  assert.deepEqual(notes(["."], found, { cwd: dir }, reviewCommand), ["pngdeer: left out 2 images in public, Gatsby's build output; to review them too, run: npx oxlint-plugin-pngdeer --review . public"]);
+  assert.deepEqual(notes(["."], found, { cwd: dir }, reviewCommand), ["slimdeer: left out 2 images in public, Gatsby's build output; to review them too, run: npx oxlint-plugin-slimdeer --review . public"]);
   const both = check(dir, ".", "public");
-  assert.match(both.stdout, /^pngdeer: checked 3 images; /m);
+  assert.match(both.stdout, /^slimdeer: checked 3 images; /m);
   assert.doesNotMatch(both.stdout, /left out/);
   // a script hears of them too
   assert.deepEqual(JSON.parse(check(dir, "--json").stdout).builds, [{ folder: "public", images: 2 }]);
   // with nothing else, it doesn't say it found no images just after saying it left some out
   const none = check(dir, "--exclude", "static");
   assert.equal(none.status, 0, none.stderr);
-  assert.ok(none.stdout.endsWith(`\npngdeer: found no other PNG or JPEG images to check in ${realpathSync(dir)}, apart from what --exclude leaves out.\n`), none.stdout);
+  assert.ok(none.stdout.endsWith(`\nslimdeer: found no other PNG or JPEG images to check in ${realpathSync(dir)}, apart from what --exclude leaves out.\n`), none.stdout);
   // elsewhere public/ is what the site serves
   writeFileSync(join(dir, "package.json"), '{"dependencies":{"next":"^16.0.0"}}');
-  assert.match(check(dir).stdout, /^pngdeer: checked 3 images; /m);
+  assert.match(check(dir).stdout, /^slimdeer: checked 3 images; /m);
 });
 
 test("--exclude holds for a named image or a walked one through a link, as in the rule", (t) => {
@@ -588,11 +588,11 @@ test("--exclude holds for a named image or a walked one through a link, as in th
     if (process.platform === "win32" && error.code === "EPERM") return t.skip("symlinks require Windows Developer Mode");
     throw error;
   }
-  assert.match(check(dir, "public/mark.png").stdout, /^pngdeer: checked 1 image; /m);
+  assert.match(check(dir, "public/mark.png").stdout, /^slimdeer: checked 1 image; /m);
   for (const args of [["public/mark.png"], ["public"], []]) {
     const run = check(dir, ...args, "--exclude", "design");
     assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stdout, /^pngdeer: checked 0 images; /m);
+    assert.match(run.stdout, /^slimdeer: checked 0 images; /m);
   }
 });
 
@@ -609,7 +609,7 @@ test("in GitHub Actions, check writes a job summary, never with --json, and a fa
   const hero = readFileSync(join(web, "public/hero.png")).length;
   const photo = readFileSync(join(web, "public/photo.jpg")).length;
   assert.equal(readFileSync(summary, "utf8"), `
-### pngdeer --check in \`packages/web\`
+### slimdeer --check in \`packages/web\`
 
 Checked 4 images; 0 measured, 3 cached, 0 skipped (already optimized or below 4.1 kB), 1 error.
 
@@ -625,7 +625,7 @@ Quality is SSIMULACRA2, out of 100: 90+ looks identical, 80+ the same side by si
 1 image can't be made smaller without a visible difference (its best quality is below 70), so it isn't listed; to try it at a lower target, run in \`packages/web\`:
 
 \`\`\`
-npx oxlint-plugin-pngdeer --check public/flat.png --target 60
+npx oxlint-plugin-slimdeer --check public/flat.png --target 60
 \`\`\`
 
 The check is incomplete: 1 image or folder couldn't be checked:
@@ -635,19 +635,19 @@ The check is incomplete: 1 image or folder couldn't be checked:
 1 file named like an image isn't a PNG or JPEG; if that's expected (a test fixture, say), to leave it out, run in \`packages/web\`:
 
 \`\`\`
-npx oxlint-plugin-pngdeer --check --exclude __tests__/bad.png
+npx oxlint-plugin-slimdeer --check --exclude __tests__/bad.png
 \`\`\`
 
 To see both before and after on one page first, run in \`packages/web\`:
 
 \`\`\`
-npx oxlint-plugin-pngdeer --review
+npx oxlint-plugin-slimdeer --review
 \`\`\`
 
 To shrink them in place (lossy, so commit first), run in \`packages/web\`:
 
 \`\`\`
-npx oxlint-plugin-pngdeer public/hero.png public/photo.jpg
+npx oxlint-plugin-slimdeer public/hero.png public/photo.jpg
 \`\`\`
 `);
   // the lines on stdout are the same as without a job summary
@@ -655,7 +655,7 @@ npx oxlint-plugin-pngdeer public/hero.png public/photo.jpg
   // checked at the checkout's root, no folder is named, before the commands either
   const root = join(dir, "root.md");
   assert.equal(checkInActions(web, root, web).status, 2);
-  assert.match(readFileSync(root, "utf8"), /^### pngdeer --check\n[\s\S]*^To shrink them in place \(lossy, so commit first\), run:$/m);
+  assert.match(readFileSync(root, "utf8"), /^### slimdeer --check\n[\s\S]*^To shrink them in place \(lossy, so commit first\), run:$/m);
   // --json is for a script, which writes its own
   const json = join(dir, "json.md");
   assert.equal(checkInActions(web, json, dir, "--json").status, 2);
@@ -692,28 +692,28 @@ test("on a Windows runner, the job summary's commands are npx, quoted for a POSI
   measured(dir, "public/my logo.png", { saved: 30000, score: 87 });
   measured(dir, "public/my photo.png", { saved: 20000, score: 76 });
   measured(dir, "public/my flat.png", { saved: 20000, outcome: "miss", score: 64 });
-  // on Windows these names take PowerShell's form, which names this machine's node and pngdeer.js
+  // on Windows these names take PowerShell's form, which names this machine's node and slimdeer.js
   const windows = join(dir, "windows.mjs");
   writeFileSync(windows, 'Object.defineProperty(process, "platform", { value: "win32" });\n');
   const asOnWindows = (summary, ...args) => {
     const env = { ...process.env, GITHUB_STEP_SUMMARY: summary, GITHUB_WORKSPACE: dir };
-    return spawnSync(process.execPath, ["--import", pathToFileURL(windows).href, join(plugin, "bin/pngdeer.js"), "--check", ...args], { cwd: dir, env, encoding: "utf8", timeout: 60_000 });
+    return spawnSync(process.execPath, ["--import", pathToFileURL(windows).href, join(plugin, "bin/slimdeer.js"), "--check", ...args], { cwd: dir, env, encoding: "utf8", timeout: 60_000 });
   };
   const summary = join(dir, "summary.md");
   const run = asOnWindows(summary);
   assert.equal(run.status, 2, run.stderr);
   // the step's log is read on the runner
-  assert.match(run.stdout, /^pngdeer: to shrink them in place \(lossy, so commit first\), run in PowerShell: & /m);
+  assert.match(run.stdout, /^slimdeer: to shrink them in place \(lossy, so commit first\), run in PowerShell: & /m);
   // one image: the preview's -o name too
   const one = join(dir, "one.md");
   assert.equal(asOnWindows(one, "public/my logo.png").status, 1);
   const markdown = readFileSync(summary, "utf8") + readFileSync(one, "utf8");
-  assert.doesNotMatch(markdown, /PowerShell|pngdeer\.js/);
+  assert.doesNotMatch(markdown, /PowerShell|slimdeer\.js/);
   for (const command of [
-    "npx oxlint-plugin-pngdeer --check 'public/my flat.png' --target 60",
-    "npx oxlint-plugin-pngdeer --check --exclude 'public/not an image.png'",
-    "npx oxlint-plugin-pngdeer 'public/my logo.png' 'public/my photo.png'",
-    "npx oxlint-plugin-pngdeer 'public/my logo.png' -o 'my logo.preview.png'",
+    "npx oxlint-plugin-slimdeer --check 'public/my flat.png' --target 60",
+    "npx oxlint-plugin-slimdeer --check --exclude 'public/not an image.png'",
+    "npx oxlint-plugin-slimdeer 'public/my logo.png' 'public/my photo.png'",
+    "npx oxlint-plugin-slimdeer 'public/my logo.png' -o 'my logo.preview.png'",
   ]) {
     assert.ok(markdown.includes(`run:\n\n\`\`\`\n${command}\n\`\`\``), markdown);
   }
@@ -725,8 +725,8 @@ test("on a Windows runner, the job summary's commands are npx, quoted for a POSI
   const gatsby = join(dir, "gatsby.md");
   assert.equal(asOnWindows(gatsby, "my site").status, 1);
   const more = readFileSync(gatsby, "utf8");
-  assert.doesNotMatch(more, /PowerShell|pngdeer\.js/);
-  for (const command of ["npx oxlint-plugin-pngdeer --check 'my site/public'", "npx oxlint-plugin-pngdeer --review 'my site'"]) {
+  assert.doesNotMatch(more, /PowerShell|slimdeer\.js/);
+  for (const command of ["npx oxlint-plugin-slimdeer --check 'my site/public'", "npx oxlint-plugin-slimdeer --review 'my site'"]) {
     assert.ok(more.includes(`run:\n\n\`\`\`\n${command}\n\`\`\``), more);
   }
 });
@@ -741,14 +741,14 @@ test("a package whose cache can't be written fails alone; the others are still m
   t.after(() => chmodSync(modules, 0o755));
   const run = check(dir);
   assert.equal(run.status, 2, run.stderr);
-  assert.deepEqual(run.stderr.match(/^pngdeer: measuring failed: .*$/gm).length, 1);
-  assert.match(run.stderr, /^pngdeer: measuring failed: EACCES: permission denied, mkdir '.*packages[\\/]a[\\/]node_modules[\\/]\.cache[\\/]pngdeer'$/m);
+  assert.deepEqual(run.stderr.match(/^slimdeer: measuring failed: .*$/gm).length, 1);
+  assert.match(run.stderr, /^slimdeer: measuring failed: EACCES: permission denied, mkdir '.*packages[\\/]a[\\/]node_modules[\\/]\.cache[\\/]slimdeer'$/m);
   assert.match(run.stderr, /^packages\/a\/ball\.png: not measured \(see above\)$/m);
   assert.match(run.stdout, /^packages\/b\/ball\.png: could be 68% smaller/m);
-  assert.match(run.stdout, /^pngdeer: checked 2 images in 2 packages; 1 measured, 0 cached, 0 skipped \(already optimized or below 4\.1 kB\), 1 error\.$/m);
+  assert.match(run.stdout, /^slimdeer: checked 2 images in 2 packages; 1 measured, 0 cached, 0 skipped \(already optimized or below 4\.1 kB\), 1 error\.$/m);
   // where nothing is above, the message says why in full
   const { errors } = JSON.parse(check(dir, "--json").stdout);
   assert.equal(errors.length, 1);
   assert.equal(errors[0].file, "packages/a/ball.png");
-  assert.match(errors[0].message, /^not measured: EACCES: permission denied, mkdir '.*packages[\\/]a[\\/]node_modules[\\/]\.cache[\\/]pngdeer'$/);
+  assert.match(errors[0].message, /^not measured: EACCES: permission denied, mkdir '.*packages[\\/]a[\\/]node_modules[\\/]\.cache[\\/]slimdeer'$/);
 });
