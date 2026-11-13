@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.1 (2026-11-13)
+
+- The package description fits npm's 250 characters; npm cut 0.6.0's in the middle of a sentence.
+- The ESLint peer range stops below 11, as the README says: ESLint 9 or 10.
+- The README's "Quick start with ESLint" gives the config object that makes ESLint lint and parse `.jsx` files: without one, the rule warned on nothing in a JSX app.
+- Published from GitHub Actions with npm provenance; 0.6.0 was published by hand, to create the package.
+
 ## 0.6.0 (2026-11-13)
 
 - `npx oxlint-plugin-slimdeer --review` writes a page that shows each image before and after, with a divider, and gives the command that shrinks the ones you keep ticked. `--review --flagged` does the same for what the last lint flagged. The page has a link that skips to the command, keeps its bar off the images in a short window and on paper, and says when it can't copy; `--open` says when it can't open a browser.

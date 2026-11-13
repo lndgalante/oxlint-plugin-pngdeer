@@ -1,7 +1,7 @@
 {
   "name": "oxlint-plugin-slimdeer",
-  "version": "0.6.0",
-  "description": "Lint rule for oxlint and ESLint: flags PNGs and JPEGs your code uses that could be at least 4 KiB and 10% smaller at about the same visual quality, measured locally with the slimdeer compressor (WebAssembly, no upload). Its command shows them before and after, shrinks them, or writes WebP and AVIF copies.",
+  "version": "0.6.1",
+  "description": "Lint rule for oxlint and ESLint: flags PNGs and JPEGs your code uses that could be at least 4 KiB and 10% smaller at about the same visual quality. Its command shows them before and after, shrinks them, or writes WebP and AVIF copies. No upload.",
   "keywords": [
     "oxlint",
     "oxlint-plugin",
@@ -57,7 +57,7 @@
     "check:published": "node scripts/check-package.js --published"
   },
   "peerDependencies": {
-    "eslint": ">=9.0.0",
+    "eslint": ">=9.0.0 <11",
     "oxlint": ">=1.60.0 <2"
   },
   "peerDependenciesMeta": {

@@ -94,7 +94,13 @@ export default [
 ];
 ```
 
-If your config doesn't lint and parse your JSX or TypeScript files yet, [add a config object for them](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/docs/rules/compressible-image.md#eslint-setup).
+No config for your JSX yet? ESLint then lints no `.jsx` file, and the rule warns on nothing. Put this object before `slimdeer.configs.recommended`:
+
+```js
+  { files: ["**/*.{js,jsx}"], languageOptions: { parserOptions: { ecmaFeatures: { jsx: true } } } },
+```
+
+For TypeScript, [add a config object with its parser](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/docs/rules/compressible-image.md#eslint-setup).
 
 Then run `npx eslint .`, without `--cache`: ESLint would replay old warnings for images you already shrank, and the rule would print no summary.
 
