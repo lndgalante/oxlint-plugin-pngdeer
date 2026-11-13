@@ -343,7 +343,7 @@ export function summarize(cwd = process.cwd()) {
       if (SOURCES.includes(kind) && !kinds.has(kind) && !unlinted.has(kind)) unlinted.set(kind, page);
     }
     for (const [kind, page] of unlinted) {
-      lines.push(`slimdeer: this run linted no ${kind} files, like ${pathFrom(cwd, page)}, so their images get no warning; with ESLint, see https://github.com/lndgalante/oxlint-plugin-slimdeer#quick-start-with-eslint`);
+      lines.push(`slimdeer: this run linted no ${kind} files, like ${pathFrom(cwd, page)}, so their images get no warning; with ESLint, see https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/docs/rules/compressible-image.md#eslint-setup`);
     }
     // "exclude" takes paths from each image's project folder: name them when the rows show others
     const patterns = shownUnnamed.map(([file, , root]) => ({ pattern: pathFrom(root, file), shown: pathFrom(cwd, file), folder: pathFrom(cwd, root) || "." }));

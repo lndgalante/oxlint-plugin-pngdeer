@@ -32,6 +32,8 @@ try {
   assert.ok(statSync(join(installed, "src/index.d.ts")).isFile(), "the package includes its types");
   assert.deepEqual(readdirSync(join(installed, "engine")).sort(), ["README.md", "THIRD_PARTY_LICENSES.txt", "provenance.json", "slimdeer_wasm.js", "slimdeer_wasm_bg.wasm"], "the engine folder holds exactly its five files");
   assert.ok(!readdirSync(installed).includes("legacy"), "the package has no legacy folder");
+  // engine/ is HeyDeer's slimdeer, and MIT asks that its copyright notice go with every copy
+  assert.match(readFileSync(join(installed, "LICENSE"), "utf8"), /^Copyright \(c\) 2026 The slimdeer contributors/m, "the installed LICENSE is missing the engine's notice: Copyright (c) 2026 The slimdeer contributors");
   writeFileSync(join(app, "check.mjs"), `import assert from "node:assert/strict";
 import plugin from ${JSON.stringify(name)};
 assert.equal(plugin.meta.version, ${JSON.stringify(version)});

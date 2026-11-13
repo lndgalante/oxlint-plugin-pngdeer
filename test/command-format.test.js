@@ -54,6 +54,9 @@ test("each usage mistake is one line, exit 2, before any work", () => {
     [["public/hero.jpg", "-o", "x.apng"], "-o x.apng: public/hero.jpg is a JPEG, so OUT must end in .jpg or .jpeg, or in .webp or .avif to write that format"],
     [["--format", "webp", "public/hero.png", "public/hero.jpg"], "public/hero.png and public/hero.jpg would both be written as public/hero.webp: convert one of them with -o"],
     [["--format", "avif", "public/hero.png", "public/photo.jpg", "-o", "x.avif"], "-o takes one image; without it, each image's AVIF copy is written next to it"],
+    // OUT asked for copies: the images alone, without -o, would be shrunk in place
+    [["public/hero.png", "public/photo.jpg", "-o", "x.webp"], "-o takes one image; without it, each image's WebP copy is written next to it with --format webp"],
+    [["public/hero.png", "public/photo.jpg", "-o", "x.AVIF"], "-o takes one image; without it, each image's AVIF copy is written next to it with --format avif"],
     // a folder: the example is the copy's name, which can't be the image's, even in its own folder
     [["--format", "webp", "public/hero.png", "-o", "src"], "-o src is a folder: give the file to write, like -o src/hero.webp"],
     [["--format", "avif", "public/hero.png", "-o", "public"], "-o public is a folder: give the file to write, like -o public/hero.avif"],

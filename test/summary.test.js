@@ -153,7 +153,7 @@ test("the summary says when the files naming an image are of a kind the run lint
   // an ESLint config that lints only .js files
   const js = await summaryIn(t, dir, ["public/arcade.png"]);
   assert.match(js, /^  public\/arcade\.png .* named in src\/Gallery\.tsx$/m);
-  assert.match(js, /^slimdeer: this run linted no \.tsx files, like src\/Gallery\.tsx, so their images get no warning; with ESLint, see https:\/\/github\.com\/lndgalante\/oxlint-plugin-slimdeer#quick-start-with-eslint$/m);
+  assert.match(js, /^slimdeer: this run linted no \.tsx files, like src\/Gallery\.tsx, so their images get no warning; with ESLint, see https:\/\/github\.com\/lndgalante\/oxlint-plugin-slimdeer\/blob\/main\/docs\/rules\/compressible-image\.md#eslint-setup$/m);
   // a one-file lint of a .tsx file: the others are left out on purpose, and the rule warns in them
   // when they're linted, so the lead blames this run, not the rule
   const one = await summaryIn(t, dir, ["public/arcade.png"], [], { linted: "src/Other.tsx" });

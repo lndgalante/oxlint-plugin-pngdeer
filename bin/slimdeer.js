@@ -202,7 +202,12 @@ async function main(args) {
   if (Object.keys(checkOptions).length) return fail("--min-saved-bytes, --min-saved-percent, --exclude and --cache-dir require --check or --review");
   if (fromLint && (inputs.length || output !== undefined)) return fail("--flagged takes no images and no -o");
   if (!fromLint && inputs.length === 0) return fail("no image given");
-  if (output !== undefined && inputs.length > 1) return fail(`-o takes one image; without it, ${format ? `each image's ${FORMATS[format].name} copy is written next to it` : "each image is written in place"}`);
+  if (output !== undefined && inputs.length > 1) {
+    // OUT.webp asks for copies, but without -o only --format writes them: the images alone are shrunk in place
+    const asked = format ?? NAMED[extname(output).toLowerCase()];
+    const without = Object.hasOwn(FORMATS, asked) ? `each image's ${FORMATS[asked].name} copy is written next to it${format ? "" : ` with --format ${asked}`}` : "each image is written in place";
+    return fail(`-o takes one image; without it, ${without}`);
+  }
   if (output !== undefined && folder(output)) {
     // with --format, the copy's name; else the image's, which in its own folder (however it's spelled
     // or linked) would write over it

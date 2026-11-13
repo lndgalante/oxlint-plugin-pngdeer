@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 
 const stub = join(fileURLToPath(new URL("..", import.meta.url)), "legacy", "oxlint-plugin-pngdeer");
 const link = "https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/docs/rules/compressible-image.md#moving-from-oxlint-plugin-pngdeer";
-const message = `oxlint-plugin-pngdeer is now oxlint-plugin-slimdeer. To move: npm uninstall oxlint-plugin-pngdeer && npm install --save-dev oxlint-plugin-slimdeer, then replace pngdeer with slimdeer in your lint config. Every step: ${link}`;
+const message = `oxlint-plugin-pngdeer is now oxlint-plugin-slimdeer. To move: npm uninstall oxlint-plugin-pngdeer && npm install --save-dev oxlint-plugin-slimdeer, then replace pngdeer with slimdeer in your lint config, except in a cacheDir. Every step: ${link}`;
 
 function bin(...args) {
   const run = spawnSync(process.execPath, [join(stub, "bin.js"), ...args], { encoding: "utf8", timeout: 60_000 });
@@ -26,6 +26,8 @@ function lines(second) {
 
 test("importing the old package throws the move message", async () => {
   await assert.rejects(import("../legacy/oxlint-plugin-pngdeer/index.js"), { message });
+  // oxlint breaks an error's line at 400 columns, after "  |   Error: ": a longer message loses its link
+  assert.ok(message.length <= 380, `the move message is ${message.length} characters`);
 });
 
 // ESLint imports the default export: without one, linking fails before the message is thrown.

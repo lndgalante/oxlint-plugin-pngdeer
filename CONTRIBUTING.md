@@ -19,7 +19,7 @@ npm ci
 | `node scripts/check-engine.js` | checks the engine files against `engine/provenance.json` | instant |
 | `npm run bench` | the benchmark in `bench/README.md` | about a minute, after a 20 MB image download on the first run; peaks at about 3 GB of memory |
 
-Those times are from a 16-core M3 Max. The tests compress real images with up to eight workers. CI takes 1 to 5 minutes per job.
+Those times are from a 16-core M3 Max. The tests compress real images with up to eight workers. CI takes 3 to 15 minutes per job.
 
 CI runs the tests on Linux, macOS and Windows with Node 20, 22, 24 and 26, and on Linux with Node 20.19.0, the oldest supported. It tests oxlint 1.60 (the oldest supported), 1.89 (which Vite+ 1.4 brings), 1.90 and the newest, and ESLint 9.0 and 10. It also runs weekly, for new oxlint releases.
 
@@ -32,6 +32,10 @@ When behavior or options change, update README.md, docs/rules/compressible-image
 Don't edit `engine/` by hand. It is [slimdeer](https://github.com/heydeer/slimdeer)'s WebAssembly build with AVIF output, rebuilt from pinned source: see [engine/README.md](engine/README.md). An engine that writes other PNG, JPEG, WebP or AVIF files needs a new cache identity, and every image is then measured again ([the cache's identity](engine/README.md#the-caches-identity)). Note any engine change in the release notes. An error that says "a bug in HeyDeer's slimdeer engine" is reported to [slimdeer](https://github.com/heydeer/slimdeer/issues); fixes to the rule or the command come here.
 
 ## Releasing
+
+The package's new name needs its trusted publisher added on npmjs.com (the release workflow and the `npm` environment, with `npm publish` allowed) right before the next release's tag is pushed; 0.6.0 itself was published by hand.
+
+Right after oxlint-plugin-slimdeer 0.6.0 is published, publish the old name's last version: run `npm publish` in `legacy/oxlint-plugin-pngdeer`, then check that `npm view oxlint-plugin-pngdeer dist-tags.latest` prints 0.6.0. The rule docs' "Moving from oxlint-plugin-pngdeer" counts on it: without it, `npx oxlint-plugin-pngdeer` still runs 0.5.0, and no dependency bot offers the version that says the package moved.
 
 1. Set the version in package.json and package-lock.json (`npm version <version> --no-git-tag-version` does both). Write `docs/releases/<version>.md`, and add the version to CHANGELOG.md with the release date in place of "(unreleased)".
 2. Push to main and wait for CI to pass on that commit.

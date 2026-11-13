@@ -33,6 +33,8 @@
   "author": "Leonardo Galante",
   "license": "MIT",
   "type": "module",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
   "exports": {
     ".": {
       "types": "./src/index.d.ts",

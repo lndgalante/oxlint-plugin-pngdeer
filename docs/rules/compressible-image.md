@@ -6,7 +6,7 @@ Flags PNGs and JPEGs that [slimdeer](https://github.com/heydeer/slimdeer), HeyDe
 
 ## What it flags
 
-Any string in JS or TS (and the script blocks of Vue, Svelte and Astro files, Astro's frontmatter included) that names a local `.png`, `.apng`, `.jpg` or `.jpeg` file, when slimdeer can save at least 4 KiB (4096 bytes) and 10% of it:
+Any string in JS or TS (and the script blocks of Vue, Svelte and Astro files, Astro's frontmatter included) that names a local `.png`, `.apng`, `.jpg` or `.jpeg` file as a whole path, in a `srcSet`, or in a CSS `url()`, when slimdeer can save at least 4 KiB (4096 bytes) and 10% of it:
 
 ```jsx
 import hero from "./hero.png"; // ⚠ hero.png could be 70% smaller (509 kB → 151 kB) …
@@ -15,7 +15,7 @@ export const Logo = () => <img src="/logo.png" srcSet="/logo.png 1x, /logo@2x.pn
 export const Avatar = () => <img srcSet="/me.jpg?v=2 1x, /me@2x.png?v=2 2x" />; // ⚠ each file, query and all
 export const Hero = () => <div style={{ backgroundImage: "url(/hero.png)" }} />; // ⚠ CSS url() in a string
 const Card = styled.div`background: url(/card.png) no-repeat;`; // ⚠ and in a CSS-in-JS template
-const icons = { star: "/icons/star.png" }; // ⚠ any string that names an image
+const icons = { star: "/icons/star.png" }; // ⚠ any string that is an image's path
 export const Photo = () => <img src="/my%20photo.png" />; // ⚠ public/my photo.png, read as a browser reads it
 ```
 
@@ -28,9 +28,10 @@ const page = `/images/${name}.png`; // built at runtime
 const bg = `url(/bg.png?v=${version})`; // a url() that runs into an expression, even only in its query
 const missing = "/no-such-file.png"; // names no file
 const bare = "assets/logo.png"; // no ./, ../, / or alias prefix: not looked up
+el.innerHTML = '<img src="/banner.png">'; // HTML in a string or template: only a url() in it is read
 ```
 
-Nor is an image the automatic target can't make smaller without a visible difference ([the quality floor](#the-quality-floor)).
+Nor is an image the automatic target can't make smaller without a visible difference ([the quality floor](#the-quality-floor)). An image named only in HTML inside a string, like the `innerHTML` above or an `html` tagged template, gets no warning unless a CSS `url()` names it, and [the summary](#the-summary) lists it among the images with no warning, as `named in src/html.js`.
 
 A `url()` counts whether it's quoted, unquoted or written `URL(`, in inline styles, CSS strings, and styled-components or emotion templates, and each of several in one value counts. Each image warns once per file, at its first mention, and only its own path is underlined, even inside a `srcSet` or a `url()`, where it is written. Outside an editor, an image named in several files gets the full warning once per run and a shorter one in the other files ("as warned where it's first used"), and the summary counts the warnings.
 
@@ -236,7 +237,7 @@ What the check leaves out or can't take, it says after the checked line:
 
 When it finds nothing, it says `slimdeer: found no PNG or JPEG images to check in` and where it looked: the paths as you typed them, or the current folder by its full path. With `--exclude`, it adds `, apart from what --exclude leaves out`.
 
-If measuring itself fails, for example because the cache folder can't be written, the check says why once (`slimdeer: measuring failed: EACCES: permission denied, mkdir '…'`), and each image it couldn't measure reads `not measured (see above)`.
+If measuring itself fails, for example because the cache folder can't be written, the check says why once (`slimdeer: measuring failed: EACCES: permission denied, mkdir '…'`), and each image it couldn't measure reads `not measured (see above)`. When it only copies results your machine already has into a `--cache-dir` it can't write, it names that folder once (`.slimdeer: can't write this cache folder: permission denied`, or `a file is in the way`), lists the images as usual, and exits `2`.
 
 Already marked images and images too small to meet the byte threshold need no measurement, even ones the rule would skip, like a small grayscale icon with a color profile. A check that can't read or measure an image exits `2`, even if it also finds savings; the lint rule fails open instead, except on a timeout (see [The cache](#the-cache)).
 
@@ -424,6 +425,8 @@ An image the command itself wrote since the lint says `already shrunk by this co
 public/locked.png: permission denied
 ```
 
+A run killed in the middle of a write leaves the image as it was, but can leave a hidden file next to it (or next to OUT, with `-o`) named `.<name>.<pid>.<random>.tmp`, which nothing reads, so delete it; a `--format` copy can leave a folder instead ([Limits and costs](#limits-and-costs)).
+
 The command exits `0` when every image was shrunk or left as it is for a reason it gives (`already shrunk by this command`, say), `1` when an image failed (missing, read-only, changed meanwhile or since the lint) or `--flagged` found no list, and `2` on a mistake in the arguments. The other images are still done.
 
 Use one quality target for code that shares an image. When several references use fixed targets, `--flagged` uses the highest one only if its measurement warrants a warning. If a stricter reference produces no warning, or references mix automatic and fixed targets, the image is left out of bulk compression and the summary explains why. Constraints from enabled references also count when their measurements are missing or their thresholds produce no warning.
@@ -520,7 +523,7 @@ public/hero.png → public/hero.webp: already written; left as is
 public/photo.jpg: not written: public/photo.webp exists already; move it, or name another file with -o
 ```
 
-An image whose name already ends in the format's own extension (`.webp` with `--format webp`, `.avif` with `--format avif`) has no new name to take, and gets `not written: its name already ends in .webp; name the copy with -o`. A copy is named after the image as its folder lists it, so on macOS and Windows, `HERO.PNG` typed for `hero.png` gets `hero.webp`.
+An image whose name already ends in the format's own extension (`.webp` with `--format webp`, `.avif` with `--format avif`) has no new name to take, and gets `not written: its name already ends in .webp; name the copy with -o`. Any other file with that ending, like a copy an earlier run wrote that `public/*` picks up again, gets `not written: its name ends in .webp, and it isn't a PNG or JPEG`, and doesn't change the exit code. A copy is named after the image as its folder lists it, so on macOS and Windows, `HERO.PNG` typed for `hero.png` gets `hero.webp`.
 
 `-o` writes the file you name, over any file already there, as it does for a shrink, and refuses the image itself (see [How to fix it](#how-to-fix-it)). A `--format` that names another format than OUT's extension is a mistake in the arguments, and so is a folder:
 
@@ -560,7 +563,7 @@ slimdeer: delete an original only once nothing uses it; other sites, emails and 
 ```
 
 - A line names an original by a path: from its own file (`./assets/diagram.png`), from the project's folder, or from `public/` or `static/` (`/hero.png`), as written or URL-encoded. When no line does, the lines that hold its file name are listed instead. The search covers the project the command runs in, packages included, and ignores letter case on macOS and Windows. Code comes first, then Markdown, each by file path.
-- Up to 10 lines of code and 5 Markdown places are shown. For one image with more, the line after them gives the search that finds them all: `and 2 more lines: git grep -nF ball.png`.
+- Up to 10 lines of code and 5 Markdown places are shown. For one image with more, the line after them gives the search that finds them all: `and 2 more lines: git grep -nF -e ball.png`.
 - An image no file names gets `slimdeer: no file here names assets/fire.png; something outside this project may (a CMS, an email, another site), so keep it until you know.`
 - For images in `public/` or `static/`, which a site serves as they are, the last line adds that other sites, emails and share previews may link to them.
 
@@ -730,7 +733,7 @@ These images get no copy. Writing says `not written:` and the reason, worded as 
 
 | Reason, as writing words it | In `--check --json` | What to do |
 |---|---|---|
-| `already shrunk by this command, so converting it would be a second lossy pass; convert the original from before it was shrunk` | `leftOut` | Convert the original, from your version history. `--check` says `1 image this command already shrank is left out`. |
+| `already shrunk by this command, so converting it would be a second lossy pass; convert the original from before it was shrunk` | `leftOut` | Convert the original, from your version history. `--check` says `1 image this command already shrank is left out (public/photo.jpg)`. |
 | `animated PNGs can't be written as WebP yet` (or AVIF) | `leftOut` | Keep it as a PNG. |
 | `its eXIf data turns it, and the WebP file would show it unturned; shrink it as PNG instead` | `leftOut` | Shrink it in place. |
 | `too wide or tall for WebP: at most 16,383 pixels a side` | `leftOut` | Keep it, or try AVIF. |
@@ -876,7 +879,7 @@ export default [
 ];
 ```
 
-A project with both kinds of file uses both objects. A `Parsing error: Unexpected token` on JSX or on a type means the rule runs on a file your config doesn't parse. In `eslint.config.ts`, the plugin's types work with `defineConfig`.
+A project with both kinds of file uses both objects. A `Parsing error: Unexpected token` on JSX or on a type means the rule runs on a file your config doesn't parse. In `eslint.config.ts`, the plugin's types work with `defineConfig`. A CommonJS config (`eslint.config.cjs`, or `eslint.config.js` in a package without `"type": "module"`) loads the plugin with `const slimdeer = require("oxlint-plugin-slimdeer").default;`.
 
 ## Settings
 
@@ -893,6 +896,8 @@ Shared by every file. In `.oxlintrc.json`, `settings` sits next to `rules`; in E
 | `publicDirs` | `["public", "static"]`, or `["static"]` in a project that depends on `gatsby` | Folders where root paths like `/logo.png` are looked up: in the linted file's folder and each folder above it, nearest first, up to the project root, then in the root itself. |
 | `aliases` | the project's tsconfig/jsconfig `paths`, else `{ "@/": "src/", "~/": "src/" }` | Path prefixes and the folder, or list of folders, they stand for, relative to the project root, like `"$lib/": "src/lib/"` or `"#assets/": "src/assets/"`. Without this setting, the rule reads `compilerOptions.paths` from `tsconfig.json` (or `jsconfig.json`) the way TypeScript does: through `extends` (later entries win), with `baseUrl` from wherever the chain sets it and `${configDir}` as the project's folder, and through `references` when the config itself has no `paths` (Vite keeps them in `tsconfig.app.json`). It reads them again when a config changes. Setting it replaces those. |
 | `cacheDir` | `node_modules/.cache/slimdeer` | Where results are kept, relative to the project root. A folder you commit, like `.slimdeer`, keeps CI and fresh clones from measuring again; its entries are formatted for Prettier. Packages can share one. An image of another package that this package's code names (`../../assets/logo.png`, or through an alias) is also looked up in that package's cache folders. Images slimdeer fails on are remembered in `node_modules/.cache/slimdeer` only. |
+
+A setting of the wrong type is named in one line, like `slimdeer: settings.slimdeer.publicDirs must be a list of folder names, so the default is used`, and the lint goes on with that setting's default; `null` means the default, with no line.
 
 Paths starting with `./` or `../` resolve from the file. A path with none of these prefixes (`assets/logo.png`) isn't looked up, unless you add an alias for it, like `{ "assets/": "src/assets/" }`. The project root is the nearest folder above the file with a `package.json`.
 
@@ -940,7 +945,7 @@ The memory budget applies to each batch. Concurrent lints of different packages 
 
 ### Upgrading
 
-From 0.5.0, which had the old name oxlint-plugin-pngdeer, start with [Moving from oxlint-plugin-pngdeer](#moving-from-oxlint-plugin-pngdeer). The engine changed to slimdeer 0.3.1, but it writes the same PNG and JPEG files, and the cache format is the same, so results in a committed `cacheDir` carry over. The local cache moved to `node_modules/.cache/slimdeer`, and the folder 0.5.0 used isn't read, so the first lint on each machine measures every image again, once. In a `cacheDir`, only automatic-target results that scored below 70 are measured again, once, because of the [quality floor](#the-quality-floor); every other result, explicit targets included, is reused. The first lint or `--check` that measures copies the other 0.5.0 automatic-target results to new entries, without measuring those images again. On tanstack.com's 148 images, with a cache folder 0.5.0 had filled, the first `--check` after upgrading measured again only the 7 whose 0.5.0 result was below 70.
+From 0.5.0, which had the old name oxlint-plugin-pngdeer, start with [Moving from oxlint-plugin-pngdeer](#moving-from-oxlint-plugin-pngdeer). The engine changed to slimdeer 0.3.1, but it writes the same PNG and JPEG files, and the cache format is the same, so results in a committed `cacheDir` carry over. The local cache moved to `node_modules/.cache/slimdeer`, and the folder 0.5.0 used isn't read, so the first lint on each machine measures every image again, once. In a `cacheDir`, only automatic-target results that scored below 70 are measured again, once, because of the [quality floor](#the-quality-floor); every other result, explicit targets included, is reused. The first `--check`, or the first lint whose `measure` isn't `"never"`, copies the other 0.5.0 automatic-target results to new entries, without measuring those images again; `--check` counts them as cached. On tanstack.com's 148 images, with a cache folder 0.5.0 had filled, the first `--check` after upgrading measured again only the 7 whose 0.5.0 result was below 70.
 
 - **A committed `cacheDir`:** that first run writes new entry files for the automatic target. Commit them. 0.5.0's automatic-target entries stay, unread and harmless. To drop them, delete the folder before filling it again, at the cost of measuring again what your local cache doesn't hold.
 - **`measure: "never"`:** a lint measures nothing, so until the cache is filled again it doesn't check the images that have no result, and says so with the command that fills it. Without a `cacheDir`, the local cache starts empty: run `npx oxlint-plugin-slimdeer --check` once (with the rule's `--target`, if it sets one). With one, run `npx oxlint-plugin-slimdeer --check --cache-dir PATH` once, with PATH your `cacheDir`, and commit the folder: it copies 0.5.0's automatic-target results to new entries and measures again only those below 70.
@@ -969,18 +974,19 @@ Until 0.5.0, this package was oxlint-plugin-pngdeer. It was renamed along with i
    | `pngdeer/compressible-image` in disable comments or `eslint-suppressions.json` | `slimdeer/compressible-image` |
    | `oxlint-plugin-pngdeer` in scripts (with or without `npx`), CI and docs | `oxlint-plugin-slimdeer` |
    | `node_modules/.cache/pngdeer` in a CI cache step | `node_modules/.cache/slimdeer` |
-   | `.pngdeer` as a `cacheDir` | nothing: it keeps working (step 4) |
+   | `"pngdeer"` as the key in `settings` | `"slimdeer"` (step 2) |
+   | `.pngdeer` as a `cacheDir` value | nothing: it keeps working (step 4) |
 
 4. Lint once. Then delete `node_modules/.cache/pngdeer`, and if you commit a `cacheDir`, commit the new files the lint wrote in it. [Upgrading](#upgrading) says what that first lint measures again, and what to run with `measure: "never"`.
 
-Missed a step? An old package name or rule id left in your lint config stops the lint with an error that names it, and under ESLint an old disable comment is an error too. For the rest, the lint tells you: an old `settings.pngdeer` is still read, with a line asking you to rename it; an old disable comment gets a line with its file and line; and an old cache folder gets a line when the lint measures again. Once the old package is uninstalled, a missed `npx oxlint-plugin-pngdeer` checks nothing: it prints the same command with the new name and exits 2.
+Missed a step? A lint config that still names the old package or rule id stops the lint with oxlint's or ESLint's own error, which means step 2 isn't done: `Cannot find module 'oxlint-plugin-pngdeer'` (ESLint: `Cannot find package 'oxlint-plugin-pngdeer'`) for the package, and `Plugin 'pngdeer' not found` (ESLint: `could not find plugin "pngdeer"`) for `pngdeer/compressible-image` left in `rules` or `overrides`. Under ESLint, an old disable comment is an error too: `Definition for rule 'pngdeer/compressible-image' was not found`. An `eslint-suppressions.json` entry left under `pngdeer/compressible-image` suppresses nothing: ESLint reports the images it held back as errors and says `There are suppressions left that do not occur anymore`. Rename the entry to `slimdeer/compressible-image`; `--prune-suppressions` would drop it and leave the errors. For the rest, the lint tells you: an old `settings.pngdeer` is still read, with a line asking you to rename it; an old disable comment gets a line with its file and line; and an old cache folder gets a line when the lint measures again. Once the old package is uninstalled, a missed `npx oxlint-plugin-pngdeer` checks nothing: it prints the same command with the new name and exits 2.
 
 Many disable comments? Keep the old rule id and change only the package: `"jsPlugins": [{ "name": "pngdeer", "specifier": "oxlint-plugin-slimdeer" }]` in oxlint, or `plugins: { pngdeer: slimdeer }` in ESLint. Rules, comments and `settings.pngdeer` then work as they are, and warnings keep the old id: `pngdeer(compressible-image)` in oxlint, `pngdeer/compressible-image` in ESLint.
 
 ## What it skips
 
 - Strings that name no file, remote URLs, and paths built at runtime, like a `url()` that runs into an expression, silently.
-- Images over 40 megapixels (30 for an animation, over all its frames), CMYK JPEGs, grayscale PNGs with a color profile (slimdeer's output can look darker), and files that aren't really PNGs or JPEGs, Git LFS pointers included. A command-line run names them on stderr, as it does images slimdeer fails on, and `--check` exits 2. Like any image too small to meet the byte threshold, a small one is skipped instead, unless it isn't really a PNG or JPEG. Convert a CMYK JPEG to RGB, or leave such an image out: `exclude` in the rule, `--exclude` for `--check` (the check doesn't read the rule's options).
+- Images over 40 megapixels (30 for an animation, over all its frames), CMYK JPEGs, grayscale PNGs with a color profile (slimdeer's output can look darker), and files that aren't really PNGs or JPEGs, Git LFS pointers included. A command-line run names them on stderr, as it does images slimdeer fails on, and `--check` exits 2. Like any image too small to meet the byte threshold, a small one is skipped instead, and a lint says nothing of it, not even of a Git LFS pointer or an empty file; `--check` still names a small file that isn't really a PNG or JPEG. Convert a CMYK JPEG to RGB, or leave such an image out: `exclude` in the rule, `--exclude` for `--check` (the check doesn't read the rule's options).
 - Images used only from CSS files, HTML or Markdown, which oxlint doesn't read. The first run still measures them, and the summary lists them. CSS in JS strings and templates is read.
 - Images the automatic target can't make smaller at quality 70 or above ([the quality floor](#the-quality-floor)). The lint says how many, and `--check` names them.
 - Two kinds of image this release of slimdeer fails on. Flat-color JPEGs (a solid-color banner, say) can't be measured at the default target, and explicit targets don't reliably help: eight solid banners each failed at a different set of targets between 80 and 95. PNGs with a smooth fade to transparent work at the default target, but the test image (`fade()` in test/helpers.js) fails at every explicit target from 62 up. A command-line run names them on stderr.

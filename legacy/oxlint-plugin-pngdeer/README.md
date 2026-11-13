@@ -5,4 +5,4 @@ The engine this package runs was renamed slimdeer upstream, and the package foll
     npm uninstall oxlint-plugin-pngdeer
     npm install --save-dev oxlint-plugin-slimdeer
 
-Then replace `pngdeer` with `slimdeer` in your lint config (the package in `jsPlugins` or your ESLint import, the rule id `slimdeer/compressible-image`, `settings.slimdeer`) and in scripts (`npx oxlint-plugin-slimdeer`). Images it shrank need nothing: the new package recognizes them. [Every step](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/docs/rules/compressible-image.md#moving-from-oxlint-plugin-pngdeer)
+Then replace `pngdeer` with `slimdeer` in your lint config (the package in `jsPlugins` or your ESLint import, the rule id `slimdeer/compressible-image`, `settings.slimdeer`; a `cacheDir` like `.pngdeer` stays as it is) and in scripts (`npx oxlint-plugin-slimdeer`). Images it shrank need nothing: the new package recognizes them. [Every step](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/docs/rules/compressible-image.md#moving-from-oxlint-plugin-pngdeer)

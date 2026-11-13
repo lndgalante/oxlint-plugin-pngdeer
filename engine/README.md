@@ -18,6 +18,8 @@ The cache names the engine output its entries describe with `outputIdentity` in 
 
 ## Licenses
 
+slimdeer itself is MIT, Copyright (c) 2026 The slimdeer contributors; [LICENSE](../LICENSE) carries that notice.
+
 [THIRD_PARTY_LICENSES.txt](THIRD_PARTY_LICENSES.txt) is upstream's `web/THIRD_PARTY_LICENSES.txt` at 38ce560, unchanged; it covers all of upstream's browser builds. Next to the notice 0.5.0 shipped, it adds the entries of slimdeer-libaom 3.15.2: libaom's BSD-2-Clause license, the Alliance for Open Media Patent License 1.0, and the licenses of fastfeat (Edward Rosten), vector (Peter Goldsborough) and SIMDe (Evan Nemerson), listed under the same crate. JPEG output is encoded with mozjpeg: this software is based in part on the work of the Independent JPEG Group.
 
 ## Verify the shipped files
