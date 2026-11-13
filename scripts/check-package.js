@@ -20,12 +20,18 @@ try {
   if (!published) {
     const [packed] = JSON.parse(run(npm, [...npmArgs, "pack", "--json", "--pack-destination", work], root));
     source = join(work, packed.filename);
+    assert.ok(packed.size <= 2_000_000, `the tarball is ${packed.size} bytes, over the 2,000,000 limit`);
+    const stray = packed.files.map((file) => file.path).filter((path) => /^(legacy|test|docs|example|bench)\//.test(path));
+    assert.deepEqual(stray, [], "the tarball holds no legacy, test, docs, example or bench files");
   }
   mkdirSync(join(app, "src"), { recursive: true });
   writeFileSync(join(app, "package.json"), JSON.stringify({ private: true, type: "module" }));
   // Keep the consumer independent of the checkout, without fetching optional linter peers.
   run(npm, [...npmArgs, "install", "--legacy-peer-deps", "--package-lock=false", source]);
-  assert.ok(statSync(join(app, "node_modules", name, "src/index.d.ts")).isFile(), "the package includes its types");
+  const installed = join(app, "node_modules", name);
+  assert.ok(statSync(join(installed, "src/index.d.ts")).isFile(), "the package includes its types");
+  assert.deepEqual(readdirSync(join(installed, "engine")).sort(), ["README.md", "THIRD_PARTY_LICENSES.txt", "provenance.json", "slimdeer_wasm.js", "slimdeer_wasm_bg.wasm"], "the engine folder holds exactly its five files");
+  assert.ok(!readdirSync(installed).includes("legacy"), "the package has no legacy folder");
   writeFileSync(join(app, "check.mjs"), `import assert from "node:assert/strict";
 import plugin from ${JSON.stringify(name)};
 assert.equal(plugin.meta.version, ${JSON.stringify(version)});
@@ -52,12 +58,24 @@ export default [{ plugins: { slimdeer }, rules: { "slimdeer/compressible-image":
   assert.ok(!readdirSync(cache).includes("flagged.json"), "--check does not create a lint manifest");
   assert.equal(oxlintWarnings(), 1, "oxlint reads measurements from --check without running the engine");
   assert.equal(eslintWarnings(), 1, "ESLint reads measurements from --check without running the engine");
+  // A shrunk image is left out of copies, so the copy is made before the shrink.
+  const copy = join(app, "src", "image.webp");
+  command("--format", "webp", "src/image.png");
+  const webp = readFileSync(copy);
+  assert.ok(webp.subarray(0, 4).toString("latin1") === "RIFF" && webp.subarray(8, 12).toString("latin1") === "WEBP", "--format webp writes a WebP file");
+  assert.ok(webp.length < before.length, `the WebP copy is ${webp.length} bytes, not smaller than the ${before.length} byte PNG`);
+  assert.deepEqual(readFileSync(image), before, "--format webp leaves the PNG unchanged");
+  command("--format", "webp", "src/image.png");
+  assert.deepEqual(readFileSync(copy), webp, "a second --format webp run leaves the copy unchanged");
+  checkImages(1);
+  assert.equal(oxlintWarnings(), 1, "the WebP copy does not change the oxlint count");
+  assert.equal(eslintWarnings(), 1, "the WebP copy does not change the ESLint count");
   command("src/image.png");
   assert.ok(statSync(image).size < before.length, "the installed command compresses the image with its bundled engine");
   checkImages(0);
   assert.equal(oxlintWarnings(), 0, "oxlint recognizes the compressed image");
   assert.equal(eslintWarnings(), 0, "ESLint recognizes the compressed image");
-  console.log(`${published ? "Published package" : "Package"} check passed: ${name}@${version}, import, CLI, WASM, oxlint and ESLint.`);
+  console.log(`${published ? "Published package" : "Package"} check passed: ${name}@${version}, import, CLI, WASM, WebP copy, oxlint and ESLint.`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
