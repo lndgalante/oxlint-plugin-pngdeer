@@ -385,7 +385,13 @@ export default {
         // the images stay unmeasured (and unreported) rather than failing the lint, and the rest
         // of this run doesn't try again
         failed.add(root);
-        process.stderr.write(`${clear}${printable(error.message)}\n`);
+        // in --check's words, and what they mean here: no warning. No count: the images of the files
+        // linted after this one, which aren't measured either, aren't known yet. For a folder it may
+        // not write, which the error names, the way out is to let it write there: another cacheDir
+        // wouldn't do, as the batch writes its failures into the local folder whatever cacheDir says
+        const fix = error.code === "EACCES" || error.code === "EPERM" ? "; let this lint write there" : "";
+        const line = error.after ? error.message : `measuring failed, so the images not in the cache yet weren't checked: ${error.message}${fix}`;
+        process.stderr.write(`${clear}${printable(`slimdeer: ${line}`)}\n`);
         // but a first run that ran out of time is reported, at the rule's severity, so "error" and
         // --deny-warnings don't pass a lint that checked only part of the images
         if (error.after) {

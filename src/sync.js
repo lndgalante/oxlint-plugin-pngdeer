@@ -32,13 +32,13 @@ export function fillSync(request) {
     worker.terminate();
     unlock(request.failures ?? request.dir, thread);
     const why = status === "timed-out" ? `stopped measuring after ${LIMIT}` : "measuring stopped without an answer (out of memory?)";
-    const error = new Error(`slimdeer: ${why}; what it measured is cached, so the next run here carries on (in CI, only if the cache is kept between runs)`);
+    const error = new Error(`${why}; what it measured is cached, so the next run here carries on (in CI, only if the cache is kept between runs)`);
     // the lint reports a run that ran out of time as incomplete (rule.js)
     if (status === "timed-out") error.after = LIMIT;
     throw error;
   }
   worker.unref();
-  if (reply.error) throw new Error(`slimdeer: ${reply.error}`);
+  if (reply.error) throw Object.assign(new Error(reply.error), { code: reply.code });
   return reply.result;
 }
 

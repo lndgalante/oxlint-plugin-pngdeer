@@ -6,8 +6,9 @@ import { basename, dirname, extname, resolve } from "node:path";
 import { FLOOR, reportable } from "./cache.js";
 import { cautions, FORMATS, missText, sameText, SUGGESTED } from "./convert.js";
 import { listed } from "./copies.js";
+import { LFS } from "./images.js";
 import { appendJobSummary, block, capital, code, inCheckout, prose, table } from "./markdown.js";
-import { LFS, measureAll, shortened } from "./measure.js";
+import { measureAll, shortened } from "./measure.js";
 import { mentions } from "./mentions.js";
 import { projectRoot } from "./scan.js";
 import { checkCommand, count, LEGEND, looks, pathFrom, printable, quote, reviewCommand, shrinkCommand, size, smaller } from "./text.js";
@@ -23,7 +24,8 @@ const REPORT_ROWS = 200;
 const REPORT_ERRORS = 10;
 // What images.js says of a file that isn't a PNG or JPEG.
 const NOT_IMAGE = "not a PNG or JPEG";
-// How the other reasons images.js's unsupported() gives start: a file a check finds again each time.
+// How the other reasons images.js's unsupported() gives start: a file a check finds again each time
+// (a Git LFS pointer, which git lfs pull fixes, has a line of its own).
 const REFUSED = [NOT_IMAGE, "unreadable header", "a grayscale PNG", "too large", "animation too large"];
 
 /**
@@ -280,7 +282,7 @@ function copyNotes({ format, notWorthIt, existing, leftOut }, settings, { note, 
   for (const image of leftOut) reasons.set(image.reason, [...(reasons.get(image.reason) ?? []), image]);
   for (const [reason, images] of reasons) {
     const one = images.length === 1;
-    if (images[0].kind === "marked") note(() => `${count(images.length, "image")} this command already shrank ${one ? "is" : "are"} left out: converting ${one ? "it" : "them"} would be a second lossy pass; convert the ${one ? "original" : "originals"} instead`);
+    if (images[0].kind === "marked") note((show) => `${count(images.length, "image")} this command already shrank ${one ? "is" : "are"} left out (${listed(images.map(({ path }) => show(path)))}): converting ${one ? "it" : "them"} would be a second lossy pass; convert the ${one ? "original" : "originals"} instead`);
     else note((show) => `${count(images.length, "image")} left out: ${listed(images.map(({ path }) => show(path)))} (${reason})`);
   }
 }

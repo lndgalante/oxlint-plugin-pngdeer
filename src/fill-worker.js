@@ -13,7 +13,8 @@ let reply;
 try {
   reply = { result: await fill(request, progress, onStart) };
 } catch (error) {
-  reply = { error: String(error?.message ?? error) };
+  // the code tells the lint a cache folder it may not write (rule.js)
+  reply = { error: String(error?.message ?? error), code: error?.code };
   // a background batch has no one to tell but its exit code
   process.exitCode = 1;
 }

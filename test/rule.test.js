@@ -283,6 +283,24 @@ test("an unreadable image is skipped, not an error", { skip: process.platform ==
   }
 });
 
+// chmod keeps neither Windows nor root out
+test("a lint whose cache folder can't be written says its images weren't checked, and why", { skip: process.platform === "win32" || process.getuid?.() === 0 }, (t) => {
+  const files = { "src/A.jsx": 'import a from "./assets/crystal-ball.png";\n', "src/B.jsx": 'import b from "./assets/diagram.png";\n' };
+  const line = /^slimdeer: measuring failed, so the images not in the cache yet weren't checked: EACCES: permission denied, mkdir '.*node_modules[\\/]\.cache[\\/]slimdeer'; let this lint write there$/m;
+  // with scan "referenced", the batch that fails holds only the first file's image, and B's isn't tried
+  for (const scan of ["project", "referenced"]) {
+    const dir = project({ files, options: { scan }, images: ["src/assets/crystal-ball.png", "src/assets/diagram.png"] });
+    const modules = join(dir, "node_modules");
+    mkdirSync(modules);
+    chmodSync(modules, 0o555);
+    t.after(() => chmodSync(modules, 0o755));
+    const { found, stderr } = oxlint(dir);
+    assert.deepEqual(found, []);
+    assert.match(stderr, line, scan);
+    assert.match(eslintSummary(dir, "src"), line, scan);
+  }
+});
+
 test("an image slimdeer can't take is named on stderr, not silently skipped", () => {
   const files = {
     "src/App.jsx": 'import fade from "./assets/fade.png";\nimport fake from "./assets/fake.png";\n',
@@ -296,6 +314,15 @@ test("an image slimdeer can't take is named on stderr, not silently skipped", ()
   assert.deepEqual(found, []);
   assert.match(stderr, /^slimdeer: src\/assets\/fade\.png: slimdeer couldn't compress this image: unreachable \(a bug in HeyDeer's slimdeer engine: please report it at https:\/\/github\.com\/heydeer\/slimdeer\/issues\)$/m);
   assert.match(stderr, /^slimdeer: skipped src\/assets\/fake\.png: not a PNG or JPEG$/m);
+});
+
+test("a Git LFS pointer the lint measures is named as one, as --check names it", () => {
+  const pointer = "version https://git-lfs.github.com/spec/v1\noid sha256:4d7a214614ab2935c943f9e0ff69d22eadbb8f32b1258daaa5e2ca24d17e2393\nsize 509372\n";
+  // a pointer is far below the default minSavedBytes, which the lint doesn't measure
+  const dir = project({ files: { "src/App.jsx": 'export const hero = "/hero.png";\n', "public/hero.png": pointer }, options: { minSavedBytes: 0 }, images: [] });
+  const { found, stderr } = oxlint(dir);
+  assert.deepEqual(found, []);
+  assert.match(stderr, /^slimdeer: skipped public\/hero\.png: a Git LFS pointer, not the image itself$/m);
 });
 
 test("the lint says once, as it measures them, how many images the quality floor kept from being reported", () => {

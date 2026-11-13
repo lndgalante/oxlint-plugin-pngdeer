@@ -13,6 +13,12 @@ export const OLD_RULE = `${OLD}/compressible-image`;
 const RULE = "slimdeer/compressible-image";
 // the old comments a run names one by one; the rest get one line that says how to find them
 const COMMENTS = 5;
+// what each setting must be (index.d.ts), and how a line says it
+const SHAPES = {
+  publicDirs: ["a list of folder names", strings],
+  aliases: ["an object of prefixes and folders", (value) => typeof value === "object" && !Array.isArray(value) && Object.values(value).every((to) => typeof to === "string" || strings(to))],
+  cacheDir: ["a folder path", (value) => typeof value === "string"],
+};
 
 const said = new Set(); // the keys of the notices this process said
 let named = 0; // old comments named
@@ -22,15 +28,27 @@ export const pending = [];
 /**
  * The plugin's settings: settings.slimdeer, else settings.pngdeer, with a line that says to rename
  * the old key, or, when both are set, that it is ignored. Quiet when `quiet` (an editor), and under
- * the old name's alias, where `id`, the rule as the config names it, is the old one.
+ * the old name's alias, where `id`, the rule as the config names it, is the old one. A setting of the
+ * wrong type is left out, with a line that names it.
  */
 export function pluginSettings(all, { id, quiet }) {
   const settings = all.slimdeer ?? all[OLD] ?? {};
+  const name = settings === all[OLD] ? OLD : "slimdeer";
   if (all[OLD] && !quiet && id !== OLD_RULE) {
-    if (settings === all[OLD]) notice("settings", "slimdeer: reading settings.pngdeer, the old name of settings.slimdeer; rename it in your lint config");
+    if (name === OLD) notice("settings", "slimdeer: reading settings.pngdeer, the old name of settings.slimdeer; rename it in your lint config");
     else notice("both settings", "slimdeer: settings.pngdeer is ignored, since settings.slimdeer is set; remove it from your lint config");
   }
-  return settings;
+  // a setting of the wrong type would throw out of the rule and stop the whole lint: it is left out,
+  // so its default is used. null is left out quietly: it means the default, which the rule gives
+  // only to a key that isn't there
+  const kept = { ...settings };
+  for (const [key, [what, ok]] of Object.entries(SHAPES)) {
+    if (kept[key] === null) delete kept[key];
+    if (kept[key] === undefined || ok(kept[key])) continue;
+    notice(`setting ${key}`, `slimdeer: settings.${name}.${key} must be ${what}, so the default is used`);
+    delete kept[key];
+  }
+  return kept;
 }
 
 /** Names each disable comment in `file` that turns the rule off by its old name, at its `line`, with `file` written from `cwd`. */
@@ -75,4 +93,8 @@ export function notice(key, text) {
   said.add(key);
   if (isMainThread) say(`${printable(text)}\n`);
   else pending.push([key, text]);
+}
+
+function strings(value) {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
 }

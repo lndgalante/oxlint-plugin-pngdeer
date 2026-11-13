@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { join } from "node:path";
 import { test } from "node:test";
 import { pathToFileURL } from "node:url";
@@ -27,6 +28,11 @@ export default [{ files: ["**/*.{js,jsx}"], languageOptions: { parserOptions: { 
   };
   const dir = project({ files });
   assert.deepEqual(names(eslint(dir, "src")), ["crystal-ball.png", "diagram.png", "hero.png", "photo.jpg"]);
+});
+
+test("a CommonJS config can require() the plugin", () => {
+  // eslint.config.cjs, or eslint.config.js in a package without "type": "module"
+  assert.equal(createRequire(import.meta.url)("../src/index.js").default.meta.name, "slimdeer");
 });
 
 test("ESLint takes the rule's options", () => {

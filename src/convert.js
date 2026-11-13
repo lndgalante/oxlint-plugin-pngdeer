@@ -5,7 +5,7 @@ import { closeSync, linkSync, lstatSync, mkdtempSync, openSync, readFileSync, rm
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { FLOOR } from "./cache.js";
 import { compress, convert } from "./engine.js";
-import { dimensions, kind, unsupported } from "./images.js";
+import { dimensions, kind, refuse } from "./images.js";
 import { keepOrientation, mark, marked, turned } from "./marker.js";
 import { physical, projectRoot } from "./scan.js";
 import { plain, save } from "./shrink.js";
@@ -94,14 +94,17 @@ export function rootOf(image) {
  * - "left", with { reason }, why it wrote nothing;
  * - in sibling mode, "already" when `output` holds these very bytes, and "inTheWay" when anything else
  *   is there (another file, a folder, a link).
- * Throws why slimdeer can't take the image (images.js unsupported()), an engine bug, or why `output`
+ * Throws why slimdeer can't take the image (images.js refuse()), an engine bug, or why `output`
  * can't be written, naming it.
  */
 export function convertImage(input, output, { format, target, mode }) {
   const { name, extension } = FORMATS[format];
   const bytes = readFileSync(input);
-  const why = unsupported(bytes);
-  if (why) throw new Error(why);
+  // the first run's copies, which a second run over public/* finds: left out, not failed. The reason
+  // says only what it knows, the name: an empty file or a Git LFS pointer can have one like a copy's
+  const ending = extname(input);
+  if (mode === "sibling" && Object.values(FORMATS).some((each) => each.extension === ending.toLowerCase()) && !kind(bytes)) return { status: "left", reason: `its name ends in ${ending}, and it isn't a PNG or JPEG` };
+  refuse(bytes);
   // a PNG or JPEG named like its own copy (photo.webp): there is no new name to write
   if (mode === "sibling" && extname(input).toLowerCase() === extension) return { status: "left", reason: `its name already ends in ${extension}; name the copy with -o` };
   const left = leftOut(bytes, resolve(input), format, rootOf(input));
@@ -139,7 +142,12 @@ export function convertImage(input, output, { format, target, mode }) {
     // through a link to its file, as -o does (shrink.js); the image itself only by a caller's mistake
     const file = physical(output);
     if (file === physical(input)) throw new Error(`can't write ${output}: it is the image itself`);
-    save(file, copy.output);
+    try {
+      save(file, copy.output);
+    } catch (error) {
+      // named, or the line would blame the image; save()'s own message for a missing folder names it already
+      throw error.code ? new Error(`can't write ${output}: ${plain(error)}`) : error;
+    }
   } else {
     const status = create(output, copy.output);
     if (status) return { status };

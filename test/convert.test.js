@@ -273,6 +273,17 @@ test("a copy next to an image in a folder that can't be written fails, naming th
   assert.deepEqual(convertImage(join(folder, "tiny.png"), output, { format: "webp", target: 50, mode: "sibling" }), { status: "already" });
 });
 
+test("a copy -o names in a folder that can't be written fails, naming that file", { skip: process.platform === "win32" || process.getuid?.() === 0 }, (t) => {
+  const dir = project({ images: [], files: { "tiny.png": gradient(32) } });
+  const folder = join(dir, "locked");
+  mkdirSync(folder);
+  chmodSync(folder, 0o555);
+  t.after(() => chmodSync(folder, 0o755));
+  const output = join(folder, "copy.webp");
+  assert.throws(() => convertImage(join(dir, "tiny.png"), output, { format: "webp", target: 50, mode: "named" }), { message: `can't write ${output}: permission denied` });
+  assert.deepEqual(files(folder), []);
+});
+
 test("where hard links fail, a copy is still written only as a new file", (t) => {
   // as on FAT or exFAT, which have none: Windows says EISDIR there
   let code;

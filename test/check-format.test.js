@@ -221,11 +221,11 @@ test("images left out are named a line per reason, the command's own output in a
   const dir = exampleCopy();
   writeFileSync(join(dir, "public/shrunk.png"), mark(readFileSync(join(dir, "src/assets/crystal-ball.png"))));
   const one = check(dir, "--format", "webp");
-  assert.match(one.stdout, /^slimdeer: 1 image this command already shrank is left out: converting it would be a second lossy pass; convert the original instead$/m);
+  assert.match(one.stdout, /^slimdeer: 1 image this command already shrank is left out \(public\/shrunk\.png\): converting it would be a second lossy pass; convert the original instead$/m);
   writeFileSync(join(dir, "public/shrunk-too.png"), mark(readFileSync(join(dir, "src/assets/diagram.png"))));
   const two = check(dir, "--format", "webp");
   assert.equal(two.status, 1, two.stderr);
-  assert.match(two.stdout, /^slimdeer: 2 images this command already shrank are left out: converting them would be a second lossy pass; convert the originals instead$/m);
+  assert.match(two.stdout, /^slimdeer: 2 images this command already shrank are left out \(public\/shrunk-too\.png, public\/shrunk\.png\): converting them would be a second lossy pass; convert the originals instead$/m);
   assert.deepEqual(JSON.parse(check(dir, "--format", "webp", "--json").stdout).leftOut.map(({ file }) => file), ["public/shrunk-too.png", "public/shrunk.png"]);
 
   // a reason more than 3 images share names 3 of them; each other reason has its own line

@@ -2,6 +2,7 @@
 // IMAGE -o OUT.webp|.avif. No copy's size or bytes are pinned here (test/convert.test.js and
 // test/engine-convert.test.js do), and AVIF runs only on tiny images, as it is slow.
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
@@ -221,11 +222,27 @@ test("after writing, at most 10 lines of code and 5 places in Markdown are liste
     "slimdeer: this project depends on astro, which can serve images as WebP by itself; convert only images it doesn't serve, or they go through a second lossy pass",
     "slimdeer: public/tiny.png is still there, and these lines still name it; point them at tiny.webp:",
     ...listed,
-    "  and 2 more lines: git grep -nF tiny.png",
+    "  and 2 more lines: git grep -nF -e tiny.png",
     "  and 7 mentions in Markdown: README.md:1, README.md:2, README.md:3, README.md:4, README.md:5, and 2 more",
     "slimdeer: delete public/tiny.png only once nothing uses it; other sites, emails and share previews may link to files in public/.",
   ]);
   assert.deepEqual(hashes(dir, ["public/tiny.png"]), before);
+});
+
+test("the git grep that finds the other lines takes a name that starts with - or needs quotes", () => {
+  const code = ["-x.png", "my hero.png"].flatMap((name) => Array.from({ length: 12 }, () => `<img src="/${name}" />`)).join("\n");
+  const dir = project({ images: [], files: { "public/-x.png": gradient(16), "public/my hero.png": gradient(16), "src/App.jsx": code } });
+  const git = (...args) => spawnSync("git", args, { cwd: dir, encoding: "utf8" });
+  git("init", "-q");
+  git("add", "-A");
+  const more = (name) => slimdeer(dir, "--format", "webp", "--", `public/${name}`).stderr.split("\n").find((line) => line.startsWith("  and "));
+  // after -e, as no line holds ./-x.png
+  assert.equal(more("-x.png"), "  and 2 more lines: git grep -nF -e -x.png");
+  assert.equal(git("grep", "-nF", "-e", "-x.png").stdout.trim().split("\n").length, 12);
+  // quoted for this platform's shell: on Windows, PowerShell's
+  const line = more("my hero.png");
+  assert.equal(line, `  and 2 more lines${process.platform === "win32" ? ", in PowerShell" : ""}: git grep -nF -e 'my hero.png'`);
+  if (process.platform !== "win32") assert.equal(spawnSync("sh", ["-c", line.split(": ")[1]], { cwd: dir, encoding: "utf8" }).stdout.trim().split("\n").length, 12);
 });
 
 test("several copies are summed against their shrinks, and the images no file names are named in one line", () => {
@@ -258,13 +275,22 @@ test("a second run over the same files leaves the copies and the files named lik
   const dir = project({ images: [], files: { "a.png": png, "b.webp": png } });
   assert.equal(slimdeer(dir, "--format", "webp", "a.png", "--target", "50").status, 0);
   const before = hashes(dir, ["a.png", "a.webp", "b.webp"]);
-  // as public/* would give them: a's copy is no reason to stop, and b, a PNG, has no new name to take
+  // as public/* would give them: a's copy is left out as no failure, and b, a PNG, has no new name to take
   const run = slimdeer(dir, "--format", "webp", "a.png", "a.webp", "b.webp", "--target", "50");
-  assert.equal(run.status, 1, run.stderr);
+  assert.equal(run.status, 0, run.stderr);
   assert.match(run.stdout, /^\[[123]\/3\] a\.png → a\.webp: already written; left as is$/m);
   assert.match(run.stdout, /^\[[123]\/3\] b\.webp: not written: its name already ends in \.webp; name the copy with -o$/m);
-  assert.match(run.stderr, /^\[[123]\/3\] a\.webp: not a PNG or JPEG$/m);
+  assert.match(run.stdout, /^\[[123]\/3\] a\.webp: not written: its name ends in \.webp, and it isn't a PNG or JPEG$/m);
+  assert.equal(run.stderr.split("\n")[0], "slimdeer: writing 3 images as WebP next to their originals, which stay as they are");
+  assert.equal(run.stderr.split("\n").length, 2, run.stderr);
+  // and as AVIF, the same
+  const avif = slimdeer(dir, "--format", "avif", "a.webp");
+  assert.equal(avif.status, 0, avif.stderr);
+  assert.equal(avif.stdout, "a.webp: not written: its name ends in .webp, and it isn't a PNG or JPEG\n");
   assert.deepEqual(hashes(dir, ["a.png", "a.webp", "b.webp"]), before);
+  // what the line says is the name, as written: an empty file has one like a copy's too
+  writeFileSync(join(dir, "c.AVIF"), "");
+  assert.equal(slimdeer(dir, "--format", "webp", "c.AVIF").stdout, "c.AVIF: not written: its name ends in .AVIF, and it isn't a PNG or JPEG\n");
 });
 
 test("an image typed in another letter case gets its copy under its own name, and its lines are found", { skip: process.platform !== "darwin" && process.platform !== "win32" }, () => {

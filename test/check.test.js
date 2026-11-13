@@ -314,6 +314,52 @@ test("check blames an unwritable cache folder, not the image", { skip: process.p
   assert.match(run.stdout, /check incomplete/);
 });
 
+// chmod keeps neither Windows nor root out
+test("a --cache-dir that can't take the local results is named once, and the images are still listed", { skip: process.platform === "win32" || process.getuid?.() === 0 }, (t) => {
+  const dir = project({ images: [] });
+  measured(dir, "src/a.png", { saved: 20000 });
+  measured(dir, "src/b.png", { saved: 30000 });
+  const locked = join(dir, "locked");
+  mkdirSync(locked);
+  chmodSync(locked, 0o555);
+  t.after(() => chmodSync(locked, 0o755));
+  const run = check(dir, "src", "--cache-dir", "locked/x");
+  // the cache asked for wasn't filled
+  assert.equal(run.status, 2, run.stderr);
+  assert.equal(run.stderr, "locked/x: can't write this cache folder: permission denied\n");
+  assert.match(run.stdout, /^src\/a\.png: could be /m);
+  assert.match(run.stdout, /^src\/b\.png: could be /m);
+  assert.match(run.stdout, /^slimdeer: checked 2 images; 0 measured, 2 cached, 0 skipped \(already optimized or below 4\.1 kB\), 1 error\.$/m);
+});
+
+// chmod keeps neither Windows nor root out
+test("a --cache-dir two packages share is named once, by the batch that couldn't measure into it", { skip: process.platform === "win32" || process.getuid?.() === 0 }, (t) => {
+  const dir = project({ images: [], files: { "package.json": "{}", "packages/a/package.json": "{}", "packages/b/package.json": "{}" } });
+  // a has an image left to measure; b's is measured already (not by measured(), whose sizes later tests pin)
+  for (const name of ["a", "b"]) copyFileSync(join(plugin, "example/src/assets/crystal-ball.png"), join(dir, "packages", name, "ball.png"));
+  write(cacheDir(join(dir, "packages/b")), key(ball), { original: ball.length, compressed: ball.length - 20000, outcome: "hit", score: 90 });
+  const locked = join(dir, "locked");
+  mkdirSync(locked);
+  chmodSync(locked, 0o555);
+  t.after(() => chmodSync(locked, 0o755));
+  const run = check(dir, "packages", "--cache-dir", join(locked, "x"));
+  assert.equal(run.status, 2, run.stderr);
+  assert.match(run.stderr, /^slimdeer: measuring failed: EACCES: permission denied, mkdir '.*locked[\\/]x'$/m);
+  assert.equal(run.stderr.split("\n").filter((line) => /locked[\\/]x/.test(line)).length, 1, run.stderr);
+  assert.match(run.stdout, /^packages\/b\/ball\.png: could be /m);
+});
+
+test("a --cache-dir that is a file, or under one, says a file is in the way", () => {
+  const dir = project({ images: [], files: { "ball.png": ball, "README.md": "# hi\n" } });
+  write(cacheDir(dir), key(ball), { original: ball.length, compressed: ball.length - 20000, outcome: "hit", score: 90 });
+  // under a file, Windows may give another error, which can't be run here
+  for (const name of process.platform === "win32" ? ["README.md"] : ["README.md", "README.md/x"]) {
+    const run = check(dir, "ball.png", "--cache-dir", name);
+    assert.equal(run.status, 2, run.stderr);
+    assert.equal(run.stderr, `${name}: can't write this cache folder: a file is in the way\n`);
+  }
+});
+
 test("check copies successful local results into a requested shared cache, but keeps failures local", () => {
   const dir = project({ images: ["src/assets/crystal-ball.png"] });
   const file = join(dir, "src/assets/crystal-ball.png");

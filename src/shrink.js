@@ -4,7 +4,7 @@ import { accessSync, chmodSync, constants, readFileSync, realpathSync, renameSyn
 import { basename, dirname, join } from "node:path";
 import { floored, key } from "./cache.js";
 import { compress } from "./engine.js";
-import { unsupported } from "./images.js";
+import { refuse } from "./images.js";
 import { keepOrientation, mark, marked } from "./marker.js";
 import { looks, size, smaller } from "./text.js";
 
@@ -16,6 +16,7 @@ import { looks, size, smaller } from "./text.js";
  */
 export function shrink(input, output, target, lint) {
   input = realpathSync(input);
+  const named = output; // as given, for a line: realpath makes it absolute
   try {
     // Atomic replacement must update a symlink's target, preserving the link itself.
     output = realpathSync(output);
@@ -23,19 +24,26 @@ export function shrink(input, output, target, lint) {
     if (error.code !== "ENOENT") throw error;
   }
   const bytes = readFileSync(input);
+  // -o's file that can't be written is named, or the line would blame the image, which is never written
+  const put = (data) => {
+    try {
+      save(output, data);
+    } catch (error) {
+      throw output === input || !error.code ? error : new Error(`can't write ${named}: ${plain(error)}`);
+    }
+  };
   const unchanged = (note) => {
     if (output === input) return { text: `${note}; left as is` };
     // -o still writes its file, so a script always finds one; the line says it's a copy, or a
     // preview of the original would pass for slimdeer's result
-    save(output, bytes);
+    put(bytes);
     return { text: `${note}; copied as is` };
   };
   if (marked(bytes)) return unchanged("already shrunk by this command");
   // --flagged compares the list with the images as it starts (summary.js), but a long run leaves a
   // branch switch or an export time to land before an image's turn: these are the bytes it compresses
   if (lint?.key && key(bytes, lint.target) !== lint.key) throw new Error("changed since the last lint here; left as is (lint again to check it)");
-  const why = unsupported(bytes);
-  if (why) throw new Error(why);
+  refuse(bytes);
 
   const { output: compressed, outcome, score } = compress(bytes, target);
   if (outcome === "miss") {
@@ -52,7 +60,7 @@ export function shrink(input, output, target, lint) {
   // Compressing took seconds, and the image may have changed meanwhile (a re-export, a branch
   // switch): written in place, the old picture made smaller would replace the new one.
   if (output === input && !readFileSync(input).equals(bytes)) throw new Error("changed while shrinking; left as is");
-  save(output, result);
+  put(result);
   const quality = outcome === "hit" ? `quality ${Math.round(score)}/100: looks ${looks(score)}` : "lossless: looks identical";
   const text = `${size(bytes.length)} → ${size(result.length)} (${smaller(bytes.length, result.length)}% smaller, ${quality})`;
   return { text, original: bytes.length, written: result.length };
@@ -72,6 +80,8 @@ export function save(path, bytes) {
   // workspace) is left as it is, as cp and eslint --fix leave a read-only file.
   try {
     accessSync(path, constants.W_OK);
+    // access() lets root write anything (Docker, CI containers): a file with no write bit is read-only all the same
+    if ((statSync(path).mode & 0o222) === 0) throw Object.assign(new Error("permission denied"), { code: "EACCES" });
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }

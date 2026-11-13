@@ -497,8 +497,10 @@ function ask(worker, message) {
   });
 }
 
-// `node src/batch.js` with { dir, target, files } as JSON on stdin (dir: the cache folder), for trying it outside a linter
+// `node src/batch.js` with { dir, target, files } as JSON on stdin (dir: the cache folder), for trying
+// it outside a linter. Not a top-level await, which would keep a CommonJS config from require()-ing
+// the plugin; a failure still ends the run with exit 1, as an unhandled rejection.
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   const request = JSON.parse(readFileSync(0, "utf8"));
-  process.stdout.write(JSON.stringify(await fill(request)));
+  fill(request).then((result) => process.stdout.write(JSON.stringify(result)));
 }

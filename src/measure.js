@@ -15,13 +15,9 @@ import { excluded, physical, projectImages, projectRoot } from "./scan.js";
 import { plain } from "./shrink.js";
 import { pathFrom, printable } from "./text.js";
 
-// What this says of a Git LFS pointer.
-export const LFS = "a Git LFS pointer, not the image itself";
 // An image a failed cache folder kept from being measured: its message says why in full (for JSON,
 // the job summary, the review page); the lines name the reason once, above.
 const NOT_MEASURED = "not measured: ";
-// Git LFS leaves a small text file like this in place of an image it hasn't fetched.
-const POINTER = Buffer.from("version https://git-lfs.github.com/spec/");
 
 /**
  * What a check finds under `inputs`, printing nothing on stdout: on stderr only the measuring count,
@@ -91,7 +87,7 @@ export async function measureAll(inputs, { cwd = process.cwd(), target, minSaved
         if (format && marked(bytes) && bytes.length >= minSavedBytes) left.push({ file, path: pathFrom(cwd, file), ...leftOut(bytes, file, format, root) });
         continue;
       }
-      const why = pointer(bytes) ? LFS : unsupported(bytes);
+      const why = unsupported(bytes);
       if (why) {
         error(file, why);
         continue;
@@ -118,6 +114,8 @@ export async function measureAll(inputs, { cwd = process.cwd(), target, minSaved
   const declined = [];
   const missed = [];
   const copies = []; // with `format`, the images to measure as that format
+  // the cache folders a "measuring failed" line named (batch()), which packages may share
+  const named = new Set([...groups.values()].filter(({ failure }) => failure).map(({ dir }) => dir));
   for (const [root, { dir, local, images, failure }] of groups) {
     for (const image of images) {
       const { file, k, original } = image;
@@ -141,8 +139,18 @@ export async function measureAll(inputs, { cwd = process.cwd(), target, minSaved
           error(file, `invalid measurement in ${pathFrom(cwd, dir)}; remove that cache entry and run ${again} again`);
           continue;
         }
-        // --cache-dir can prepare a committed cache from results already measured locally.
-        if (dir !== local && !read(dir, k)) write(dir, k, entry);
+        // --cache-dir can prepare a committed cache from results already measured locally. A folder
+        // that can't take them is the error, named once (unless the batch named it already), and
+        // the image is still listed: its result is known.
+        if (dir !== local && !read(dir, k)) {
+          try {
+            write(dir, k, entry);
+          } catch (cause) {
+            // EEXIST or ENOTDIR: a file where the folder, or one it is in, would go
+            const why = cause.code === "EEXIST" || cause.code === "ENOTDIR" ? "a file is in the way" : plain(cause);
+            if (!named.has(dir)) error(dir, `can't write this cache folder: ${why}`);
+          }
+        }
         const path = pathFrom(cwd, file);
         if (format) {
           // slimdeer's own output, which the lint takes as done, as without a format: it has no
@@ -394,10 +402,6 @@ function gatsby(root) {
     }
   }
   return gatsbys.get(root);
-}
-
-function pointer(bytes) {
-  return bytes.length < 1024 && bytes.subarray(0, POINTER.length).equals(POINTER);
 }
 
 /** An error as the lines show it: a cache folder's reason once, on its "measuring failed" line. */

@@ -2,11 +2,13 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
-import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import fs, { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
 import { test } from "node:test";
 import { cacheDir } from "../src/cache.js";
 import { marked } from "../src/marker.js";
+import { save } from "../src/shrink.js";
 import { fade, handled, plugin, slimdeer, project } from "./helpers.js";
 
 test("makes several images smaller in place, and marks them", () => {
@@ -116,6 +118,54 @@ test("a read-only image is left as it is", (t) => {
   assert.equal(run.status, 1, run.stdout);
   assert.match(run.stderr, /^src\/assets\/crystal-ball\.png: permission denied$/m);
   assert.deepEqual(readFileSync(file), before);
+});
+
+test("a read-only image is left as it is where access() lets every write through, as it does for root", { skip: process.platform === "win32" }, (t) => {
+  const dir = project({ images: ["src/assets/crystal-ball.png"] });
+  const file = join(dir, "src/assets/crystal-ball.png");
+  const before = readFileSync(file);
+  chmodSync(file, 0o444);
+  // root's access(), in Docker and CI containers
+  t.mock.method(fs, "accessSync", () => {});
+  syncBuiltinESMExports();
+  t.after(() => {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+  });
+  assert.throws(() => save(file, Buffer.from("smaller")), { code: "EACCES", message: "permission denied" });
+  assert.deepEqual(readFileSync(file), before);
+});
+
+test("an -o file that can't be written is named, not the image", (t) => {
+  if (process.platform === "win32" || process.getuid?.() === 0) return t.skip("read-only means nothing to root, and Windows refuses on its own");
+  const dir = project({ images: ["src/assets/crystal-ball.png", "src/assets/heart.png"], files: { "kept.png": "an older preview" } });
+  const locked = join(dir, "locked");
+  mkdirSync(locked);
+  chmodSync(locked, 0o555);
+  t.after(() => chmodSync(locked, 0o755));
+  chmodSync(join(dir, "kept.png"), 0o444);
+  // a shrink, an image copied as is (heart.png), a copy in another format, and a read-only file
+  for (const [image, out] of [["crystal-ball.png", "locked/out.png"], ["heart.png", "locked/out.png"], ["crystal-ball.png", "locked/out.webp"], ["crystal-ball.png", "kept.png"]]) {
+    const run = slimdeer(dir, `src/assets/${image}`, "-o", out);
+    assert.equal(run.status, 1, run.stdout);
+    assert.equal(run.stderr, `src/assets/${image}: can't write ${out}: permission denied\n`);
+  }
+  assert.deepEqual(readdirSync(locked), []);
+  assert.equal(readFileSync(join(dir, "kept.png"), "utf8"), "an older preview");
+});
+
+test("a Git LFS pointer is named as one, as --check names it, with how to fetch it", () => {
+  const pointer = "version https://git-lfs.github.com/spec/v1\noid sha256:4d7a214614ab2935c943f9e0ff69d22eadbb8f32b1258daaa5e2ca24d17e2393\nsize 509372\n";
+  const dir = project({ images: [], files: { "public/hero.png": pointer, "public/photo.jpg": pointer } });
+  const line = "public/hero.png: a Git LFS pointer, not the image itself";
+  // shrunk here, written as a copy, written to -o as a copy or a shrink
+  for (const args of [["public/hero.png"], ["--format", "webp", "public/hero.png"], ["public/hero.png", "-o", "hero.webp"], ["public/hero.png", "-o", "out.png"]]) {
+    assert.equal(slimdeer(dir, ...args).stderr.split("\n")[0], `${line}; git lfs pull fetches it`, args.join(" "));
+  }
+  // checked, where a line of its own says how
+  assert.equal(slimdeer(dir, "--check", "public/hero.png").stderr.split("\n")[0], line);
+  // and on the pool's engines
+  assert.match(slimdeer(dir, "public/hero.png", "public/photo.jpg").stderr, /^\[[12]\/2\] public\/photo\.jpg: a Git LFS pointer, not the image itself; git lfs pull fetches it$/m);
 });
 
 test("with -o, an image it leaves as it was is copied, and the line says so", () => {

@@ -5,8 +5,12 @@
 // limit; an animation gets about as much over all its frames.
 const MAX_PIXELS = 40e6;
 const MAX_ANIMATION_PIXELS = 30e6;
+// Git LFS leaves a small text file like this in place of an image it hasn't fetched.
+const POINTER = Buffer.from("version https://git-lfs.github.com/spec/");
 
 export const EXTENSIONS = [".png", ".apng", ".jpg", ".jpeg"];
+// What unsupported() says of a Git LFS pointer.
+export const LFS = "a Git LFS pointer, not the image itself";
 
 /** "png", "jpeg", or null for anything else. */
 export function kind(bytes) {
@@ -50,7 +54,7 @@ export function pngChunk(bytes, type) {
 /** Why slimdeer would not take this file, or null if it would. */
 export function unsupported(bytes) {
   const type = kind(bytes);
-  if (!type) return "not a PNG or JPEG";
+  if (!type) return pointer(bytes) ? LFS : "not a PNG or JPEG";
   const [width, height, frames] = dimensions(bytes, type);
   if (!width || !height) return "unreadable header";
   // slimdeer writes these as palette PNGs and keeps the gray profile, which a palette PNG can't use,
@@ -60,4 +64,15 @@ export function unsupported(bytes) {
   if (pixels > MAX_PIXELS) return `too large (${(pixels / 1e6).toFixed(1)} MP, at most ${MAX_PIXELS / 1e6})`;
   if (frames > 1 && pixels * frames > MAX_ANIMATION_PIXELS) return `animation too large (${frames} frames, ${((pixels * frames) / 1e6).toFixed(1)} MP)`;
   return null;
+}
+
+/** Throws why slimdeer would not take this file, as the command says it, if it wouldn't. */
+export function refuse(bytes) {
+  const why = unsupported(bytes);
+  // with how to fetch the image, which --check says on a line of its own (check.js)
+  if (why) throw new Error(why === LFS ? `${LFS}; git lfs pull fetches it` : why);
+}
+
+function pointer(bytes) {
+  return bytes.length < 1024 && bytes.subarray(0, POINTER.length).equals(POINTER);
 }

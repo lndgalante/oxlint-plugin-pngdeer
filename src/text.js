@@ -76,7 +76,7 @@ export function quote(arg, platform = process.platform) {
 }
 
 /** Any text as a shell argument, as quote() writes it. */
-function literal(arg, platform) {
+export function literal(arg, platform = process.platform) {
   // A control character would print as U+FFFD (printable()) and so name another file, maybe one left
   // out on purpose: each run of them goes as its bytes in $'\x..', which bash, zsh and ksh read (\x, as
   // the bash 3.2 macOS ships has no \u). Windows allows none below U+0020 in a name.

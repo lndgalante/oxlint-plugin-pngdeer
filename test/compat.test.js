@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { pathToFileURL } from "node:url";
 import { cacheDir, key } from "../src/cache.js";
-import { eslintSummary, handled, names, oxlint, oxlintSummary, plugin, project, slimdeer } from "./helpers.js";
+import { eslint, eslintSummary, handled, names, oxlint, oxlintSummary, plugin, project, slimdeer } from "./helpers.js";
 
 // oxlint and ESLint run as a person runs them
 for (const name of ["AI_AGENT", "CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT"]) delete process.env[name];
@@ -186,6 +186,10 @@ test('measure "never" with nothing cached says so once, with the --check that fi
   const cold = oxlint(dir);
   assert.deepEqual(cold.found, []);
   assert.equal(times(cold.stderr, N5("node_modules/.cache/slimdeer", "npx oxlint-plugin-slimdeer --check")), 1, cold.stderr);
+  // a cacheDir of null is the default's, with no --cache-dir
+  configure(dir, { settings: { slimdeer: { cacheDir: null } } });
+  const unset = oxlint(dir).stderr;
+  assert.equal(times(unset, N5("node_modules/.cache/slimdeer", "npx oxlint-plugin-slimdeer --check")), 1, unset);
   configure(dir, { settings: { slimdeer: { cacheDir: ".slimdeer" } } });
   const committed = oxlint(dir).stderr;
   assert.equal(times(committed, N5(".slimdeer", "npx oxlint-plugin-slimdeer --check --cache-dir .slimdeer")), 1, committed);
@@ -246,6 +250,45 @@ test("ESLint reads settings.pngdeer and names an old disable comment the same wa
   assert.equal(times(stderr, N3("src/App.jsx:2")), 1, stderr);
   assert.ok(holds(dir, ".old", "public/hero.png"));
   assert.deepEqual(handled(slimdeer(dir, "--flagged").stdout), ["src/assets/crystal-ball.png"]);
+});
+
+test("a setting of the wrong type is named once, and the lint goes on with its default", () => {
+  // a "/x" path reads publicDirs, an "@/" path the aliases, and every file the cache folder
+  const text = 'export const a = ["/ball.png", "@/assets/crystal-ball.png"];\n';
+  const ball = readFileSync(join(plugin, "example/src/assets/crystal-ball.png"));
+  const dir = project({ files: { "src/A.js": text, "src/B.js": text, "public/ball.png": ball }, images: ["src/assets/crystal-ball.png"] });
+  const line = (key, what, name = "slimdeer") => `slimdeer: settings.${name}.${key} must be ${what}, so the default is used`;
+  const list = line("publicDirs", "a list of folder names");
+  const path = line("cacheDir", "a folder path");
+  const cases = [
+    [{ publicDirs: "public", cacheDir: 5, aliases: { "@/": 5 } }, [list, path, line("aliases", "an object of prefixes and folders")]],
+    [{ publicDirs: [null], cacheDir: true }, [list, path]],
+    // null, as a config may write for "the default": that, quietly
+    [{ publicDirs: null, aliases: null, cacheDir: null }, []],
+  ];
+  const lint = (linter, settings) => {
+    if (linter === "oxlint") {
+      configure(dir, { settings: { slimdeer: settings } });
+      return oxlint(dir);
+    }
+    writeFileSync(join(dir, "eslint.config.js"), eslintConfig({ slimdeer: settings }));
+    return eslint(dir, "src");
+  };
+  for (const linter of ["oxlint", "eslint"]) {
+    for (const [settings, lines] of cases) {
+      const run = lint(linter, settings);
+      const why = `${linter}\n${run.stderr}`;
+      assert.deepEqual(names(run), ["ball.png", "ball.png", "crystal-ball.png", "crystal-ball.png"], why);
+      // each once, however many files read it
+      assert.deepEqual(run.stderr.split(/\r?\n/).filter((each) => each.includes(" must be ")).sort(), lines.sort(), why);
+      assert.doesNotMatch(run.stderr, /TypeError|ERR_INVALID_ARG_TYPE/, why);
+    }
+  }
+  // the key the config holds, by its old name
+  configure(dir, { settings: { pngdeer: { cacheDir: 5 } } });
+  const old = oxlint(dir).stderr;
+  assert.equal(times(old, line("cacheDir", "a folder path", "pngdeer")), 1, old);
+  assert.equal(times(old, N1), 1, old);
 });
 
 const [major, minor] = JSON.parse(readFileSync(join(plugin, "node_modules", "eslint", "package.json"), "utf8")).version.split(".").map(Number);

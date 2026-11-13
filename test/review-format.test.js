@@ -233,7 +233,7 @@ test("an image with a file where its copy would go isn't on the page, which says
     "slimdeer: as WebP, 3 images could be 254 kB smaller (319 kB → 64 kB, 80% smaller); shrunk in place at the same quality, they would be 85 kB. Images unchanged.",
     "slimdeer: 2 images aren't on the page: as WebP they would save less than 4.1 kB or 10% more than shrinking them in place; to shrink them in place instead, run: npx oxlint-plugin-slimdeer public/photo.jpg public/unused-fire.png",
     "slimdeer: public/hero.png already has a WebP file next to it, which --format never replaces, so it isn't on the page",
-    "slimdeer: 1 image this command already shrank is left out: converting it would be a second lossy pass; convert the original instead",
+    "slimdeer: 1 image this command already shrank is left out (public/shrunk.png): converting it would be a second lossy pass; convert the original instead",
     "slimdeer: public/close.png isn't on the page: as WebP, no file reaches quality 87.3/100, the PNG's (the best reaches quality 87.1/100)",
   ]);
   assert.equal(readFileSync(join(dir, "public/hero.webp"), "utf8"), "someone's file");

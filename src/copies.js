@@ -11,7 +11,7 @@ import { SLOW } from "./progress.js";
 import { physical } from "./scan.js";
 import { plain } from "./shrink.js";
 import { ORDER } from "./summary.js";
-import { count, pathFrom, printable, quote, shrinkCommand, size } from "./text.js";
+import { count, literal, pathFrom, printable, shrinkCommand, size } from "./text.js";
 
 // the folders a site serves as they are, where other sites and emails may link to an image
 const PUBLIC = ["public", "static"];
@@ -166,8 +166,14 @@ function afterwards(written, { name, mode, target }) {
   for (const mention of shown) notes.push(`  ${place(mention).padEnd(width)}  ${mention.text}`);
   if (code.length > LINES) {
     const more = `  and ${count(code.length - LINES, "more line")}`;
-    // fixed strings: a name is no pattern ([1].png)
-    notes.push(written.length === 1 ? `${more}: git grep -nF ${quote(basename(written[0].image))}` : more);
+    if (written.length > 1) notes.push(more);
+    else {
+      // fixed strings: a name is no pattern ([1].png); after -e, -x.png needs no ./, which no line
+      // holds. Quoted on Windows, it's PowerShell's quoting, and the line says so, as the commands do.
+      const name = literal(basename(written[0].image));
+      const shell = process.platform === "win32" && name.startsWith("'") ? ", in PowerShell" : "";
+      notes.push(`${more}${shell}: git grep -nF -e ${name}`);
+    }
   }
   if (docs.length) {
     const places = docs.slice(0, PLACES).map(place).join(", ");
