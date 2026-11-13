@@ -1,2 +1,3 @@
 node_modules/
 bench/.images/
+.DS_Store
