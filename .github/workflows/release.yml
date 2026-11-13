@@ -100,7 +100,7 @@ jobs:
     needs: [verify, publish]
     if: ${{ !cancelled() && needs.verify.result == 'success' && (needs.publish.result == 'success' || needs.publish.result == 'skipped') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
@@ -115,15 +115,16 @@ jobs:
       - name: Verify the published package
         run: |
           log="$RUNNER_TEMP/slimdeer-published-check.log"
-          for attempt in {1..12}; do
+          # npm takes a few minutes to make a published version available (0.6.1 took a little over
+          # two), and its metadata and tarball can appear at different times: wait up to ten.
+          for attempt in {1..40}; do
             if npm run check:published >"$log" 2>&1; then
               cat "$log"
               exit 0
             fi
-            cat "$log"
-            # Metadata and tarballs can become available at different times after publishing.
-            grep -Eq 'npm error code (E404|ETARGET)' "$log" || exit 1
-            sleep 10
+            grep -Eq 'npm error code (E404|ETARGET)' "$log" || { cat "$log"; exit 1; }
+            echo "npm doesn't serve this version yet (attempt $attempt of 40)"
+            sleep 15
           done
           echo "npm has not made the published package available yet" >&2
           exit 1
