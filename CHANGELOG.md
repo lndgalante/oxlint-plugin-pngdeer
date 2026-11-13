@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.6.0 (unreleased)
+## 0.6.0 (2026-11-13)
 
 - `npx oxlint-plugin-slimdeer --review` writes a page that shows each image before and after, with a divider, and gives the command that shrinks the ones you keep ticked. `--review --flagged` does the same for what the last lint flagged. The page has a link that skips to the command, keeps its bar off the images in a short window and on paper, and says when it can't copy; `--open` says when it can't open a browser.
 - `--check` now checks every package under the folder in one run, and `--json` prints one JSON document for scripts. Its exit code counts the nested packages too, so a CI step that gates on it may report more after upgrading. A lint reads what `--check` measured for an image of another package, and an image short of its target shows its best quality rounded down.
