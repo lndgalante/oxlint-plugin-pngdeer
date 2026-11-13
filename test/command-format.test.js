@@ -15,7 +15,7 @@ import { mark } from "../src/marker.js";
 import { size } from "../src/text.js";
 import { checker, gradient, plugin, project, slimdeer } from "./helpers.js";
 
-const SLOW = "AVIF is slow: about half a minute per image on a 16-core laptop, and over two minutes for a large one";
+const SLOW = "AVIF is slow: often about a minute per image";
 const HELP = "Run npx oxlint-plugin-slimdeer --help to see every option.";
 const MARKED = "already shrunk by this command, so converting it would be a second lossy pass; convert the original from before it was shrunk";
 
@@ -282,7 +282,7 @@ test("with -o, a copy bigger than the image's shrink gets the command that shrin
   const run = slimdeer(dir, "stored.png", "-o", "out.avif");
   assert.equal(run.status, 0, run.stderr);
   assert.match(run.stdout, /^stored\.png → out\.avif: .*; shrunk as PNG \(lossless\): \S+ B, smaller than this AVIF\n$/);
-  assert.equal(run.stderr, "slimdeer: AVIF is slow: about half a minute per image on a 16-core laptop, and over two minutes for a large one\nslimdeer: to shrink stored.png in place instead, run: npx oxlint-plugin-slimdeer stored.png\n");
+  assert.equal(run.stderr, "slimdeer: AVIF is slow: often about a minute per image\nslimdeer: to shrink stored.png in place instead, run: npx oxlint-plugin-slimdeer stored.png\n");
 });
 
 test("when an engine dies, the copies written before it still get the lines that name their originals", async (t) => {

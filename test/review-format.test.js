@@ -356,7 +356,7 @@ test("as AVIF at a target given, a tiny image's page names the target, the shrin
   const copy = statSync(preview).size;
   assert.deepEqual(said(lines.stderr), [
     "slimdeer: measuring 1 image not in the cache yet...",
-    "slimdeer: measuring 1 image as AVIF at the same quality; AVIF is slow: about half a minute per image on a 16-core laptop...",
+    "slimdeer: measuring 1 image as AVIF at the same quality; AVIF is slow: often about a minute per image...",
     "slimdeer: this project depends on vite-imagetools, which can serve images as WebP by itself; convert only images it doesn't serve, or they go through a second lossy pass",
     "slimdeer: public/og-image.png looks like a share image or an icon by its name; in a December 2024 test, link previews on X, LinkedIn, Slack and iMessage didn't show AVIF, so keep a PNG or JPEG for those",
   ]);

@@ -2,7 +2,8 @@ import { writeSync } from "node:fs";
 import { isatty } from "node:tty";
 import { count, size } from "./text.js";
 
-const SLOW = "; AVIF is slow: about half a minute per image on a 16-core laptop";
+// How slow AVIF is, said when the command measures or writes it.
+export const SLOW = "AVIF is slow: often about a minute per image";
 
 /** Writes to stderr, unless the reader is gone (| head; EOF on Windows) or busy: the line goes unread, the work goes on. */
 export function say(text) {
@@ -68,5 +69,5 @@ function what(name) {
 
 /** How slow measuring as `name` is, for AVIF. */
 function slow(name) {
-  return name === "AVIF" ? SLOW : "";
+  return name === "AVIF" ? `; ${SLOW}` : "";
 }

@@ -7,12 +7,12 @@ import { basename, dirname, extname, join, relative, resolve, sep } from "node:p
 import { peakOf, pool } from "./batch.js";
 import { cautions, convertImage, FORMATS, rootOf, sibling } from "./convert.js";
 import { mentions } from "./mentions.js";
+import { SLOW } from "./progress.js";
 import { physical } from "./scan.js";
 import { plain } from "./shrink.js";
 import { ORDER } from "./summary.js";
 import { count, pathFrom, printable, quote, shrinkCommand, size } from "./text.js";
 
-const SLOW = "AVIF is slow: about half a minute per image on a 16-core laptop, and over two minutes for a large one";
 // the folders a site serves as they are, where other sites and emails may link to an image
 const PUBLIC = ["public", "static"];
 const LINES = 10; // code lines listed after writing

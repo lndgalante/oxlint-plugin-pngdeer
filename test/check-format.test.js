@@ -3,7 +3,8 @@
 // example/ that the tests share; every other case is measured already, in the cache, so the engine
 // doesn't run for it (AVIF, which is slow, never does here).
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { once } from "node:events";
 import { closeSync, cpSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -429,6 +430,40 @@ test("errors come with the rows, and fail the check, in lines and in JSON", () =
   assert.ok(bad.stdout.endsWith("\nslimdeer: check incomplete. Images unchanged.\n"), bad.stdout);
 });
 
+test("a copy another run measured while the check waited for the lock counts as cached, as an image's own result would", async () => {
+  const dir = project({ images: [] });
+  const original = measured(dir, "public/a.png", {});
+  // another run measuring copies (this process, which is alive) holds the lock: the check waits there
+  const lock = join(cacheDir(dir), "converting.lock");
+  writeFileSync(lock, `${process.pid} 0`);
+  const child = spawn(process.execPath, [join(plugin, "bin/slimdeer.js"), "--check", "--format", "webp", "--json"], { cwd: dir, stdio: ["ignore", "pipe", "pipe"] });
+  let stdout = "";
+  let stderr = "";
+  child.stdout.on("data", (chunk) => (stdout += chunk));
+  const closed = once(child, "close");
+  try {
+    await new Promise((resolve, reject) => {
+      child.stderr.on("data", (chunk) => {
+        stderr += chunk;
+        if (stderr.includes("slimdeer: waiting for another run measuring this project's images as WebP or AVIF")) resolve();
+      });
+      closed.then(() => reject(new Error(`the check ended without waiting:\n${stderr}`)));
+    });
+    // the other run measures the copy meanwhile
+    const k = convertKey(readFileSync(join(dir, "public/a.png")), 87, "webp");
+    write(cacheDir(dir), k, { format: "webp", original, compressed: 4000, outcome: "hit", score: 88, target: 87 });
+  } finally {
+    rmSync(lock, { force: true });
+  }
+  const [status] = await closed;
+  assert.equal(status, 1, stderr);
+  // nothing went to the engine
+  assert.equal(stderr, "slimdeer: waiting for another run measuring this project's images as WebP or AVIF (if none is running, this one goes on within a minute)\n");
+  const report = JSON.parse(stdout);
+  assert.deepEqual([report.images[0].file, report.images[0].compressed], ["public/a.png", 4000]);
+  assert.deepEqual(report.counts, { checked: 1, measured: 0, cached: 1, skipped: 0, packages: 1, errors: 0 });
+});
+
 test("cautions go to stderr after the checked line, in JSON mode too: a framework's project, and for AVIF a share image listed", () => {
   const dir = project({ images: [], files: { "package.json": JSON.stringify({ devDependencies: { "vite-imagetools": "7.0.0" } }) } });
   measured(dir, "public/og-image.png", { format: "avif", copy: { saved: 32000, score: 88 } });
@@ -580,7 +615,7 @@ for (const name of [undefined, "WebP", "AVIF"]) {
   assert.equal(terminal.status, 0, terminal.stderr);
   const [own, webp, avif] = terminal.stderr.split("|");
   const line = (text) => `\x1b[?7l${text}\x1b[?7h`;
-  const slow = "; AVIF is slow: about half a minute per image on a 16-core laptop";
+  const slow = "; AVIF is slow: often about a minute per image";
   assert.equal(own, line("\rslimdeer: measuring 2 images... 1/2\x1b[K") + line("\rslimdeer: measuring 2 images... 2/2, could save 1.5 kB so far\x1b[K"));
   assert.equal(webp, line("slimdeer: measuring 2 images as WebP at the same quality...") + line("\rslimdeer: measuring 2 images as WebP at the same quality... 1/2\x1b[K") + line("\rslimdeer: measuring 2 images as WebP at the same quality... 2/2\x1b[K"));
   assert.equal(avif, line(`slimdeer: measuring 2 images as AVIF at the same quality${slow}...`) + line(`\rslimdeer: measuring 2 images as AVIF at the same quality... 1/2${slow}\x1b[K`) + line(`\rslimdeer: measuring 2 images as AVIF at the same quality... 2/2${slow}\x1b[K`));

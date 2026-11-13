@@ -43,6 +43,7 @@ test("as WebP, the example's copies that beat their own shrink by both threshold
   assert.match(plain.stderr, /^slimdeer: measuring 5 images not in the cache yet\.\.\.$/m);
   assert.deepEqual(Object.keys(plain.result), ["rows", "declined", "missed", "errors", "counts", "builds"]);
   assert.deepEqual(Object.keys(plain.result.rows[0]), ["file", "path", "root", "original", "compressed", "outcome", "score"]);
+  assert.deepEqual(plain.result.counts, { checked: 6, measured: 5, cached: 0, skipped: 1, packages: 1 });
   const lint = entries(committed);
   assert.deepEqual(entries(local), {});
 
@@ -59,8 +60,9 @@ test("as WebP, the example's copies that beat their own shrink by both threshold
   assert.deepEqual(result.rows.map(({ path }) => path), ["src/assets/crystal-ball.png", "src/assets/diagram.png", "public/hero.png"]);
   assert.deepEqual(result.notWorthIt.map(({ path }) => path), ["public/photo.jpg", "public/unused-fire.png"]);
   assert.deepEqual([result.leftOut, result.missed, result.declined, result.errors, result.builds], [[], [], [], [], []]);
-  // the images' own measurements, as without a format; heart.png is too small to save 4 kB
-  assert.deepEqual(result.counts, { checked: 6, measured: 0, cached: 5, skipped: 1, packages: 1 });
+  // each image's own result came from the cache and its copy didn't: it counts as measured; heart.png
+  // is too small to save 4 kB
+  assert.deepEqual(result.counts, { checked: 6, measured: 5, cached: 0, skipped: 1, packages: 1 });
 
   const previews = [];
   for (const copy of [...result.rows, ...result.notWorthIt]) {
@@ -108,10 +110,12 @@ test("as WebP, the example's copies that beat their own shrink by both threshold
   assert.deepEqual(Object.values(entries(local)).map(({ format }) => format), Array(5).fill("webp"));
   assert.deepEqual(entries(committed), lint);
 
-  // a second run measures nothing, and finds the same
+  // a second run measures nothing, and finds the same, all of it cached
   const again = measure(dir, options);
   assert.equal(again.stderr, "");
-  assert.deepEqual(again.result, result);
+  assert.deepEqual(again.result, { ...result, counts: { ...result.counts, measured: 0, cached: 5 } });
+  // without a format, copies measured or not, the counts are the images' own
+  assert.deepEqual(measure(dir, { cacheDir: ".slimdeer" }).result.counts, again.result.counts);
 
   // a file already where the copy would go is noted
   writeFileSync(join(dir, "public/hero.webp"), "someone's file");
@@ -145,9 +149,12 @@ test("as AVIF, a project that can't show it, or a Next.js metadata image, is lef
     "packages/site/app/opengraph-image.png": gradient(16),
   } });
   const here = realpathSync(dir);
+  // their own results first: the two left out then count as cached, and g.png, whose copy is measured, as measured
+  measure(dir, { minSavedBytes: 0, minSavedPercent: 0 });
   const { result, stderr } = measure(dir, { format: "avif", minSavedBytes: 0, minSavedPercent: 0 });
+  assert.deepEqual(result.counts, { checked: 3, measured: 1, cached: 2, skipped: 0, packages: 3 });
   // said before AVIF's slow work, for the one image that goes to it
-  assert.match(stderr, /^slimdeer: measuring 1 image as AVIF at the same quality; AVIF is slow: about half a minute per image on a 16-core laptop\.\.\.$/m);
+  assert.match(stderr, /^slimdeer: measuring 1 image as AVIF at the same quality; AVIF is slow: often about a minute per image\.\.\.$/m);
   assert.deepEqual(result.leftOut, [
     { file: join(here, "packages/native/icon.png"), path: "packages/native/icon.png", kind: "react-native", reason: "React Native's Image doesn't list AVIF among the formats it shows" },
     { file: join(here, "packages/site/app/opengraph-image.png"), path: "packages/site/app/opengraph-image.png", kind: "next", reason: "Next.js serves app/ metadata images by their file name, and doesn't take WebP or AVIF there" },

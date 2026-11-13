@@ -43,7 +43,8 @@ const POINTER = Buffer.from("version https://git-lfs.github.com/spec/");
  * (convert.js), the results kept in its project's local cache folder alone; with `previewDir` too (a
  * folder the caller made, not a link), each copy measured that reaches its target is also written
  * there, named by its cache key and the format's extension. Resolves { format, rows, notWorthIt,
- * leftOut, missed, declined, errors, counts, builds }, the last four as without `format`:
+ * leftOut, missed, declined, errors, counts, builds }, the last four as without `format`, except that
+ * an image whose copy this run measured counts as measured:
  * - rows: [{ file, path, root, type, target, equal, original, compressed, score, sameFormat, base,
  *   output, outputExists, preview }], the copies smaller than their base by both thresholds, the
  *   smallest saving beyond it first. `type` is the image's own ("png", "jpeg"), `target` the one
@@ -75,6 +76,7 @@ export async function measureAll(inputs, { cwd = process.cwd(), target, minSaved
   };
   const { files, builds } = collect(inputs, cwd, exclude, error);
   const counts = { checked: files.size, measured: 0, cached: 0, skipped: 0, packages: new Set([...files.values()].map(({ root }) => root)).size };
+  const cached = new Set(); // the images counted as cached
   const groups = new Map(); // project root -> its cache folders and its images
   const left = []; // with `format`, the images not measured as that format, and why
 
@@ -99,7 +101,10 @@ export async function measureAll(inputs, { cwd = process.cwd(), target, minSaved
       const k = key(bytes, target);
       const entry = readFirst(k, dir, local);
       // a failure kept from an earlier run counts as the error it is, not also as cached
-      if (entry && !entry.skipped) counts.cached++;
+      if (entry && !entry.skipped) {
+        counts.cached++;
+        cached.add(file);
+      }
       const group = groups.get(root) ?? { dir, local, images: [] };
       group.images.push({ file, k, original: bytes.length, entry });
       groups.set(root, group);
@@ -107,7 +112,7 @@ export async function measureAll(inputs, { cwd = process.cwd(), target, minSaved
       error(file, cause);
     }
   }
-  await measure(groups, { target, format, minSavedBytes, minSavedPercent }, counts);
+  await measure(groups, { target, format, minSavedBytes, minSavedPercent }, counts, cached);
 
   const rows = [];
   const declined = [];
@@ -174,15 +179,24 @@ export async function measureAll(inputs, { cwd = process.cwd(), target, minSaved
   rows.sort((a, b) => a.original - a.compressed - (b.original - b.compressed));
   if (!format) return { rows, declined, missed, errors, counts, builds };
   const found = await measureCopies(copies, { format, target, minSavedBytes, minSavedPercent, previewDir, again }, error);
+  // an image counts as measured when this run measured its own result or its copy; a copy another
+  // run measured while this one waited for the lock is read from the cache, so it counts as cached,
+  // as an image's own result does then
+  for (const file of found.measured) {
+    if (!cached.delete(file)) continue;
+    counts.cached--;
+    counts.measured++;
+  }
   return { format, rows: found.rows, notWorthIt: found.notWorthIt, leftOut: [...left, ...found.refused], missed: found.missed, declined, errors, counts, builds };
 }
 
 /**
  * Measures what the cache lacks, every project's images on one pool (one count, no engine idle while
  * another project's last image finishes), each in its own project's cache folders under its own lock.
- * Notes on each group why it couldn't be measured, if so.
+ * Notes on each group why it couldn't be measured, if so. With `format`, adds to `cached` the images
+ * the batch counted as cached.
  */
-async function measure(groups, { target, format, minSavedBytes, minSavedPercent }, counts) {
+async function measure(groups, { target, format, minSavedBytes, minSavedPercent }, counts, cached) {
   const requests = new Map(); // request -> its group: fillAll() names a request it left out
   for (const group of groups.values()) {
     const pending = group.images.filter((image) => !image.entry);
@@ -193,22 +207,37 @@ async function measure(groups, { target, format, minSavedBytes, minSavedPercent 
   // another lint measured meanwhile (a closed stderr loses the line, nothing else: progress.js), after
   // any old cache folder beside the ones the results go into (compat.js)
   const count = progressLine();
+  // with a format, the images the batch measured, or found measured on their turn
+  const finished = new Set();
   // with a format, the check is after what the copies save, not what shrinking in place would: the
   // count leaves that out
-  const progress = format ? (done, total) => count(done, total) : count;
+  const progress = format
+    ? (done, total, { file }) => {
+        finished.add(file);
+        count(done, total);
+      }
+    : count;
   const result = await batch(requests, fillAll, (total, folders) => {
     oldCacheLines(folders, process.cwd());
     startLine(total);
   }, progress);
   counts.measured += result?.computed ?? 0;
   counts.cached += result?.cached ?? 0;
+  if (!format || !result) return;
+  // the batch counts the others as cached: measured by another run while this one waited for the
+  // lock, carried over from 0.5.0, or copies of one image
+  for (const [request] of requests) {
+    if (result.errors.has(request)) continue;
+    for (const file of request.files) if (!finished.has(file)) cached.add(file);
+  }
 }
 
 /**
  * measureAll()'s second part, with `format`: measures each of `copies` as that format at its equal
  * target, what the local cache folders lack on one pool and one count, then sorts them into
- * { rows, notWorthIt, refused, missed }, as measureAll() resolves them, `refused` for its leftOut. A
- * committed cache folder never gets these: the lint doesn't read them.
+ * { rows, notWorthIt, refused, missed }, as measureAll() resolves them, `refused` for its leftOut, and
+ * `measured`, the images whose copy this run measured. A committed cache folder never gets these: the
+ * lint doesn't read them.
  */
 async function measureCopies(copies, { format, target, minSavedBytes, minSavedPercent, previewDir, again }, error) {
   const { name, extension } = FORMATS[format];
@@ -221,7 +250,14 @@ async function measureCopies(copies, { format, target, minSavedBytes, minSavedPe
     request.jobs.push({ file: copy.file, target: copy.equal, out: preview(copy) });
     requests.set(copy.local, request);
   }
-  if (requests.size) await batch(new Map([...requests.values()].map((request) => [request, request])), fillConversions, (total) => convertLine(total, name), progressLine(name));
+  const measured = new Set();
+  if (requests.size) {
+    const count = progressLine(name);
+    await batch(new Map([...requests.values()].map((request) => [request, request])), fillConversions, (total) => convertLine(total, name), (done, total, info) => {
+      measured.add(info.file);
+      count(done, total, info);
+    });
+  }
 
   const rows = [];
   const notWorthIt = [];
@@ -254,7 +290,7 @@ async function measureCopies(copies, { format, target, minSavedBytes, minSavedPe
   }
   // the smallest saving beyond the shrink first, so the biggest end up next to the totals
   rows.sort((a, b) => a.base - a.compressed - (b.base - b.compressed));
-  return { rows, notWorthIt, refused, missed };
+  return { rows, notWorthIt, refused, missed, measured };
 }
 
 /**

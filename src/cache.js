@@ -63,7 +63,7 @@ export function read(dir, k) {
   try {
     const entry = JSON.parse(readFileSync(join(dir, `${k}.json`), "utf8"));
     // 0.5.0 also kept how long measuring took, which differs on every machine: without it, an entry
-    // copied into a committed cache folder (rule.js, check.js) is the same file wherever it's made
+    // copied into a committed cache folder (rule.js, measure.js) is the same file wherever it's made
     delete entry.ms;
     return entry;
   } catch {
