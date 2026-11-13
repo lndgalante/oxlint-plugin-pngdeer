@@ -39,10 +39,10 @@ Peak memory is the whole process's, read from `/usr/bin/time` on macOS and Linux
 | What | Time | Peak memory | |
 |---|---:|---:|---|
 | oxlint, without the plugin | 68 ms | 86 MB |  |
-| oxlint + slimdeer, first run | 14.6 s | 3.0 GB | measured 35 images, 78 warnings |
-| oxlint + slimdeer, later runs (median of 3) | 178 ms | 116 MB | 78 warnings |
-| oxlint + slimdeer, after one image changed | 960 ms | 169 MB | measured 1 image, 78 warnings |
-| ESLint + slimdeer, later run (.jsx files) | 264 ms | 195 MB | 66 warnings |
+| oxlint + the plugin, first run | 14.6 s | 3.0 GB | measured 35 images, 78 warnings |
+| oxlint + the plugin, later runs (median of 3) | 178 ms | 116 MB | 78 warnings |
+| oxlint + the plugin, after one image changed | 960 ms | 169 MB | measured 1 image, 78 warnings |
+| ESLint + the plugin, later run (.jsx files) | 264 ms | 195 MB | 66 warnings |
 | ESLint's language server, first lint, nothing cached | 171 ms | 3.1 GB | 0 warnings at once, all 66 after 15.3 s (measured in the background) |
 | npx oxlint-plugin-pngdeer --flagged | 11.5 s | 3.0 GB | shrank 30 images |
 

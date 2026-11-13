@@ -29,13 +29,15 @@ It writes a page that shows each image before and after, with the command that s
 
 The first run takes a few seconds per image, several at a time, and later runs read the cache. The cache and the page go in `node_modules/.cache/slimdeer`. It needs Node 20.19+ or 22.12+.
 
-![The command's review page, "slimdeer review", in a browser: public/hero.png, an arcade stick, split by a divider into before (509 kB) and after (151 kB), with "Quality 87/100: looks the same side by side" and Fit, 100% and 200% buttons. The bar at the bottom says "5 of 5 images ticked: could save 723 kB (1.0 MB → 317 kB, 70% smaller)" above the command that shrinks them and a Copy button](https://raw.githubusercontent.com/lndgalante/oxlint-plugin-slimdeer/main/docs/images/review.png)
+![The command's review page in a browser: public/hero.png, an arcade stick, split by a divider into before (509 kB) and after (151 kB), with "Quality 87/100: looks the same side by side" and Fit, 100% and 200% buttons. The bar at the bottom says "5 of 5 images ticked: could save 723 kB (1.0 MB → 317 kB, 70% smaller)" above the command that shrinks them and a Copy button](https://raw.githubusercontent.com/lndgalante/oxlint-plugin-slimdeer/main/docs/images/review.png)
 
 - Drag the divider across an image, or switch from Fit to 100% or 200% to see the pixels. Each "after" is the file the command writes, byte for byte.
 - Untick an image to keep it as it is, or press "Untick quality below 80". The bar gives the command for the rest; run it in the same folder. The lint still warns on an image you keep until you add it to the rule's [`exclude` option](#options).
 - The command prints the page's address. Add `--open` to open it in your browser.
 
 Prefer the terminal? `npx oxlint-plugin-slimdeer --check` lists the same images, then the commands that review and shrink them ([below](#check-without-a-linter)).
+
+As WebP or AVIF? `npx oxlint-plugin-slimdeer --review --format webp` (or `--format avif`) compares the same images as copies in that format, at the same quality scores, and shows the ones worth writing. Its command writes each copy next to its original, which stays, and lists the lines of code that still name the original: the saving starts once they name the copy ([WebP and AVIF](#webp-and-avif)).
 
 Savings vary by image. On pinned copies of three public projects' images, `--check` flagged all 19 of the Vue docs' guide images (74% smaller in all, 1.2 MB → 316 kB) and 4 of the Docusaurus starter's 5 (53% smaller in all), but only 2 of Starlight's 12 small portraits (7% smaller in all). On [SSIMULACRA2](https://github.com/cloudinary/ssimulacra2), the 0–100 perceptual score each warning shows, 21 of those 25 scored 89 or more, and 4 scored 73 to 78, which the rule calls "close, with differences you might spot side by side". These are repository bytes: an image pipeline or CDN may already re-encode what users download. [The trials](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/bench/TRIALS.md)
 
@@ -139,11 +141,43 @@ No warnings at all? [Go through this list](https://github.com/lndgalante/oxlint-
 
 ## Check without a linter
 
-`--check` measures without changing any image and needs no linter setup. It checks every package below the folder, warms the lint's cache, and ends with the commands that review and shrink what it lists. It reads no linter configuration, and neither does plain `--review`: pass the rule's options, like its `exclude` as `--exclude`. It exits 0 when no image clears both thresholds, 1 when one does, and 2 on a mistake in the arguments or when an image or folder couldn't be checked, so a CI step can gate on it. `--json` prints one JSON document on stdout instead, for scripts. [Options, exit codes and the JSON](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/docs/rules/compressible-image.md#check-images-without-changing-them)
+`--check` measures without changing any image and needs no linter setup. It checks every package below the folder, warms the lint's cache, and ends with the commands that review and shrink what it lists. It reads no linter configuration, and neither does plain `--review`: pass the rule's options, like its `exclude` as `--exclude`. It exits 0 when no image clears both thresholds, 1 when one does, and 2 on a mistake in the arguments or when an image or folder couldn't be checked, so a CI step can gate on it. `--json` prints one JSON document on stdout instead, for scripts. With `--format webp` or `--format avif`, it compares each image's WebP or AVIF copy with its shrink at the same quality score instead, and leaves out each image whose copy is already next to it ([WebP and AVIF](#webp-and-avif)). [Options, exit codes and the JSON](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/docs/rules/compressible-image.md#check-images-without-changing-them)
+
+## WebP and AVIF
+
+The command can also write a WebP or AVIF copy of an image, at the quality score its PNG or JPEG shrink would have, so the two sizes compare like for like:
+
+```bash
+npx oxlint-plugin-slimdeer --check --format webp           # which images are worth it
+npx oxlint-plugin-slimdeer --review --format webp          # see them before and after
+npx oxlint-plugin-slimdeer --format webp public/hero.png   # write public/hero.webp
+npx oxlint-plugin-slimdeer public/photo.jpg -o photo.avif  # write the copy you name
+```
+
+Run in `example/`, the third command prints:
+
+```
+public/hero.png → public/hero.webp: 509 kB → 92 kB (82% smaller, quality 87/100: looks the same side by side); shrunk as PNG at the same quality: 151 kB
+slimdeer: public/hero.png is still there, and this line still names it; point it at hero.webp:
+  src/App.jsx:10  <img src="/hero.png" alt="An arcade stick" />
+  and 1 mention in Markdown: SOURCES.md:10
+slimdeer: delete public/hero.png only once nothing uses it; other sites, emails and share previews may link to files in public/.
+```
+
+On this repository's example app, at the same quality scores: as WebP, three of the five images come out 32% smaller than shrinking them as PNG (793 kB now, 225 kB shrunk, 152 kB as WebP), while the photo comes out only 3% smaller than its JPEG shrink, so `--check --format webp` leaves it out. As AVIF, three come out 64% smaller than shrinking them (780 kB now, 247 kB shrunk, 89 kB as AVIF), but the diagram comes out 59% bigger than its PNG shrink, so it is left out. It depends on the image, so check before you convert.
+
+- The original stays as it is, and `--format` writes only new files. The saving starts once your code names the copy: the command lists the lines that still name the original.
+- `--format` writes a copy only where it is smaller than both the original and the original's PNG or JPEG shrink; `-o` writes one whenever it is smaller than the original, and says when the shrink would be smaller. By default, `--check --format` and `--review --format` list a copy only when it is at least 4 KiB and 10% smaller than the shrink.
+- Skip it where something already converts: next/image, Astro's `<Image>` and `<Picture>`, Gatsby's image plugin and many image CDNs serve WebP to browsers that take it, and converting the source first adds a second lossy pass. The command says so when your package.json depends on next, astro, gatsby, @nuxt/image or vite-imagetools.
+- Keep share images, app icons and images in email as PNG or JPEG; as AVIF, they can fail to show. In a [December 2024 test](https://joost.blog/use-avif-webp-share-images/), link previews on X, LinkedIn, Slack and iMessage didn't show AVIF (WebP showed on all 11 platforms tried), and [Outlook for Windows](https://www.caniemail.com/features/image-avif/) doesn't show AVIF either. With `--format avif`, the command points out each image named like a share image or an icon.
+- AVIF is slow: on the example app, `--check --format avif` took 66 seconds for five images, against 13 as WebP and 5 for the PNG and JPEG check, and one image alone often takes about a minute. `--check --format` and `--review --format` cache what they measure.
+- A copy keeps transparency and the color profile, and drops other metadata; a JPEG's EXIF orientation is applied to its pixels. [WebP](https://caniuse.com/webp) and [AVIF](https://caniuse.com/avif) each show in about 97% of browsers in use (caniuse, November 2026); AVIF needs Safari 16.4 or later to show on every Mac.
+
+[Every option, the JSON, and each reason an image is left out](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/docs/rules/compressible-image.md#write-images-as-webp-or-avif)
 
 ## For coding agents
 
-An agent adds images as easily as you do, and the rule warns on them in the agent's own lint run. [The agent skill](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/skills/oxlint-plugin-slimdeer/SKILL.md) in this repository has a coding agent measure your images with `--check --json`, give you the review page's address, and shrink only the images you approve:
+An agent adds images too, and the rule warns on them in the agent's own lint run. [The agent skill](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/skills/oxlint-plugin-slimdeer/SKILL.md) in this repository has a coding agent measure your images with `--check --json`, give you the review page's address, shrink only the images you approve, and, when you ask, write WebP or AVIF copies and list the code that still names the originals:
 
 ```bash
 npx skills add lndgalante/oxlint-plugin-slimdeer
@@ -228,19 +262,19 @@ With ESLint's recommended config, set the rule again in a config object after it
 
 ## Questions
 
-- **Does it upload my images?** No. The engine ships in the package as 5.3 MB of WebAssembly (the package is a 1.9 MB download): no upload, no API key, no dependencies, no native binaries, no install scripts.
+- **Does it upload my images?** No. The engine ships in the package as 5.3 MB of WebAssembly (the package is a 2.0 MB download): no upload, no API key, no dependencies, no native binaries, no install scripts.
 - **Is it lossless?** No. SSIMULACRA2 scores how close an image looks to its original, from 0 to 100, and each warning shows it. By default, slimdeer keeps the smallest file that scores about as high as TinyPNG's file would. In slimdeer's own benchmark of 180 PNGs (published under its former name, pngdeer), the median file is 8–12% smaller than TinyPNG's at the same quality ([leaderboard](https://github.com/heydeer/slimdeer/blob/a8e88267ba02cbaf66e746db93ed04242dca8450/README.md#leaderboard)). For photos and screenshots with small text, try `"target": 90` and compare.
 - **Does it resize images?** No. Each image keeps its width and height; only the file gets smaller.
 - **How is it different from TinyPNG or Squoosh?** Both compress the images you hand them. TinyPNG uploads each one, and its API needs a key, with 500 free compressions a month. Squoosh runs in your browser, one image at a time, at the settings you pick. This plugin runs slimdeer on your machine, picks the quality per image, and finds the images that need it in your code.
 - **Does it help behind `next/image`, Astro's `<Image>` or an image CDN?** Less: they re-encode images for visitors anyway, so shrinking those mostly saves repository and build size, and adds a second lossy pass. Behind `next/image`, the warning says so. Leave those folders out with `exclude`. Images served as they are still count: plain `<img>`, CSS backgrounds, and `public/` in Vite and Astro. [When not to use it](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/docs/rules/compressible-image.md#when-not-to-use-it)
-- **Why not WebP or AVIF?** It keeps each image's name and format, so no code or reference changes. WebP, AVIF, GIF and SVG files aren't measured.
+- **Does the rule suggest WebP or AVIF?** No: its fix keeps each image's name and format, so no code changes. The command writes WebP and AVIF copies when you ask ([WebP and AVIF](#webp-and-avif)). Images that are already WebP, AVIF, GIF or SVG aren't measured.
 - **How slow is the first run?** The first lint measures every PNG and JPEG in the project, one engine per core (8 at most); later lints read the cache. On a 16-core M3 Max, the first lint of an app with 39 images (12 MB) took 14.6 s and peaked at 3.0 GB of memory. Later lints took 178 ms, against 68 ms without the plugin. That was version 0.3.0; today's engine writes the same PNG and JPEG files in about the same time ([the benchmark](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/bench/README.md)). Since 0.6.0, an image whose automatic result scores below 70 is compressed a second time, at 70: on tanstack.com's 148 images, a cold run took 718 s of CPU time, against 661 s with 0.5.0, in the same wall time ([the quality floor](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/docs/releases/0.6.0.md#the-quality-floor)).
 - **Does it need oxlint?** No. `--check`, `--review` and the shrink command run alone, and ESLint 9 and 10 run the same rule.
 - **Where doesn't it work?** oxlint runs JS plugins only on 64-bit little-endian machines, and on some memory-constrained Linux machines any JS plugin can make oxlint run out of memory ([oxc#20331](https://github.com/oxc-project/oxc/issues/20331)). slimdeer fails on some images, like flat-color JPEGs, and the rule skips others, like grayscale PNGs with a color profile; a command-line lint names them on stderr. [What it skips](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/docs/rules/compressible-image.md#what-it-skips)
 
 ## Learn more
 
-[The rule's docs](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/docs/rules/compressible-image.md) cover every option and setting, `--check`, `--review`, paths and aliases, the cache, and upgrading. Also: [CHANGELOG.md](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/CHANGELOG.md), [FINDINGS.md](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/FINDINGS.md) (design notes) and [CONTRIBUTING.md](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/CONTRIBUTING.md).
+[The rule's docs](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/docs/rules/compressible-image.md) cover every option and setting, `--check`, `--review`, WebP and AVIF copies, paths and aliases, the cache, and upgrading. Also: [CHANGELOG.md](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/CHANGELOG.md), [FINDINGS.md](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/FINDINGS.md) (design notes) and [CONTRIBUTING.md](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/CONTRIBUTING.md).
 
 This plugin is a separate project from slimdeer. Report problems with the rule or the command in [this repository's issues](https://github.com/lndgalante/oxlint-plugin-slimdeer/issues). An error that says "a bug in HeyDeer's slimdeer engine" goes to [slimdeer's issues](https://github.com/heydeer/slimdeer/issues).
 
@@ -259,4 +293,4 @@ Using the rule or the command in a real project? We'd like to feature more. [Sha
 
 ## License
 
-[MIT](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/LICENSE). The engine's dependencies keep their own licenses ([engine/THIRD_PARTY_LICENSES.txt](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/engine/THIRD_PARTY_LICENSES.txt)), and [engine/README.md](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/engine/README.md) says where the engine comes from. The example images keep theirs ([example/SOURCES.md](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/example/SOURCES.md)), and the MIT license doesn't cover the showcase images. JPEG output is encoded with mozjpeg: this software is based in part on the work of the Independent JPEG Group. The engine also holds libaom, an AVIF encoder, under the BSD-2-Clause license and the Alliance for Open Media Patent License 1.0.
+[MIT](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/LICENSE). The engine's dependencies keep their own licenses ([engine/THIRD_PARTY_LICENSES.txt](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/engine/THIRD_PARTY_LICENSES.txt)), and [engine/README.md](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/engine/README.md) says where the engine comes from. The example images keep theirs ([example/SOURCES.md](https://github.com/lndgalante/oxlint-plugin-slimdeer/blob/main/example/SOURCES.md)), and the MIT license doesn't cover the showcase images. JPEG output is encoded with mozjpeg: this software is based in part on the work of the Independent JPEG Group. AVIF output is encoded with libaom, under the BSD-2-Clause license and the Alliance for Open Media Patent License 1.0, with parts of it under BSD-3-Clause and MIT.

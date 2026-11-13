@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: A bug in the slimdeer engine
+    url: https://github.com/heydeer/slimdeer/issues
+    about: An error that says "a bug in HeyDeer's slimdeer engine" goes there. Open a bug here too if the rule or the command handled it badly.

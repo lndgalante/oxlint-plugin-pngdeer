@@ -59,12 +59,12 @@ if (json) writeFileSync(json, `${JSON.stringify({ size, scopeComparison: compare
 /** Exercise the usual lint, editor and compression workflows. */
 function standard() {
   uncache();
-  record("oxlint + slimdeer, first run", run(OXLINT, ["-f", "unix"]));
-  record("oxlint + slimdeer, later runs (median of 3)", median([1, 2, 3].map(() => run(OXLINT, ["-f", "unix"]))));
+  record("oxlint + the plugin, first run", run(OXLINT, ["-f", "unix"]));
+  record("oxlint + the plugin, later runs (median of 3)", median([1, 2, 3].map(() => run(OXLINT, ["-f", "unix"]))));
   copyFileSync(app.replacement, app.changed);
-  record("oxlint + slimdeer, after one image changed", run(OXLINT, ["-f", "unix"]));
+  record("oxlint + the plugin, after one image changed", run(OXLINT, ["-f", "unix"]));
   const eslint = run(ESLINT, ["src"]);
-  record("ESLint + slimdeer, later run (.jsx files)", eslint);
+  record("ESLint + the plugin, later run (.jsx files)", eslint);
   uncache();
   editor(warnings(eslint));
   // --flagged holds absolute paths, so lint the copy before compressing its images.

@@ -1,5 +1,7 @@
 # engine
 
+This folder is the compressor the plugin runs: HeyDeer's [slimdeer](https://github.com/heydeer/slimdeer), compiled to WebAssembly and shipped in the package as it is. Its build files are never edited by hand. The rest of this page says which build it is and how to check that.
+
 slimdeer 0.3.1's single-threaded WebAssembly build with AVIF output, and its wasm-bindgen glue: upstream's `web/pkg-avif`, built with `-p slimdeer-wasm --features avif` (`web/build.sh`). One build writes PNG, JPEG, WebP and AVIF. Its source is [heydeer/slimdeer at 38ce560d4ac3016118799db8499487433bfd5d9b](https://github.com/heydeer/slimdeer/tree/38ce560d4ac3016118799db8499487433bfd5d9b) (tag v0.3.1). heydeer/slimdeer's main at eafae5e changes only the command line, its tests, the README and the web page since then, so it compiles the same WebAssembly sources from the same Cargo.lock. It is the build heydeer.ai deploys: on November 12, 2026, heydeer.ai served these same three files (the WASM and glue under heydeer.ai/open-source/slimdeer/pkg-avif/).
 
 | File | SHA-256 |

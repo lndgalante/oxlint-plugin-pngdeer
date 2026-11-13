@@ -29,7 +29,7 @@ When behavior or options change, update README.md, docs/rules/compressible-image
 
 ## The engine
 
-Don't edit `engine/` by hand. It is [slimdeer](https://github.com/heydeer/slimdeer)'s WebAssembly build with AVIF output, rebuilt from pinned source: see [engine/README.md](engine/README.md). An engine that writes other PNG or JPEG files needs a new cache identity, and every image is then measured again ([the cache's identity](engine/README.md#the-caches-identity)). Note any engine change in the release notes. An error that says "a bug in HeyDeer's slimdeer engine" is reported to [slimdeer](https://github.com/heydeer/slimdeer/issues); fixes to the rule or the command come here.
+Don't edit `engine/` by hand. It is [slimdeer](https://github.com/heydeer/slimdeer)'s WebAssembly build with AVIF output, rebuilt from pinned source: see [engine/README.md](engine/README.md). An engine that writes other PNG, JPEG, WebP or AVIF files needs a new cache identity, and every image is then measured again ([the cache's identity](engine/README.md#the-caches-identity)). Note any engine change in the release notes. An error that says "a bug in HeyDeer's slimdeer engine" is reported to [slimdeer](https://github.com/heydeer/slimdeer/issues); fixes to the rule or the command come here.
 
 ## Releasing
 

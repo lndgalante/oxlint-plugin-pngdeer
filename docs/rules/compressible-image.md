@@ -2,7 +2,7 @@
 
 Flags PNGs and JPEGs that [slimdeer](https://github.com/heydeer/slimdeer), HeyDeer's open-source lossy image compressor, would make at least 4 KiB and 10% smaller at about the same visual quality, on the line of code that uses them. The engine ships in this package as WebAssembly: images are measured on your machine and never uploaded.
 
-[What it flags](#what-it-flags) · [No warnings?](#no-warnings) · [`--check`](#check-images-without-changing-them) · [`--review`](#review-images-before-and-after) · [How to fix it](#how-to-fix-it) · [Job summaries](#github-actions-job-summaries) · [Options](#options) · [Excluding images](#scan-scope-and-exclusions) · [ESLint setup](#eslint-setup) · [Settings](#settings) · [The cache](#the-cache) · [Upgrading](#upgrading) · [Moving from the old name](#moving-from-oxlint-plugin-pngdeer) · [What it skips](#what-it-skips) · [Turning it off](#turning-it-off) · [When not to use it](#when-not-to-use-it)
+[What it flags](#what-it-flags) · [No warnings?](#no-warnings) · [`--check`](#check-images-without-changing-them) · [`--review`](#review-images-before-and-after) · [How to fix it](#how-to-fix-it) · [WebP and AVIF](#write-images-as-webp-or-avif) · [Job summaries](#github-actions-job-summaries) · [Options](#options) · [Excluding images](#scan-scope-and-exclusions) · [ESLint setup](#eslint-setup) · [Settings](#settings) · [The cache](#the-cache) · [Upgrading](#upgrading) · [Moving from the old name](#moving-from-oxlint-plugin-pngdeer) · [What it skips](#what-it-skips) · [Turning it off](#turning-it-off) · [When not to use it](#when-not-to-use-it)
 
 ## What it flags
 
@@ -150,7 +150,7 @@ npx oxlint-plugin-slimdeer --check --exclude "public/originals/**" --min-saved-b
 npx oxlint-plugin-slimdeer --check --json > images.json
 ```
 
-`--check` accepts files and folders, and without paths starts at the current folder. It never changes an image. It writes its measurements to the same cache as the lint rule, so a lint afterwards finds them, and leaves the lint's `--flagged` list alone. An image must clear both savings thresholds to be listed.
+`--check` accepts files and folders, and without paths starts at the current folder. It never changes an image. It writes its measurements to the same cache as the lint rule, so a lint afterwards finds them, and leaves the lint's `--flagged` list alone. An image must clear both savings thresholds to be listed. With `--format webp` or `--format avif`, it compares each image's WebP or AVIF copy with its shrink instead ([WebP and AVIF](#check-first)).
 
 It prints one line per image, biggest saving last, then the totals and the next commands. With two or more images it offers [`--review`](#review-images-before-and-after) with the same paths and options; with one, a preview as a new file. In `example/`:
 
@@ -176,6 +176,7 @@ The shrink command names the 10 biggest savings when there are more. Sizes are i
 | `--exclude PATTERN` | none | A file, folder or pattern to leave out, with the same syntax as the rule's `exclude`. Repeat it for more. |
 | `--cache-dir PATH` | `node_modules/.cache/slimdeer` | Cache folder relative to each image's package, or an absolute path. Use the same value as `settings.slimdeer.cacheDir` to share a committed cache. |
 | `--json` | off | Print one JSON document on stdout instead of lines (see [below](#json)). |
+| `--format webp\|avif` | none | Compare each image's WebP or AVIF copy with its shrink, at the same quality score (see [WebP and AVIF](#check-first)). |
 
 An option's value can follow it or an `=` sign: `--target 80` or `--target=80`. A mistake in the arguments is one line and a pointer to `--help`, and exits `2`:
 
@@ -307,7 +308,7 @@ npx oxlint-plugin-slimdeer --review [PATH...] [--open]
 npx oxlint-plugin-slimdeer --review --flagged [--open] [--target auto|T] [--cache-dir PATH]
 ```
 
-`--review` takes `--check`'s paths and options, except `--json`. It writes a preview of every image `--check` would list, and one page that compares each preview with its original, to `node_modules/.cache/slimdeer/review/index.html` in the project it runs in. It changes no image and uploads nothing. Like `--check`, it reads no linter configuration, so pass `--exclude` for the images the rule's `exclude` keeps, or after a lint, use `--review --flagged` (below). In `example/`, with nothing cached yet:
+`--review` takes `--check`'s paths and options, except `--json`. It writes a preview of every image `--check` would list, and one page that compares each preview with its original, to `node_modules/.cache/slimdeer/review/index.html` in the project it runs in. It changes no image and uploads nothing. Like `--check`, it reads no linter configuration, so pass `--exclude` for the images the rule's `exclude` keeps, or after a lint, use `--review --flagged` (below). With `--format webp` or `--format avif`, the page compares each image with its WebP or AVIF copy instead ([WebP and AVIF](#see-them-first)). In `example/`, with nothing cached yet:
 
 ```
 $ npx oxlint-plugin-slimdeer --review
@@ -382,6 +383,13 @@ oxlint-plugin-slimdeer: -o public/hero.png is public/hero.png itself: give anoth
 Run npx oxlint-plugin-slimdeer --help to see every option.
 ```
 
+OUT's extension says what to write. `.png` or `.apng` for a PNG, and `.jpg` or `.jpeg` for a JPEG, get the shrink; `.webp` and `.avif` get a copy in that format; the image stays as it is, and the copy saves nothing until your code names it ([WebP and AVIF](#write-images-as-webp-or-avif)). Any other extension, or none, is a mistake in the arguments (exit `2`), and nothing is written:
+
+```
+oxlint-plugin-slimdeer: -o hero.jpg: public/hero.png is a PNG, so OUT must end in .png, or in .webp or .avif to write that format
+Run npx oxlint-plugin-slimdeer --help to see every option.
+```
+
 Quality scores estimate perception; they are not a guarantee for every image or viewing condition.
 
 To shrink everything the last lint flagged, each at the target it was measured at:
@@ -425,6 +433,346 @@ On Windows, the commands the plugin prints write paths and `--exclude` patterns 
 - **Images keep their color profile and EXIF orientation.** Everything else is dropped: the rest of EXIF (GPS included), XMP and IPTC, so copyright and captions too. A profile that only says sRGB goes as well, since browsers assume sRGB.
 - **The mark is a short text tag,** so a fixed file stays fixed on every machine. Each PNG or JPEG the command writes carries `pngdeer <size>`, in a PNG `tEXt` entry named Software or in a JPEG comment. Versions up to 0.5.0, under the old name oxlint-plugin-pngdeer, recognize only that word, so the command keeps writing it, and every version recognizes every file it wrote; it also recognizes `slimdeer <size>`. Metadata strippers (`oxipng --strip`, ImageOptim) remove it, and images shrunk by slimdeer's own web app or command-line tool aren't marked: the rule measures those again and may flag them. The tag checks file size, so an edit that preserves both the tag and the byte count is still treated as optimized. Don't shrink an image twice, as each lossy pass costs quality.
 - **Images another tool already compressed can still be flagged,** because slimdeer compares with the file you have, not the original. Look at those on the review page before shrinking them.
+
+## Write images as WebP or AVIF
+
+The command can also write a WebP or AVIF copy of a PNG or JPEG, next to it or to a file you name. It makes the copy at the quality score the image's own shrink would have, so the two sizes compare at the same quality. The original stays as it is, and `--format` never writes over a file. A copy saves nothing until your code names it, so after writing, the command lists the lines that still name the original. Like the shrink, a copy is lossy: it looks about the same, and its bytes differ.
+
+The lint rule suggests no format change: its fix keeps each image's name and format, so no code changes. It doesn't measure WebP or AVIF files, and copies carry no mark.
+
+```bash
+npx oxlint-plugin-slimdeer --check --format webp           # which images are worth it
+npx oxlint-plugin-slimdeer --review --format webp          # see them before and after
+npx oxlint-plugin-slimdeer --format webp public/hero.png   # write public/hero.webp
+npx oxlint-plugin-slimdeer public/photo.jpg -o photo.avif  # write the copy you name
+```
+
+### The four commands
+
+| Command | What it writes | Also takes |
+|---|---|---|
+| `IMAGE... --format webp\|avif` | Each image's copy next to it, under its name with the format's extension: `public/hero.png` → `public/hero.webp`. | `--target` |
+| `IMAGE -o OUT.webp` or `IMAGE -o OUT.avif` | One image's copy, to OUT. A `--format` given too must name OUT's format. | `--target` |
+| `--check [PATH...] --format webp\|avif` | Nothing: it compares each image's copy with its shrink ([below](#check-first)). | `--check`'s options, `--json` included |
+| `--review [PATH...] --format webp\|avif` | Previews of the copies, and a page that compares them with the originals ([below](#see-them-first)). | `--review`'s options, `--open` included; `--review --flagged --format` too |
+
+`--json` needs `--check`, and `--exclude`, `--cache-dir` and the two thresholds need `--check` or `--review`: when writing copies, each is a mistake in the arguments, and so is `-o` with several images. Two images whose copies would get one name stop the run before any work:
+
+```
+oxlint-plugin-slimdeer: public/hero.png and public/hero.jpg would both be written as public/hero.webp: convert one of them with -o
+Run npx oxlint-plugin-slimdeer --help to see every option.
+```
+
+`--flagged --format` is refused: each copy needs its own change in the code, which the review page lets you choose.
+
+```
+oxlint-plugin-slimdeer: --flagged --format would write a new file for every image the lint flagged, and each one needs a change in the code: review them first with npx oxlint-plugin-slimdeer --review --flagged --format webp, and run the command the page gives
+Run npx oxlint-plugin-slimdeer --help to see every option.
+```
+
+### The quality of a copy
+
+At the automatic target, a copy aims at the quality score the image's own shrink reaches. With `--target T`, it aims at T, as the shrink does. Each format's own automatic setting can aim lower: WebP's gave `hero.png` quality 78 where its shrink has 87, so a size at that setting would set a smaller file against a worse picture ([FINDINGS.md](../../FINDINGS.md#2026-11-renamed-slimdeer-slimdeer-031-webp-and-avif-copies)). In `example/`, `public/hero.png` shrinks as PNG to 151 kB at quality 87, and its WebP copy at quality 87 is 92 kB:
+
+```
+$ npx oxlint-plugin-slimdeer --format webp public/hero.png
+public/hero.png → public/hero.webp: 509 kB → 92 kB (82% smaller, quality 87/100: looks the same side by side); shrunk as PNG at the same quality: 151 kB
+slimdeer: public/hero.png is still there, and this line still names it; point it at hero.webp:
+  src/App.jsx:10  <img src="/hero.png" alt="An arcade stick" />
+  and 1 mention in Markdown: SOURCES.md:10
+slimdeer: delete public/hero.png only once nothing uses it; other sites, emails and share previews may link to files in public/.
+```
+
+When the shrink doesn't reach quality 70 ([the quality floor](#the-quality-floor)), there is no quality to match, and the command asks you to choose one:
+
+```
+img/noisy.png: not written: shrunk as PNG it doesn't reach quality 70, so there is no quality to match; to choose one, add --target, like: npx oxlint-plugin-slimdeer img/noisy.png --target 80 --format webp
+```
+
+When no copy reaches the target, the line gives the best quality found, rounded down: `img/noisy.png: not written: as WebP, no file reaches --target 80 (the best reaches quality 61/100)`.
+
+### When a copy is written
+
+With `--format`, a copy is written only when it is smaller than the original and than the image's own shrink at the same quality. Otherwise the line says why, and what to run instead:
+
+```
+$ npx oxlint-plugin-slimdeer --format avif src/assets/diagram.png
+slimdeer: AVIF is slow: often about a minute per image
+src/assets/diagram.png: not written: as AVIF it would be 100 kB, no smaller than shrinking it as PNG at the same quality (63 kB); to shrink it in place instead, run: npx oxlint-plugin-slimdeer src/assets/diagram.png
+```
+
+With `-o`, the copy is written whenever it is smaller than the original, and the command says when the shrink would be smaller:
+
+```
+$ npx oxlint-plugin-slimdeer src/assets/diagram.png -o diagram.avif
+slimdeer: AVIF is slow: often about a minute per image
+src/assets/diagram.png → diagram.avif: 248 kB → 100 kB (60% smaller, quality 90/100: looks identical); shrunk as PNG at the same quality: 63 kB, smaller than this AVIF
+slimdeer: to shrink src/assets/diagram.png in place instead, run: npx oxlint-plugin-slimdeer src/assets/diagram.png
+```
+
+`--format` never writes over a file. A file already there with the copy's bytes, reached through a link or not, is left as it is; anything else in its place (another file, a folder, a link to other bytes or to nothing) stops that image, and the command exits `1`:
+
+```
+public/hero.png → public/hero.webp: already written; left as is
+```
+
+```
+public/photo.jpg: not written: public/photo.webp exists already; move it, or name another file with -o
+```
+
+An image whose name already ends in the format's own extension (`.webp` with `--format webp`, `.avif` with `--format avif`) has no new name to take, and gets `not written: its name already ends in .webp; name the copy with -o`. A copy is named after the image as its folder lists it, so on macOS and Windows, `HERO.PNG` typed for `hero.png` gets `hero.webp`.
+
+`-o` writes the file you name, over any file already there, as it does for a shrink, and refuses the image itself (see [How to fix it](#how-to-fix-it)). A `--format` that names another format than OUT's extension is a mistake in the arguments, and so is a folder:
+
+```
+oxlint-plugin-slimdeer: --format avif and -o hero.webp name different formats: give one of them
+Run npx oxlint-plugin-slimdeer --help to see every option.
+```
+
+```
+oxlint-plugin-slimdeer: -o public is a folder: give the file to write, like -o public/hero.webp
+Run npx oxlint-plugin-slimdeer --help to see every option.
+```
+
+Writing converts the image again, even after a check measured its copy, so writing an AVIF copy takes as long as measuring one.
+
+| Exit code | Meaning |
+|---|---|
+| `0` | Each image was written, was already written, or was left out for a reason its line gives. With `-o`, only when OUT was written. |
+| `1` | An image failed (missing, unreadable, an engine error), or something else is where its copy goes. With `-o`, OUT wasn't written. |
+| `2` | A mistake in the arguments. |
+
+### What it prints after writing
+
+The command then lists the lines that still name each original, so you can point them at the copy. With several images, it first gives their sizes in all. The end of a run over `example/`'s six images:
+
+```
+slimdeer: wrote 6 WebP files, 1.0 MB → 242 kB in all (shrunk in place at the same quality, they would be 318 kB). The originals are still there.
+slimdeer: these lines still name the originals; point each one at its new file:
+  src/App.jsx:1   import diagram from "./assets/diagram.png";
+  src/App.jsx:2   import crystalBall from "./assets/crystal-ball.png";
+  src/App.jsx:3   import heart from "./assets/heart.png";
+  src/App.jsx:5   const banner = new URL("./assets/diagram.png", import.meta.url);
+  src/App.jsx:10  <img src="/hero.png" alt="An arcade stick" />
+  src/App.jsx:15  <img src="/photo.jpg" alt="Motocross riders at a starting line" />
+  and 6 mentions in Markdown: SOURCES.md:7, SOURCES.md:8, SOURCES.md:9, SOURCES.md:10, SOURCES.md:11, and 1 more
+slimdeer: delete an original only once nothing uses it; other sites, emails and share previews may link to files in public/.
+```
+
+- A line names an original by a path: from its own file (`./assets/diagram.png`), from the project's folder, or from `public/` or `static/` (`/hero.png`), as written or URL-encoded. When no line does, the lines that hold its file name are listed instead. The search covers the project the command runs in, packages included, and ignores letter case on macOS and Windows. Code comes first, then Markdown, each by file path.
+- Up to 10 lines of code and 5 Markdown places are shown. For one image with more, the line after them gives the search that finds them all: `and 2 more lines: git grep -nF ball.png`.
+- An image no file names gets `slimdeer: no file here names assets/fire.png; something outside this project may (a CMS, an email, another site), so keep it until you know.`
+- For images in `public/` or `static/`, which a site serves as they are, the last line adds that other sites, emails and share previews may link to them.
+
+### Check first
+
+`--check --format` measures each image's copy at the same quality score as its shrink, and lists the copies that save at least 4.1 kB and 10% more than the shrink. It changes no image and writes no copy. In `example/`, after a plain `--check`:
+
+```
+$ npx oxlint-plugin-slimdeer --check --format webp
+slimdeer: measuring 5 images as WebP at the same quality...
+src/assets/crystal-ball.png: as WebP, could be 87% smaller (35 kB → 4.8 kB, quality 87/100: looks the same side by side); shrunk as PNG at the same quality: 11 kB
+src/assets/diagram.png: as WebP, could be 78% smaller (248 kB → 55 kB, quality 90/100: looks identical); shrunk as PNG at the same quality: 63 kB
+public/hero.png: as WebP, could be 82% smaller (509 kB → 92 kB, quality 87/100: looks the same side by side); shrunk as PNG at the same quality: 151 kB
+slimdeer: checked 6 images; 5 measured, 0 cached, 1 skipped (already optimized or below 4.1 kB), 0 errors.
+slimdeer: 2 images aren't listed: as WebP they would save less than 4.1 kB or 10% more than shrinking them in place (public/photo.jpg: 83 kB against 85 kB; public/unused-fire.png: 6.6 kB against 7.5 kB); to shrink them in place instead, run: npx oxlint-plugin-slimdeer public/photo.jpg public/unused-fire.png
+slimdeer: as WebP, 3 images could be 641 kB smaller (793 kB → 152 kB, 81% smaller); shrunk in place at the same quality, they would be 225 kB. Images unchanged.
+slimdeer: to see them before and after on one page first, run: npx oxlint-plugin-slimdeer --review --format webp
+slimdeer: to write them as WebP next to the originals, which stay, run: npx oxlint-plugin-slimdeer public/hero.png src/assets/diagram.png src/assets/crystal-ball.png --format webp
+```
+
+- With `--format`, `--min-saved-bytes` is the saving beyond the shrink, and `--min-saved-percent` that saving as a percentage of the shrink's size. Writing takes any copy smaller than both the original and the shrink, so it also writes copies the check leaves out, like `public/photo.jpg`'s (83 kB against 85 kB).
+- The checked line counts an image as measured when this run measured its shrink or its copy, and as cached when it read both from the cache, including a result that another run measured while this one waited for it. Above, the shrinks came from the plain `--check` and the copies were new; a second run reads both and says `0 measured, 5 cached`.
+- An image whose copy is there already isn't listed, so a project that keeps both files passes: `slimdeer: public/hero.png already has a WebP file next to it, which --format never replaces, so it isn't listed`. When every image that would be smaller has its copy, the check ends `slimdeer: as WebP, every image that would be smaller already has its WebP file. Images unchanged.` and exits `0`.
+- The images it doesn't list get a line for each reason: copies that save too little beyond the shrink (above), images [left out](#images-left-out), images the quality floor turned down (`slimdeer: public/fade.png isn't listed: shrunk in place it doesn't reach quality 70, so there is no quality to match; to choose one, run: npx oxlint-plugin-slimdeer --check public/fade.png --target 80 --format webp`), and at a `--target`, images no copy reaches it for (`slimdeer: public/photo.jpg isn't listed: as WebP, no file reaches --target 98 (the best reaches quality 92/100)`). When nothing is listed and an image was left out, turned down or short of the target, the check ends `slimdeer: as WebP, no image here is listed. Images unchanged.`
+- The exit codes are `--check`'s: `0` when no copy is listed, `1` when one is, `2` when an image couldn't be checked.
+- In GitHub Actions, the job summary is headed `slimdeer --check --format webp`, and its table gives each copy's size next to the shrink's: `| Image | Now | As WebP | Saves | Quality | Shrunk as PNG or JPEG |`.
+
+### Its JSON
+
+`--check --json --format webp` (or `avif`) prints one JSON document that adds the copies to what [`--json`](#json) gives. These are all its fields, from real runs on `example/` and on projects with an image of each kind it doesn't list:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `version` | string | The plugin's version. |
+| `options` | object | `target` (`"auto"` or a number), `format` (`"webp"` or `"avif"`), `minSavedBytes`, `minSavedPercent`, `exclude` (the patterns given) and `cacheDir` (`null` for the default). |
+| `counts` | object | `checked`, `measured`, `cached`, `skipped`, `packages` and `errors`, as in the checked line. |
+| `totals.images` | number | How many copies are listed. |
+| `totals.original` | bytes | Those images' sizes now. |
+| `totals.compressed` | bytes | Their copies' sizes. |
+| `totals.saved`, `totals.percent` | bytes, number | `original` less `compressed`, and that as a percentage of `original`. |
+| `totals.sameFormat` | bytes | What shrinking them in place would leave: each image's shrink where that is smaller, else the image itself. |
+| `totals.savedMore` | bytes | `sameFormat` less `compressed`: what the copies save beyond the shrinks. |
+| `images[]` | array | The listed images, the biggest saving beyond the shrink first. |
+| `images[].file`, `images[].package` | string | The image's path, and its package's folder, from where the command ran (`.` for that folder). |
+| `images[].output` | string | Where `--format` writes its copy. |
+| `images[].original`, `images[].compressed` | bytes | The image's size, and its copy's. |
+| `images[].saved`, `images[].percent` | bytes, number | What the copy saves, and that as a percentage. |
+| `images[].quality`, `images[].looks` | number, string | The copy's quality score, rounded, and how close it looks. |
+| `images[].sameFormat.compressed` | bytes or `null` | The size of the image's shrink; `null` when no file reached the target. |
+| `images[].sameFormat.outcome` | string | The shrink's outcome: `"hit"`, `"lossless"`, `"exact"`, `"original"` (nothing smaller) or `"miss"`. |
+| `images[].sameFormat.quality` | number or `null` | The shrink's quality score, for a `"hit"`. |
+| `images[].sameFormat.savedMore`, `images[].sameFormat.percentMore` | bytes, number | What the copy saves beyond the shrink (or beyond the image, where the shrink isn't smaller), and that as a percentage of it. |
+| `images[].namedIn[]` | array | The lines that name the image, as `{ file, line, text }`: `line` counts from 1, and `text` is trimmed and cut to 100 characters. Code first, then Markdown, each by file path. |
+| `notWorthIt[]` | array | Copies that reach their quality but don't save enough beyond the shrink, the biggest image first: `{ file, original, compressed, sameFormat: { compressed, outcome, quality } }`, `compressed` being the copy's size. |
+| `leftOut[]` | array | Images not measured as the format: `{ file, reason }`, the reason worded as in the rows of [Images left out](#images-left-out) marked `leftOut`. |
+| `existing[]` | array | Images whose copy's place something already takes: `{ file, output }`. |
+| `declined[]` | array | Images the quality floor turned down, with no quality to match: `{ file, original, quality }`, the best quality rounded down. |
+| `missed[]` | array | Images no copy reaches the target for: `{ file, original, quality }`, the best quality rounded down. |
+| `errors[]`, `builds[]` | array | As without `--format`: `{ file, message }`, and the Gatsby build folders left out as `{ folder, images }`. |
+
+In `example/`, cut to the first image of each list:
+
+```
+{
+  "version": "0.6.0",
+  "options": {
+    "target": "auto",
+    "format": "webp",
+    "minSavedBytes": 4096,
+    "minSavedPercent": 10,
+    "exclude": [],
+    "cacheDir": null
+  },
+  "counts": {
+    "checked": 6,
+    "measured": 0,
+    "cached": 5,
+    "skipped": 1,
+    "packages": 1,
+    "errors": 0
+  },
+  "totals": {
+    "images": 3,
+    "original": 792545,
+    "compressed": 151714,
+    "saved": 640831,
+    "percent": 81,
+    "sameFormat": 224699,
+    "savedMore": 72985
+  },
+  "images": [
+    {
+      "file": "public/hero.png",
+      "package": ".",
+      "output": "public/hero.webp",
+      "original": 509372,
+      "compressed": 92082,
+      "saved": 417290,
+      "percent": 82,
+      "quality": 87,
+      "looks": "the same side by side",
+      "sameFormat": {
+        "compressed": 150714,
+        "outcome": "hit",
+        "quality": 87,
+        "savedMore": 58632,
+        "percentMore": 39
+      },
+      "namedIn": [
+        {
+          "file": "src/App.jsx",
+          "line": 10,
+          "text": "<img src=\"/hero.png\" alt=\"An arcade stick\" />"
+        },
+        {
+          "file": "SOURCES.md",
+          "line": 10,
+          "text": "| `public/hero.png` | [Wikimedia Commons: Sega Dreamcast Arcade Stick](https://commons.wikimedia.or…"
+        }
+      ]
+    },
+    …
+  ],
+  "notWorthIt": [
+    {
+      "file": "public/photo.jpg",
+      "original": 235315,
+      "compressed": 82764,
+      "sameFormat": {
+        "compressed": 85140,
+        "outcome": "hit",
+        "quality": 76
+      }
+    },
+    …
+  ],
+  "leftOut": [],
+  "existing": [],
+  "declined": [],
+  "missed": [],
+  "errors": [],
+  "builds": []
+}
+```
+
+### See them first
+
+`--review --format webp` (or `avif`) writes the copies `--check --format` would list as previews, and one page that compares each with its original. In `example/`, with nothing cached yet:
+
+```
+$ npx oxlint-plugin-slimdeer --review --format webp
+slimdeer: measuring 5 images not in the cache yet...
+slimdeer: measuring 5 images as WebP at the same quality...
+slimdeer: as WebP, 3 images could be 641 kB smaller (793 kB → 152 kB, 81% smaller); shrunk in place at the same quality, they would be 225 kB. Images unchanged.
+slimdeer: 2 images aren't on the page: as WebP they would save less than 4.1 kB or 10% more than shrinking them in place; to shrink them in place instead, run: npx oxlint-plugin-slimdeer public/photo.jpg public/unused-fire.png
+slimdeer: the page that compares each one before and after: file:///…/node_modules/.cache/slimdeer/review/index.html
+slimdeer: open it in a browser, untick any image to keep as it is, and run the command it gives: it writes the WebP files next to the originals and lists the code that still names them.
+```
+
+Each "after" on the page is the copy the command writes, byte for byte. Each card gives the copy's quality score and what the shrink would weigh ("Shrunk as PNG at the same quality: 151 kB"), with a "Write as WebP" tick. The page's command writes the ticked copies next to their originals and lists the code that still names them, and the page names the images it leaves out, for the reasons `--check --format` gives. On an AVIF page, a browser that can't show AVIF gets "This browser can't show AVIF (Safari needs 16.4 or later)." under each picture. A plain `--review` page offers the same review as WebP, unless the project depends on a framework that converts images ([below](#notes-it-prints)).
+
+`--review --flagged --format webp` does the same for the images the last lint flagged, and lists their copies by `--review`'s thresholds. With nothing to compare, a review prints what `--check --format` would, then `slimdeer: no image to compare as WebP, so no page was written.`
+
+### Images left out
+
+These images get no copy. Writing says `not written:` and the reason, worded as below. `--check --format` gives the reasons marked `leftOut` after the checked line, and `--review --format` before the page's address, like `slimdeer: 1 image left out: img/wide.png (too wide or tall for WebP: at most 16,383 pixels a side)`, and the JSON lists them in `leftOut[]`. The other rows get the lines [Check first](#check-first) shows, and go in the JSON list the middle column names:
+
+| Reason, as writing words it | In `--check --json` | What to do |
+|---|---|---|
+| `already shrunk by this command, so converting it would be a second lossy pass; convert the original from before it was shrunk` | `leftOut` | Convert the original, from your version history. `--check` says `1 image this command already shrank is left out`. |
+| `animated PNGs can't be written as WebP yet` (or AVIF) | `leftOut` | Keep it as a PNG. |
+| `its eXIf data turns it, and the WebP file would show it unturned; shrink it as PNG instead` | `leftOut` | Shrink it in place. |
+| `too wide or tall for WebP: at most 16,383 pixels a side` | `leftOut` | Keep it, or try AVIF. |
+| `too large for AVIF: 25.0 MP, at most 24` | `leftOut` | Keep it, or try WebP. |
+| `Next.js serves app/ metadata images by their file name, and doesn't take WebP or AVIF there` | `leftOut` | Keep it: [Next.js](https://nextjs.org/docs/app/api-reference/file-conventions/metadata/opengraph-image) takes only JPEG, PNG and GIF for `opengraph-image`, and JPEG and PNG for `apple-icon`. |
+| `React Native's Image doesn't list AVIF among the formats it shows` (AVIF only, in a project that depends on `react-native` or `expo`) | `leftOut` | Try WebP, which [React Native's Image](https://reactnative.dev/docs/image) lists, with limits on iOS and Android that page gives. |
+| `its name already ends in .webp; name the copy with -o` | `existing`, when the image is given by path (a folder's scan skips the name) | Name the copy with `-o`. |
+| `shrunk as PNG it doesn't reach quality 70, so there is no quality to match; to choose one, add --target, like: …` | `declined` | Choose a target, and look at the copy before you use it. |
+| `as WebP, no file reaches --target 80 (the best reaches quality 61/100)` | `missed` | Choose a lower target, or keep the image. |
+| `as AVIF it would be 100 kB, no smaller than shrinking it as PNG at the same quality (63 kB); to shrink it in place instead, run: …` | `notWorthIt` | Shrink it in place, with the command the line gives. |
+| `as WebP it would be …, no smaller than the image itself (…)` | `notWorthIt` | Keep the image. |
+| `public/photo.webp exists already; move it, or name another file with -o` | `existing` | Move that file, or name the copy with `-o`. |
+| The engine's own words, for an image it turns down | `leftOut` | Keep the image as it is. |
+
+### Notes it prints
+
+The command doesn't know where your images are served, so it says what to check before converting. It prints the first line below in a project that depends on `next`, `astro`, `gatsby`, `@nuxt/image` or `vite-imagetools`, and, for AVIF only, the second for each image named like a share image or an icon (`og`, `opengraph`, `twitter`, `social` or `share` as a word of its name, like `og-image.png`, or `apple-touch-icon`, `favicon`, `android-chrome` or `mstile` in it):
+
+```
+slimdeer: this project depends on next, which can serve images as WebP by itself; convert only images it doesn't serve, or they go through a second lossy pass
+slimdeer: public/og-image.png looks like a share image or an icon by its name; in a December 2024 test, link previews on X, LinkedIn, Slack and iMessage didn't show AVIF, so keep a PNG or JPEG for those
+```
+
+`--check --format` prints them right after the checked line, and `--review --format` right before the page's address; the job summary and the review page show them too. Writing prints the first before it starts and the second after. In [that test](https://joost.blog/use-avif-webp-share-images/), WebP showed on all 11 platforms tried, and AVIF only on Facebook, Pinterest, Threads and WhatsApp.
+
+Keep images for email as PNG or JPEG too: caniemail.com estimates support at about 98% for [WebP](https://www.caniemail.com/features/image-webp/) and 66% for [AVIF](https://www.caniemail.com/features/image-avif/), and Outlook for Windows doesn't show AVIF. The command can't tell which images go into email.
+
+### Limits and costs
+
+- **AVIF is slow.** On the example app, `--check --format avif` took 66 seconds for five images, against 13 as WebP and 5 for the PNG and JPEG check, and one image alone often takes about a minute. `--check --format` and `--review --format` cache what they measure. The command says so as it starts: `slimdeer: AVIF is slow: often about a minute per image` when it writes one image, and the same words at the end of its `measuring …` or `writing …` line otherwise.
+- **Memory.** The pool plans for 70 MB plus 150 bytes a pixel for each AVIF image, more than for a shrink, within the budget [The cache](#the-cache) describes.
+- **Sizes.** AVIF takes at most 24 megapixels, and WebP at most 16,383 pixels a side.
+- **What a copy keeps.** Transparency and the color profile, in both formats. Other metadata, EXIF included, isn't kept. A JPEG's EXIF orientation is applied to its pixels, so the copy shows it the same way up; a PNG turned by an eXIf chunk is left out.
+- **Browsers.** WebP and AVIF each show in about 97% of browsers in use ([WebP](https://caniuse.com/webp), [AVIF](https://caniuse.com/avif); caniuse, November 2026). AVIF needs Safari 16.4 or later to show on every Mac. How Safari and Firefox show slimdeer's AVIF files hasn't been checked; Chrome showed them on the review page.
+- **The cache.** Measurements of copies go into each package's local cache, `node_modules/.cache/slimdeer`, keyed by the image's bytes, the engine, the target and the format. A committed cache folder (`cacheDir`, `--cache-dir`) never gets them, as the lint doesn't read them, so a CI run measures copies again unless it keeps the local cache ([The cache](#the-cache)).
+- **One run measures copies at a time per project,** under a lock of its own, so a lint never waits for one. A second run waits, then finds them cached, and says so:
+
+  ```
+  slimdeer: waiting for another run measuring this project's images as WebP or AVIF (if none is running, this one goes on within a minute)
+  ```
+
+- **A run killed while it writes a copy** can leave a hidden folder named `.slimdeer-` and six more characters next to the image. Nothing reads it, so delete it.
 
 ## GitHub Actions job summaries
 
@@ -600,8 +948,9 @@ From 0.5.0, which had the old name oxlint-plugin-pngdeer, start with [Moving fro
 - **Images 0.5.0 flagged below quality 70:** they are compressed again at 70. Those that reach it are still flagged, with a smaller saving; those that don't are no longer flagged. On tanstack.com, 3 of those 7 images were flagged again at quality 70 or 71, and 4 dropped out.
 - **`--check` in CI:** it now checks nested packages too, so a step that gates on its exit code can fail where 0.5.0 passed (test fixtures, examples, vendored packages). To check only the root package, as 0.5.0 did, leave out every folder with a package.json of its own. Where those are all in `packages/` and `examples/`, that is `npx oxlint-plugin-slimdeer --check --exclude 'packages/*' --exclude 'examples/*'`; add any others, like `apps/*` or `docs`. `--check --json` gives each listed image's `package`.
 - **`exclude` on macOS and Windows:** patterns now ignore letter case there, so `public/originals` also leaves out `public/Originals`.
+- **`-o`:** OUT's extension now says what to write (see [How to fix it](#how-to-fix-it)), so `-o x.jpg` on a PNG, or an OUT with no extension, is a mistake in the arguments where 0.5.0 wrote the file.
 
-A later version whose engine writes other PNG or JPEG files, or whose cache format changes, measures everything again. Then delete a committed folder and fill it again: nothing reads the old entries. [Everything that changed in 0.6.0](../releases/0.6.0.md)
+A later version whose engine writes other PNG, JPEG, WebP or AVIF files, or whose cache format changes, measures everything again. Then delete a committed folder and fill it again: nothing reads the old entries. [Everything that changed in 0.6.0](../releases/0.6.0.md)
 
 ## Moving from oxlint-plugin-pngdeer
 
